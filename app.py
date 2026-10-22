@@ -19,6 +19,7 @@ from arati.screens.admin import SettingsScreen, StaffScreen
 from arati.screens.billing import BillingScreen
 from arati.screens.bills import BillsScreen
 from arati.screens.catalog import CatalogScreen
+from arati.screens.login import LoginFrame
 from arati.screens.reports import ReportsScreen
 
 APP_DIR = Path(__file__).resolve().parent
@@ -199,60 +200,6 @@ class AratiApp(tk.Tk):
     def _clear(self) -> None:
         for child in self._container.winfo_children():
             child.destroy()
-
-
-class LoginFrame(ttk.Frame):
-    def __init__(self, master, app: AratiApp):
-        super().__init__(master)
-        self.app = app
-        self.username = tk.StringVar()
-        self.password = tk.StringVar()
-
-        wrap = ttk.Frame(self)
-        wrap.place(relx=0.5, rely=0.5, anchor="center")
-
-        card = ui.Card(wrap, padding=34)
-        card.pack()
-        inner = card.inner
-
-        ttk.Label(inner, text="ARATI HOTEL", style="H1.TLabel").pack(anchor="w")
-        ttk.Label(inner, text="Billing & front desk", style="Muted.TLabel").pack(
-            anchor="w", pady=(0, 22)
-        )
-
-        ui.field(inner, "Username", self.username, width=30).pack(fill="x")
-        ttk.Frame(inner, height=10).pack()
-        ui.field(inner, "Password", self.password, width=30, show="•").pack(fill="x")
-
-        self.error = ttk.Label(inner, text="", style="CardMuted.TLabel")
-        self.error.pack(anchor="w", pady=(8, 0))
-
-        ttk.Button(inner, text="Sign in", style="Primary.TButton",
-                   command=self.submit).pack(fill="x", pady=(14, 0))
-
-        users = db.list_users(self.app.conn)
-        if len(users) == 1 and users[0]["username"] == "admin":
-            ttk.Label(inner, text="First run · admin / arat123", style="CardMuted.TLabel").pack(
-                anchor="w", pady=(10, 0)
-            )
-
-        self.bind_all("<Return>", lambda _e: self.submit())
-        self.after(120, lambda: self.focus_first())
-
-    def focus_first(self) -> None:
-        for child in self.winfo_children():
-            pass
-        self.focus_set()
-
-    def submit(self) -> None:
-        user = db.authenticate(self.app.conn, self.username.get(), self.password.get())
-        if not user:
-            self.error.configure(text="Wrong username or password.", foreground=ui.DANGER)
-            self.password.set("")
-            self.focus_set()
-            return
-        self.unbind_all("<Return>")
-        self.app.sign_in(user)
 
 
 def main() -> None:

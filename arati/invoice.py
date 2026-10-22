@@ -8,6 +8,7 @@ so the form, the stored bill and the paper always agree.
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -47,15 +48,18 @@ def _rs(amount: float) -> str:
 def _fmt_date(value: str | None, date_format: str = "DD/MM/YYYY") -> str:
     if not value:
         return ""
+    text = str(value).strip()
     try:
-        from datetime import date
-
-        parsed = date.fromisoformat(value)
+        parsed = datetime.fromisoformat(text)
     except ValueError:
         return value
     if date_format == "YYYY-MM-DD":
-        return parsed.isoformat()
-    return parsed.strftime("%d/%m/%Y")
+        day = parsed.strftime("%Y-%m-%d")
+    else:
+        day = parsed.strftime("%d/%m/%Y")
+    if parsed.hour or parsed.minute:
+        day += f" {parsed.strftime('%H:%M')}"
+    return day
 
 
 def _styles():

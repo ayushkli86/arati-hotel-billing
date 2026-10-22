@@ -1,8 +1,11 @@
 """Seed catalog for Arati Hotel, taken from the hotel's public website.
 
-Room numbers marked as placeholders in the README; rates and menu prices are
-the published ones as of the scrape (Oct 2026). Admins can edit everything in
-the Catalog screen.
+Room *types* and their published rates are seeded here. Room *numbers* are
+not: they belong to the hotel's room inventory, which is owned by
+:mod:`arati.rooms` and configurable in the Room Management screen. The
+published room numbers (``2001``, ``2222``, ``2224``) are listed in
+``PUBLISHED_ROOM_NUMBERS`` for the admin to apply when the hotel confirms its
+numbering.
 """
 
 ROOM_TYPES = [
@@ -13,19 +16,9 @@ ROOM_TYPES = [
     ("Suite Deluxe Room", 6500.0),
 ]
 
-# (room number, room type, floor)
-ROOMS = [
-    ("101", "Standard Room", "1"),
-    ("2001", "Deluxe Room", "2"),
-    ("2222", "Deluxe Room", "2"),
-    ("2224", "Deluxe Room", "2"),
-    ("301", "Super Deluxe Room", "3"),
-    ("302", "Super Deluxe Room", "3"),
-    ("303", "Super Deluxe Room", "3"),
-    ("401", "Family Room", "4"),
-    ("501", "Suite Deluxe Room", "5"),
-    ("502", "Suite Deluxe Room", "5"),
-]
+# Room numbers published on the hotel's website. The inventory defaults to
+# 101-125; these are offered as the alternative list.
+PUBLISHED_ROOM_NUMBERS = ("2001", "2222", "2224")
 
 MENU = [
     ("Arati House Kebab Set Veg", 800.0),
@@ -64,16 +57,10 @@ SERVICES = [
 
 
 def seed_catalog(conn) -> None:
-    from .db import save_room, upsert_item
+    from .db import upsert_item
 
-    type_ids = {}
     for order, (name, price) in enumerate(ROOM_TYPES):
-        type_ids[name] = upsert_item(
-            conn, name, "room", price, unit="night", sort_order=order
-        )
-
-    for room_no, room_type, floor in ROOMS:
-        save_room(conn, room_no, type_ids[room_type], floor)
+        upsert_item(conn, name, "room", price, unit="night", sort_order=order)
 
     for order, (name, price) in enumerate(MENU):
         upsert_item(conn, name, "food", price, unit="plate", sort_order=order)

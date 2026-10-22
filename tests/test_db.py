@@ -29,8 +29,9 @@ def test_bootstrap_seeds_catalog_and_admin(tmp_path):
     items = db.list_items(conn)
     assert len(items) == 34                     # 5 room types + 23 dishes + 6 services
     assert any(i["name"] == "Chicken Biryani" and i["price"] == 490 for i in items)
-    assert len(db.list_rooms(conn)) == 10
-    assert db.get_room(conn, "2001")["room_type"] == "Deluxe Room"
+    # A fresh install gets the 25-room inventory, 101-125.
+    assert len(db.list_rooms(conn)) == 25
+    assert db.get_room(conn, "101")["room_type"] == "Standard Room"
 
 
 def test_bootstrap_is_idempotent(tmp_path):
@@ -38,7 +39,7 @@ def test_bootstrap_is_idempotent(tmp_path):
     db.bootstrap(conn)
     db.bootstrap(conn)
     assert conn.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 34
-    assert len(db.list_rooms(conn)) == 10
+    assert len(db.list_rooms(conn)) == 25        # no duplicate rooms on restart
 
 
 def test_bill_numbering_and_persistence(tmp_path):

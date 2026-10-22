@@ -127,6 +127,164 @@ CREATE TABLE IF NOT EXISTS bill_items (
 CREATE INDEX IF NOT EXISTS idx_bills_date ON bills (bill_date);
 CREATE INDEX IF NOT EXISTS idx_bills_status ON bills (status);
 CREATE INDEX IF NOT EXISTS idx_bill_items_bill ON bill_items (bill_id);
+
+-- Cash actually received against invoices. A payment is dated by the moment
+-- the money changed hands, which is not necessarily the invoice date, so a
+-- payment received today for an invoice raised last month shows up in
+-- today's collections and not in today's sales.
+CREATE TABLE IF NOT EXISTS payments (
+    payment_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    bill_id       INTEGER REFERENCES bills(bill_id),
+    bill_no       TEXT NOT NULL,
+    method        TEXT NOT NULL DEFAULT 'Cash',
+    amount        REAL NOT NULL DEFAULT 0,
+    paid_at       TEXT NOT NULL,
+    business_date TEXT NOT NULL,
+    note          TEXT NOT NULL DEFAULT '',
+    user_id       INTEGER REFERENCES users(user_id),
+    created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payments_business_date ON payments (business_date);
+CREATE INDEX IF NOT EXISTS idx_payments_bill ON payments (bill_no);
+
+-- Money returned to a guest, and authorised corrections to a bill balance.
+-- Stored separately from payments so a reversal is never mistaken for cash in.
+CREATE TABLE IF NOT EXISTS refunds (
+    refund_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    bill_id       INTEGER REFERENCES bills(bill_id),
+    bill_no       TEXT NOT NULL,
+    kind          TEXT NOT NULL DEFAULT 'refund'
+                  CHECK (kind IN ('refund','adjustment')),
+    method        TEXT NOT NULL DEFAULT 'Cash',
+    amount        REAL NOT NULL DEFAULT 0,
+    reason        TEXT NOT NULL DEFAULT '',
+    refunded_at   TEXT NOT NULL,
+    business_date TEXT NOT NULL,
+    user_id       INTEGER REFERENCES users(user_id),
+    created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_refunds_business_date ON refunds (business_date);
+CREATE INDEX IF NOT EXISTS idx_refunds_bill ON refunds (bill_no);
+
+-- A booking for a room. Reservation status lives here, never on the room.
+CREATE TABLE IF NOT EXISTS reservations (
+    reservation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_no        TEXT NOT NULL,
+    guest_name     TEXT NOT NULL,
+    guest_phone    TEXT NOT NULL DEFAULT '',
+    guest_address  TEXT NOT NULL DEFAULT '',
+    guest_pan      TEXT NOT NULL DEFAULT '',
+    check_in       TEXT NOT NULL,
+    check_out      TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'confirmed'
+                   CHECK (status IN ('confirmed','checked_in','checked_out','cancelled','no_show')),
+    nightly_rate   REAL NOT NULL DEFAULT 0,
+    deposit        REAL NOT NULL DEFAULT 0,
+    source         TEXT NOT NULL DEFAULT 'front desk',
+    notes          TEXT NOT NULL DEFAULT '',
+    cancel_reason  TEXT NOT NULL DEFAULT '',
+    created_at     TEXT NOT NULL,
+    user_id        INTEGER REFERENCES users(user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reservations_room ON reservations (room_no, status);
+CREATE INDEX IF NOT EXISTS idx_reservations_dates ON reservations (check_in, check_out);
+
+-- A guest actually in the room. A stay owns one folio invoice, so room
+-- charges live in the ordinary bill_items table and are settled by the
+-- ordinary payments table.
+CREATE TABLE IF NOT EXISTS stays (
+    stay_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    reservation_id    INTEGER REFERENCES reservations(reservation_id),
+    room_no           TEXT NOT NULL,
+    bill_no           TEXT NOT NULL DEFAULT '',
+    guest_name        TEXT NOT NULL,
+    guest_phone       TEXT NOT NULL DEFAULT '',
+    guest_address     TEXT NOT NULL DEFAULT '',
+    guest_pan         TEXT NOT NULL DEFAULT '',
+    check_in          TEXT NOT NULL,
+    expected_checkout TEXT NOT NULL DEFAULT '',
+    check_out         TEXT,
+    nights            INTEGER NOT NULL DEFAULT 1,
+    nightly_rate      REAL NOT NULL DEFAULT 0,
+    status            TEXT NOT NULL DEFAULT 'active'
+                     CHECK (status IN ('active','checked_out','cancelled')),
+    created_at        TEXT NOT NULL,
+    user_id           INTEGER REFERENCES users(user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stays_room ON stays (room_no, status);
+
+-- Extra services posted to a stay before checkout (food, laundry, extra
+-- bed). The folio itself is billed through the ordinary bills/bill_items
+-- tables, so this table records the stay-level detail without creating a
+-- second financial ledger.
+CREATE TABLE IF NOT EXISTS room_charges (
+    charge_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    stay_id     INTEGER NOT NULL REFERENCES stays(stay_id),
+    room_no     TEXT NOT NULL DEFAULT '',
+    bill_no     TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL,
+    category    TEXT NOT NULL DEFAULT 'service',
+    qty         REAL NOT NULL DEFAULT 1,
+    unit_price  REAL NOT NULL DEFAULT 0,
+    amount      REAL NOT NULL DEFAULT 0,
+    charge_date TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    user_id     INTEGER REFERENCES users(user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_room_charges_stay ON room_charges (stay_id);
+
+-- One row per completed business day. A regenerated report keeps the old row
+-- and bumps the version, so the audit trail survives.
+CREATE TABLE IF NOT EXISTS daily_reports (
+    report_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_date TEXT NOT NULL,
+    version       INTEGER NOT NULL DEFAULT 1,
+    status        TEXT NOT NULL DEFAULT 'generated'
+                  CHECK (status IN ('generated','failed','superseded')),
+    file_path     TEXT NOT NULL DEFAULT '',
+    generated_at  TEXT NOT NULL,
+    generated_by  TEXT NOT NULL DEFAULT 'scheduler',
+    error         TEXT NOT NULL DEFAULT '',
+    totals_json   TEXT NOT NULL DEFAULT '{}',
+    superseded_by INTEGER REFERENCES daily_reports(report_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_reports_version
+    ON daily_reports (business_date, version);
+
+-- Every attempt at a scheduled job, successful or not.
+CREATE TABLE IF NOT EXISTS scheduler_runs (
+    run_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_name      TEXT NOT NULL,
+    business_date TEXT,
+    started_at    TEXT NOT NULL,
+    finished_at   TEXT,
+    status        TEXT NOT NULL DEFAULT 'running'
+                  CHECK (status IN ('running','ok','failed','skipped')),
+    message       TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_runs_job ON scheduler_runs (job_name, started_at);
+
+-- Who changed what, and when. Financial adjustments and report
+-- regenerations always leave a line here.
+CREATE TABLE IF NOT EXISTS audit_log (
+    audit_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    user_id    INTEGER,
+    username   TEXT NOT NULL DEFAULT '',
+    action     TEXT NOT NULL,
+    entity     TEXT NOT NULL DEFAULT '',
+    entity_id  TEXT NOT NULL DEFAULT '',
+    detail     TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log (created_at);
 """
 
 DEFAULT_SETTINGS = [
@@ -152,6 +310,28 @@ DEFAULT_SETTINGS = [
     ("invoice_language", "en"),
     ("invoice_copy_office", "Office Copy"),
     ("currency_symbol", "रु."),
+    # --- printer configuration (Phase 2) -----------------------------------
+    ("printer_paper_size", "A4"),
+    ("printer_thermal_width", "80"),
+    ("printer_margins", "normal"),
+    ("printer_show_logo", "1"),
+    ("printer_header", "1"),
+    ("printer_footer", "1"),
+    ("printer_contact_details", "1"),
+    ("printer_tax_details", "1"),
+    ("printer_copies", "1"),
+    ("printer_default_workflow", "preview"),
+    ("printer_default_device", ""),
+    # --- hotel / reporting configuration -----------------------------------
+    ("business_timezone", "Asia/Kathmandu"),
+    ("auto_close_enabled", "1"),
+    ("close_time", "00:05"),
+    ("payment_methods", "Cash,Card,Bank Transfer,Digital Wallet,Other"),
+    ("room_numbers", ""),
+    ("cash_opening_balance", "0"),
+    ("backup_dir", ""),
+    ("backup_hour", "02:00"),
+    ("backup_retention_days", "30"),
 ]
 
 
@@ -205,6 +385,13 @@ ITEM_MIGRATIONS = [
     ("code", "TEXT NOT NULL DEFAULT ''"),
     ("discount", "REAL NOT NULL DEFAULT 0"),
 ]
+ROOM_MIGRATIONS = [
+    ("nightly_rate", "REAL NOT NULL DEFAULT 0"),
+    ("housekeeping", "TEXT NOT NULL DEFAULT 'clean'"),
+]
+BILL_ITEM_MIGRATIONS = [
+    ("stay_id", "INTEGER"),
+]
 
 
 def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -213,7 +400,12 @@ def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:
 
 def migrate(conn: sqlite3.Connection) -> None:
     """Add missing columns to older databases without touching existing rows."""
-    for table, columns in (("bills", BILL_MIGRATIONS), ("bill_items", ITEM_MIGRATIONS)):
+    for table, columns in (
+        ("bills", BILL_MIGRATIONS),
+        ("bill_items", ITEM_MIGRATIONS),
+        ("bill_items", BILL_ITEM_MIGRATIONS),
+        ("rooms", ROOM_MIGRATIONS),
+    ):
         existing = _column_names(conn, table)
         for name, ddl in columns:
             if name not in existing:
@@ -243,6 +435,32 @@ def _backfill_taxable_net(conn: sqlite3.Connection) -> None:
 
 def now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def log_audit(
+    conn: sqlite3.Connection,
+    action: str,
+    entity: str = "",
+    entity_id: str = "",
+    detail: str = "",
+    user_id: int | None = None,
+    username: str = "",
+) -> None:
+    """Append one line to the audit log.
+
+    Financial adjustments, report regenerations and permission-sensitive
+    changes all leave a trail here. Writes never raise: losing an audit line
+    must not roll back the operation it describes.
+    """
+    try:
+        conn.execute(
+            "INSERT INTO audit_log (created_at, user_id, username, action, entity, "
+            "entity_id, detail) VALUES (?,?,?,?,?,?,?)",
+            (now(), user_id, username, action, entity, str(entity_id), detail),
+        )
+        conn.commit()
+    except sqlite3.Error:
+        pass
 
 
 # --------------------------------------------------------------------------- #
@@ -578,6 +796,9 @@ def _create_bill_once(
         )
         bill_id = int(cur.lastrowid)
         for line in lines:
+            line_total = line.get("line_total")
+            if line_total is None:
+                line_total = round(float(line.get("qty") or 0) * float(line.get("unit_price") or 0), 2)
             conn.execute(
                 """INSERT INTO bill_items (bill_id, item_id, category, description, code,
                         unit, qty, unit_price, line_total, taxable, discount)
@@ -591,12 +812,48 @@ def _create_bill_once(
                     line.get("unit", "pcs"),
                     line["qty"],
                     line["unit_price"],
-                    line["line_total"],
+                    line_total,
                     int(line.get("taxable", True)),
                     line.get("discount", 0),
                 ),
             )
+    # The opening payment is written to the cash ledger so the daily report
+    # counts the money as collected, not just as billed.
+    if not is_draft and float(totals.get("paid") or 0) > 0:
+        _record_opening_payment(
+            conn, bill_no, bill_id, float(totals["paid"]), payment_method, bill_date
+        )
     return bill_no
+
+
+def _record_opening_payment(
+    conn: sqlite3.Connection,
+    bill_no: str,
+    bill_id: int,
+    amount: float,
+    payment_method: str,
+    bill_date: str | None,
+) -> None:
+    """Write the payment taken at the time of sale into the cash ledger."""
+    from . import business_time as bt
+
+    business_date = bill_date or bt.today().isoformat()
+    stamp = f"{business_date} {bt.now().strftime('%H:%M:%S')}"
+    conn.execute(
+        "INSERT INTO payments (bill_id, bill_no, method, amount, paid_at, "
+        "business_date, note, user_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        (
+            bill_id,
+            bill_no,
+            payment_method or "Cash",
+            round(amount, 2),
+            stamp,
+            business_date,
+            "Payment taken at the time of sale",
+            None,
+            bt.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+    )
 
 
 def get_bill(conn: sqlite3.Connection, bill_no: str) -> tuple[dict, list[sqlite3.Row]] | None:
@@ -828,4 +1085,40 @@ def bootstrap(conn: sqlite3.Connection) -> None:
 
         seed_catalog(conn)
 
+    # The room inventory is created once and then left alone: adding rooms is
+    # harmless, so this is safe on every start-up.
+    _ensure_default_rooms(conn)
+
+    # Invoices raised before the cash ledger existed carry a paid amount but
+    # no payment row, which would under-report collections. The backfill is
+    # idempotent, so it is safe on every start-up.
+    _backfill_payments(conn)
+
     conn.commit()
+
+
+def _ensure_default_rooms(conn: sqlite3.Connection) -> None:
+    """Create the room inventory the hotel is configured for.
+
+    The list comes from the ``room_numbers`` setting when the hotel has set
+    one, and falls back to the default 25 rooms (101-125). Existing rooms are
+    never renamed or removed.
+    """
+    from . import rooms
+
+    try:
+        configured = (get_settings(conn).get("room_numbers") or "").strip()
+        numbers = rooms.parse_room_numbers(configured) if configured else None
+        rooms.ensure_inventory(conn, numbers)
+    except Exception:  # noqa: BLE001 - a room problem must not block start-up
+        pass
+
+
+def _backfill_payments(conn: sqlite3.Connection) -> None:
+    """Give pre-ledger invoices a matching payment row, once."""
+    try:
+        from .payments import backfill_legacy_payments
+
+        backfill_legacy_payments(conn)
+    except Exception:  # noqa: BLE001 - never block start-up on the backfill
+        pass

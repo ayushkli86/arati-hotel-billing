@@ -9,6 +9,7 @@ bill and the PDF, so the three can never disagree.
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 CENT = Decimal("0.01")
@@ -41,6 +42,26 @@ def _cents(value: Decimal) -> Decimal:
 def round2(value: float) -> float:
     """Round half-up to paisa (1.005 -> 1.01) without binary-float drift."""
     return float(_cents(_dec(value)))
+
+
+def to_paisa(value) -> int:
+    """Rupees -> integer paisa. The storage unit for ledger amounts.
+
+    Every rupee amount that has to survive a round trip through the database
+    is stored as an integer number of paisa, so 0.1 + 0.2 problems cannot
+    creep into a report.
+    """
+    return int((_dec(value) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def from_paisa(paisa: int) -> float:
+    """Integer paisa -> rupees, for display and for the legacy REAL columns."""
+    return float((Decimal(int(paisa)) / 100).quantize(CENT, rounding=ROUND_HALF_UP))
+
+
+def paisa_sum(values) -> int:
+    """Sum rupee amounts without floating-point drift."""
+    return sum((to_paisa(value) for value in values), 0)
 
 
 @dataclass(frozen=True)
@@ -216,6 +237,32 @@ def stay_nights(check_in: str, check_out: str) -> int:
     if nights < 0:
         raise ValueError("Check-out date is before check-in date")
     return nights or 1
+
+
+def parse_stay_text(value: str) -> datetime:
+    """Stay stamp: ``YYYY-MM-DD`` or ``YYYY-MM-DD HH:MM``. Raises ValueError."""
+    text = str(value).strip()
+    if not text:
+        raise ValueError("Empty date")
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return datetime.fromisoformat(text[:10])
+
+
+def stay_duration(check_in: str, check_out: str) -> tuple[int, str]:
+    """Calendar-night billing plus an exact elapsed-time readout.
+
+    Dates may carry ``HH:MM``. Returns ``(billed nights, "2 day(s) 3 hr 30 min")``.
+    Raises ValueError for dates before the check-in or garbage input.
+    """
+    delta = parse_stay_text(check_out) - parse_stay_text(check_in)
+    if delta.total_seconds() < 0:
+        raise ValueError("Check-out is before check-in")
+    days = delta.days
+    hours, remainder = divmod(delta.seconds, 3600)
+    minutes = remainder // 60
+    return (days if days else 1), f"{days} day(s) {hours} hr {minutes:02d} min"
 
 
 # --------------------------------------------------------------------------- #

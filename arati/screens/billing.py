@@ -16,7 +16,7 @@ from ..money import (
     compute_totals,
     discount_from_input,
     payment_status,
-    stay_nights,
+    stay_duration,
 )
 from ..nepali import LANGUAGE_CODES, LANGUAGE_LABELS
 from ..preview import InvoicePreview
@@ -204,10 +204,10 @@ class BillingScreen(ttk.Frame):
         ui.field(meta.inner, "Nights", self.nights, width=6).grid(
             row=2, column=3, sticky="ew"
         )
-        ui.field(meta.inner, "Check-in", self.check_in, width=10).grid(
+        ui.field(meta.inner, "Check-in", self.check_in, width=16).grid(
             row=3, column=0, sticky="ew", padx=(0, 10), pady=(4, 6)
         )
-        ui.field(meta.inner, "Check-out", self.check_out, width=10).grid(
+        ui.field(meta.inner, "Check-out", self.check_out, width=16).grid(
             row=3, column=1, sticky="ew", padx=(0, 10), pady=(4, 6)
         )
         ui.field(meta.inner, "Payment terms", self.payment_terms, width=24).grid(
@@ -471,7 +471,7 @@ class BillingScreen(ttk.Frame):
         self.wait_window(dialog)
         if not dialog.result:
             return
-        nights, rate, check_in, check_out = dialog.result
+        nights, rate, check_in, check_out, duration = dialog.result
         self.room_no.set(room["room_no"])
         self.check_in.set(check_in)
         self.check_out.set(check_out)
@@ -490,7 +490,8 @@ class BillingScreen(ttk.Frame):
             }
         )
         self._refresh_cart()
-        ui.notify(self.status, f"Room {room['room_no']} added for {nights} night(s).", ui.OK)
+        ui.notify(self.status,
+                  f"Room {room['room_no']} added · {nights} night(s) · stay {duration}.", ui.OK)
 
     # ---------------------------------------------------------------- cart
     def _selected_line(self) -> dict | None:
@@ -1045,7 +1046,7 @@ class LineEditor(tk.Toplevel):
 
 
 class StayDialog(tk.Toplevel):
-    """Ask for stay dates and rate for a room."""
+    """Ask for stay dates and times, and the rate, for a room."""
 
     def __init__(self, master, room):
         super().__init__(master)
@@ -1064,26 +1065,35 @@ class StayDialog(tk.Toplevel):
         ttk.Label(frame, text=f"Room {room['room_no']} · {ui.money(room['rate'])} / night",
                   style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 12))
 
-        self.check_in = tk.StringVar(value=ui.today_iso())
-        self.check_out = tk.StringVar(value=ui.tomorrow_iso())
+        self.check_in_date = tk.StringVar(value=ui.today_iso())
+        self.check_in_time = tk.StringVar(value="10:00")
+        self.check_out_date = tk.StringVar(value=ui.tomorrow_iso())
+        self.check_out_time = tk.StringVar(value="10:00")
         self.rate = tk.StringVar(value=f"{float(room['rate']):.2f}")
         self.nights_label = ttk.Label(frame, text="", style="Muted.TLabel")
 
-        for index, (label, var) in enumerate(
-            (("Check-in (YYYY-MM-DD)", self.check_in), ("Check-out (YYYY-MM-DD)", self.check_out),
-             ("Rate per night", self.rate))
-        ):
+        fields = (
+            ("Check-in date (YYYY-MM-DD)", self.check_in_date),
+            ("Check-in time (HH:MM)", self.check_in_time),
+            ("Check-out date (YYYY-MM-DD)", self.check_out_date),
+            ("Check-out time (HH:MM)", self.check_out_time),
+            ("Rate per night", self.rate),
+        )
+        for index, (label, var) in enumerate(fields):
+            label_row = 2 + index * 2
+            entry_row = label_row + 1
             ttk.Label(frame, text=label.upper(), style="Muted.TLabel").grid(
-                row=2 + index, column=0, sticky="w", pady=(0, 2)
+                row=label_row, column=0, sticky="w", pady=(0, 2)
             )
             entry = ttk.Entry(frame, textvariable=var, width=22)
-            entry.grid(row=3 + index, column=0, sticky="w", pady=(0, 8))
+            entry.grid(row=entry_row, column=0, sticky="w", pady=(0, 8))
             entry.bind("<KeyRelease>", lambda _e: self._update_nights())
-        self.nights_label.grid(row=6, column=0, sticky="w")
+        bottom_row = 2 + len(fields) * 2
+        self.nights_label.grid(row=bottom_row, column=0, sticky="w")
         self._update_nights()
 
         buttons = ttk.Frame(frame)
-        buttons.grid(row=7, column=0, sticky="e", pady=(14, 0))
+        buttons.grid(row=bottom_row + 1, column=0, sticky="e", pady=(14, 0))
         ttk.Button(buttons, text="Cancel", command=self.destroy).pack(side="left", padx=6)
         ttk.Button(buttons, text="Add stay", style="Primary.TButton",
                    command=self._confirm).pack(side="left")
@@ -1091,22 +1101,32 @@ class StayDialog(tk.Toplevel):
         self.bind("<Return>", lambda _e: self._confirm())
         self.bind("<Escape>", lambda _e: self.destroy())
 
+    def _stay_start(self) -> str:
+        time = self.check_in_time.get().strip()
+        return f"{self.check_in_date.get().strip()} {time}" if time else self.check_in_date.get()
+
+    def _stay_end(self) -> str:
+        time = self.check_out_time.get().strip()
+        return f"{self.check_out_date.get().strip()} {time}" if time else self.check_out_date.get()
+
     def _update_nights(self) -> None:
         try:
-            nights = stay_nights(self.check_in.get(), self.check_out.get())
-            self.nights_label.configure(text=f"{nights} night(s) · "
-                                             f"{ui.money(nights * float(self.rate.get() or 0))}")
+            nights, duration = stay_duration(self._stay_start(), self._stay_end())
+            rate = float(self.rate.get() or 0)
+            self.nights_label.configure(
+                text=f"{nights} night(s) · stay {duration} · {ui.money(nights * rate)}"
+            )
         except (ValueError, TypeError):
-            self.nights_label.configure(text="Enter valid dates")
+            self.nights_label.configure(text="Enter valid dates and times")
 
     def _confirm(self) -> None:
         try:
-            nights = stay_nights(self.check_in.get(), self.check_out.get())
+            nights, duration = stay_duration(self._stay_start(), self._stay_end())
             rate = float(self.rate.get())
             if rate < 0:
                 raise ValueError
         except (ValueError, TypeError):
-            messagebox.showerror("Invalid stay", "Check the dates and rate.", parent=self)
+            messagebox.showerror("Invalid stay", "Check the dates, times and rate.", parent=self)
             return
-        self.result = (nights, rate, self.check_in.get(), self.check_out.get())
+        self.result = (nights, rate, self._stay_start(), self._stay_end(), duration)
         self.destroy()

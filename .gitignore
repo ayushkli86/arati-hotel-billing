@@ -3,7 +3,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 arati.db
+*.db-shm
+*.db-wal
 invoices/
+/*.csv
 *.log
 dist/
 .ruff_cache/
