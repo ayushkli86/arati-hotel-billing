@@ -1,0 +1,327 @@
+{
+ "hotel": {},
+ "rooms": [
+  {
+   "name": "Deluxe Room",
+   "url": "https://aratihotel.com.np/rooms/deluxe-room2001",
+   "price": 4500,
+   "currency": "NPR",
+   "description": "Our Deluxe Room is designed for comfort and relaxation. It features a soft queen-size bed with fresh linens, air conditioning, free Wi-Fi and a TV for your entertainment. The private bathroom includes hot and cold showers plus complimentary bathroom essentials. Large windows fill the room with natural light and offer a beautiful view of the city or surroundings. Step out onto your private balcony to enjoy fresh air and scenic views. A study table is provided for guests who wish to work or read during their stay. For your convenience and security, the room is equipped with a modern card lock entry system. Suitable for up to two guests, it’s a perfect choice for couples or friends looking for a peaceful and comfortable stay at our Arati Hotel. Size: 230 sq. ft. approx.",
+   "images": []
+  },
+  {
+   "name": "Standard Room",
+   "url": "https://aratihotel.com.np/rooms/standard-room",
+   "price": 3000,
+   "currency": "NPR",
+   "description": "Our Standard Room offers a cozy and budget-friendly stay for up to two guests. It features a comfortable bed with fresh linens, free Wi-Fi a TV and a study table. The private bathroom includes hot and cold showers plus complimentary bathroom essentials. Large windows let in natural light and offer a pleasant view of the city or surroundings. Step out onto your private balcony to enjoy fresh air and relaxing views. A great choice for couples or friends looking for a simple and comfortable stay at Arati Hotel.",
+   "images": []
+  },
+  {
+   "name": "Family Room",
+   "url": "https://aratihotel.com.np/rooms/family-room1",
+   "price": 4000,
+   "currency": "NPR",
+   "description": "Our Family Room offers a spacious and comfortable stay for families. It features multiple beds with fresh linens a cozy seating area and a study table for work or play. Stay connected with free Wi-Fi and enjoy entertainment on the flat-screen TV. The private bathroom includes hot and cold showers and complimentary bathroom essentials. Large windows bring in natural light and offer pleasant views of the city or surroundings. Ideal for families looking for a simple and cozy stay at Arati Hotel. Size: 320 sq. ft. approx.",
+   "images": []
+  },
+  {
+   "name": "Suite Deluxe Room",
+   "url": "https://aratihotel.com.np/rooms/suite-deluxe-room",
+   "price": 6500,
+   "currency": "NPR",
+   "description": "Experience luxury and space in our Suite Deluxe Room, perfect for guests who want extra comfort. This elegant room features a soft queen-size bed with fresh linens, a separate living area with a comfortable sofa and a study table for work or relaxation. Enjoy modern amenities like air conditioning, free Wi-Fi and a flat-screen TV. The private bathroom includes hot and cold showers and complimentary bathroom essentials. Large windows fill the suite with natural light and offer beautiful views of the city or surroundings. For your convenience and security, the room is equipped with a modern card lock system. Ideal for couples, small families or business travelers seeking a stylish and spacious stay at Arati Hotel. Size: 600 sq. ft. approx.",
+   "images": []
+  },
+  {
+   "name": "Suite Deluxe Room",
+   "url": "https://aratihotel.com.np/rooms/suite-deluxe-room2",
+   "price": 5000,
+   "currency": "NPR",
+   "description": "Enjoy a spacious suite with a comfy queen-size bed, separate living area with sofa, study table, air conditioning, free Wi-Fi and a private bathroom with hot/cold shower. Beautiful city views and secure card lock system complete your perfect stay at Arati Hotel. Size: 600 sq. ft. approx.",
+   "images": []
+  },
+  {
+   "name": "Super Deluxe Room",
+   "url": "https://aratihotel.com.np/rooms/super-deluxe-room1",
+   "price": 5000,
+   "currency": "NPR",
+   "description": "Experience refined comfort and elegance in our Super Deluxe Room, the perfect choice for travelers seeking a step above luxury. This spacious room boasts a plush queen-size bed with premium linens, a cozy seating area to unwind and a dedicated study table for work or leisure. Stay connected with complimentary high-speed Wi-Fi and enjoy entertainment on the flat-screen TV. The private bathroom features modern fixtures, hot and cold showers, and complimentary bathroom essentials for your convenience. Large windows bathe the room in natural light and offer stunning views of the city. Step out onto your private balcony to enjoy fresh air and scenic surroundings. Enhanced with a secure card lock system, the Super Deluxe Room at Arati Hotel combines style, security and comfort for an unforgettable stay. Size: 300 sq. ft. approx.",
+   "images": []
+  },
+  {
+   "name": "Deluxe Room Rooms in Khandbari-01, Sankhuwasabha, Nepal",
+   "url": "https://aratihotel.com.np/rooms/category/1",
+   "price": "4500.00",
+   "currency": "NPR",
+   "description": "Explore Deluxe Room rooms at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal, including room prices, amenities, capacity and photos.",
+   "images": []
+  },
+  {
+   "name": "Standard Room Rooms in Khandbari-01, Sankhuwasabha, Nepal",
+   "url": "https://aratihotel.com.np/rooms/category/2",
+   "price": "3000.00",
+   "currency": "NPR",
+   "description": "Explore Standard Room rooms at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal, including room prices, amenities, capacity and photos.",
+   "images": []
+  },
+  {
+   "name": "Family Room Rooms in Khandbari-01, Sankhuwasabha, Nepal",
+   "url": "https://aratihotel.com.np/rooms/category/3",
+   "price": "4000.00",
+   "currency": "NPR",
+   "description": "Explore Family Room rooms at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal, including room prices, amenities, capacity and photos.",
+   "images": []
+  },
+  {
+   "name": "Suite Deluxe Room Rooms in Khandbari-01, Sankhuwasabha, Nepal",
+   "url": "https://aratihotel.com.np/rooms/category/4",
+   "price": "6500.00",
+   "currency": "NPR",
+   "description": "Explore Suite Deluxe Room rooms at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal, including room prices, amenities, capacity and photos.",
+   "images": []
+  },
+  {
+   "name": "Super Deluxe Room Rooms in Khandbari-01, Sankhuwasabha, Nepal",
+   "url": "https://aratihotel.com.np/rooms/category/5",
+   "price": "5000.00",
+   "currency": "NPR",
+   "description": "Explore Super Deluxe Room rooms at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal, including room prices, amenities, capacity and photos.",
+   "images": []
+  }
+ ],
+ "dining": [
+  {
+   "name": "Arati House Kebab Set Veg",
+   "url": "https://aratihotel.com.np/dining/arati-house-kebab-set-veg-1",
+   "price": 800,
+   "currency": "NPR",
+   "description": "Veg Seikh Kebab, Tandoori Mushroom with yellow marination",
+   "images": []
+  },
+  {
+   "name": "Arati House Kebab Set Non-Veg",
+   "url": "https://aratihotel.com.np/dining/arati-house-kebab-set-non-veg-2",
+   "price": 1400,
+   "currency": "NPR",
+   "description": "Mutton Seikh Kebab, Chicken Tlkka, Malai Tikka",
+   "images": []
+  },
+  {
+   "name": "Chicken Biryani",
+   "url": "https://aratihotel.com.np/dining/chicken-biryani-3",
+   "price": 490,
+   "currency": "NPR",
+   "description": "View Chicken Biryani at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Chicken Pizza",
+   "url": "https://aratihotel.com.np/dining/chicken-pizza-4",
+   "price": 600,
+   "currency": "NPR",
+   "description": "View Chicken Pizza at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Chicken Steam Momo",
+   "url": "https://aratihotel.com.np/dining/chicken-steam-momo-5",
+   "price": 180,
+   "currency": "NPR",
+   "description": "View Chicken Steam Momo at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Chicken Chilly",
+   "url": "https://aratihotel.com.np/dining/chicken-chilly-6",
+   "price": 350,
+   "currency": "NPR",
+   "description": "View Chicken Chilly at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Chinese Combo Veg",
+   "url": "https://aratihotel.com.np/dining/chinese-combo-veg-7",
+   "price": 800,
+   "currency": "NPR",
+   "description": "Soup, Paneer Chilly, French Fries, Veg Noodles, Manchurian Dry",
+   "images": []
+  },
+  {
+   "name": "Chinese Combo Non-Veg",
+   "url": "https://aratihotel.com.np/dining/chinese-combo-non-veg-8",
+   "price": 990,
+   "currency": "NPR",
+   "description": "Soup, Chicken Chilly, French Fries, Chicken Noodles, Chicken Manchurian Dry",
+   "images": []
+  },
+  {
+   "name": "Momo Set Veg",
+   "url": "https://aratihotel.com.np/dining/momo-set-veg-9",
+   "price": 700,
+   "currency": "NPR",
+   "description": "Chilly Momo, Kothey Momo, Fry Momo, Steam Momo, Tandoori Momo",
+   "images": []
+  },
+  {
+   "name": "Momo Set Non-Veg",
+   "url": "https://aratihotel.com.np/dining/momo-set-non-veg-10",
+   "price": 950,
+   "currency": "NPR",
+   "description": "Chilly Momo, Kothey Momo, Fry Momo, Steam Momo, Tandoori Momo",
+   "images": []
+  },
+  {
+   "name": "Mutton Biryani",
+   "url": "https://aratihotel.com.np/dining/mutton-biryani-11",
+   "price": 550,
+   "currency": "NPR",
+   "description": "View Mutton Biryani at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "French Fries",
+   "url": "https://aratihotel.com.np/dining/french-fries-19",
+   "price": 250,
+   "currency": "NPR",
+   "description": "View French Fries at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Chicken Burger Set",
+   "url": "https://aratihotel.com.np/dining/chicken-burger-set-20",
+   "price": 370,
+   "currency": "NPR",
+   "description": "View Chicken Burger Set at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Chicken Thukpa",
+   "url": "https://aratihotel.com.np/dining/chicken-thukpa-21",
+   "price": 220,
+   "currency": "NPR",
+   "description": "View Chicken Thukpa at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Simple Breakfast",
+   "url": "https://aratihotel.com.np/dining/simple-breakfast-22",
+   "price": 250,
+   "currency": "NPR",
+   "description": "Egg (any style), Bread Toast, Butter/Jam with Tea or Coffee",
+   "images": []
+  },
+  {
+   "name": "Mutton Bhutan",
+   "url": "https://aratihotel.com.np/dining/mutton-bhutan-23",
+   "price": 350,
+   "currency": "NPR",
+   "description": "View Mutton Bhutan at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Mutton Sadeko",
+   "url": "https://aratihotel.com.np/dining/mutton-sadeko-24",
+   "price": 420,
+   "currency": "NPR",
+   "description": "View Mutton Sadeko at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Local Chicken Bhutwa",
+   "url": "https://aratihotel.com.np/dining/local-chicken-bhutwa-25",
+   "price": 440,
+   "currency": "NPR",
+   "description": "View Local Chicken Bhutwa at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Egg Thukpa",
+   "url": "https://aratihotel.com.np/dining/egg-thukpa-26",
+   "price": 200,
+   "currency": "NPR",
+   "description": "View Egg Thukpa at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Veg Thukpa",
+   "url": "https://aratihotel.com.np/dining/veg-thukpa-27",
+   "price": 180,
+   "currency": "NPR",
+   "description": "View Veg Thukpa at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Chicken Kothey Momo",
+   "url": "https://aratihotel.com.np/dining/chicken-kothey-momo-28",
+   "price": 210,
+   "currency": "NPR",
+   "description": "View Chicken Kothey Momo at Arati Hotel in Khandbari-01, Sankhuwasabha, Nepal. Contact our team for details and reservations.",
+   "images": []
+  },
+  {
+   "name": "Chicken Khaja Set",
+   "url": "https://aratihotel.com.np/dining/chicken-khaja-set-29",
+   "price": 450,
+   "currency": "NPR",
+   "description": "Chicken Chhoila/ Beaten Rice, Bhatmas sadeko, Bhujiya, Egg(any type), Aloojeera served with pickle and salad",
+   "images": []
+  },
+  {
+   "name": "Mutton Khaja Set",
+   "url": "https://aratihotel.com.np/dining/mutton-khaja-set-30",
+   "price": 550,
+   "currency": "NPR",
+   "description": "Mutton Chhoila, Beaten Rice, Bhatmas sadeko, Bhujiya, Aloojeera served with pickle and salad",
+   "images": []
+  }
+ ],
+ "services": [],
+ "pages": [
+  {
+   "name": "Arati Hotel",
+   "url": "https://aratihotel.com.np/",
+   "description": "Stay at Arati Hotel in Khandbari, Sankhuwasabha. Enjoy comfortable rooms, dining, 24-hour service, Wi-Fi, events and warm Nepalese hospitality."
+  },
+  {
+   "name": "About Arati Hotel",
+   "url": "https://aratihotel.com.np/about",
+   "description": "Discover Arati Hotel, a welcoming hotel in the heart of Khandbari offering comfortable accommodation and authentic Nepalese hospitality in Eastern Nepal."
+  },
+  {
+   "name": "Contact Arati Hotel",
+   "url": "https://aratihotel.com.np/contact",
+   "description": "Contact Arati Hotel in Khandbari, Sankhuwasabha for room enquiries, dining, events, services and other hotel information."
+  },
+  {
+   "name": "Hotel Gallery",
+   "url": "https://aratihotel.com.np/gallery",
+   "description": "Explore photos of Arati Hotel Khandbari, including rooms, dining spaces, facilities, events and the welcoming atmosphere of our hotel."
+  },
+  {
+   "name": "Food Menu",
+   "url": "https://aratihotel.com.np/menu",
+   "description": "Explore the food menu at Arati Hotel Khandbari featuring Nepali, Indian and continental dishes prepared for dine-in and hotel guests."
+  },
+  {
+   "name": "Frequently Asked Questions",
+   "url": "https://aratihotel.com.np/faqs",
+   "description": "Find answers to common questions about rooms, bookings, dining, services, events, facilities and staying at Arati Hotel Khandbari."
+  },
+  {
+   "name": "Privacy Policy",
+   "url": "https://aratihotel.com.np/privacypolicy",
+   "description": "Read the privacy policy of Arati Hotel and learn how information submitted through our website is collected, used and protected."
+  },
+  {
+   "name": "Terms & Conditions",
+   "url": "https://aratihotel.com.np/terms",
+   "description": "Read the terms and conditions governing website use, bookings, hotel services, enquiries and other services provided by Arati Hotel."
+  },
+  {
+   "name": "Booking Enquiry",
+   "url": "https://aratihotel.com.np/enquiry",
+   "description": "Send a booking enquiry to Arati Hotel Khandbari for comfortable accommodation, room availability and stay-related information."
+  }
+ ]
+}

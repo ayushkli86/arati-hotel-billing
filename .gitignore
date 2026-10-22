@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+arati.db
+invoices/
+*.log
+dist/
+.ruff_cache/
+*.tar.gz
+*.tar.gz.sha256
+backups/
+arati/*.csv
