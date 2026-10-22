@@ -147,7 +147,10 @@ def _style(options: dict | None = None) -> str:
         else ""
     )
     page_size = str(options.get("page_size") or "A4")
-    margin = float(options.get("margin_mm") or 13)
+    margin = float(options.get("margin_mm") or 15)
+    # The printer margin is the minimum safe area; the design keeps a constant
+    # text width on top of it so every sheet looks the same.
+    pad = max(0.0, 15.0 - margin)
     return f"""
 {face}
 @page {{
@@ -161,7 +164,8 @@ def _style(options: dict | None = None) -> str:
 * {{ box-sizing: border-box; }}
 body {{
   font-family: 'Inter', 'Lato', 'AratiNepali', 'Noto Sans Devanagari', 'DejaVu Sans', sans-serif;
-  font-size: 8.5pt; line-height: 1.35; color: {INK}; margin: 0;
+  font-size: 8.5pt; line-height: 1.32; color: {INK}; margin: 0;
+  padding: 0 {pad:g}mm;
 }}
 table {{ width: 100%; border-collapse: collapse; }}
 td, th {{ vertical-align: top; }}
@@ -215,15 +219,15 @@ p {{ margin: 0; }}
 .party .p-ln .k {{ color: #98A0AE; }}
 
 /* ---------- line items ---------- */
-.items {{ margin-top: 4mm; break-inside: avoid; }}
+.items {{ margin-top: 4mm; break-inside: avoid; table-layout: fixed; }}
 .items th {{
   background: {NAVY}; color: #FFFFFF; font-size: 8pt; font-weight: 700;
   letter-spacing: 1pt; text-transform: uppercase; padding: 4.6pt 7pt;
 }}
 .items th .cur {{ display: inline; margin-left: 4pt; color: #C3C9DE; }}
-.items .c-desc {{ width: 62%; }}
-.items .c-taxed {{ width: 16mm; text-align: center; }}
-.items .c-amount {{ width: 27mm; text-align: right; }}
+.items .c-desc {{ width: 73.5%; }}
+.items .c-taxed {{ width: 11%; text-align: center; }}
+.items .c-amount {{ width: 15.5%; text-align: right; }}
 .items td {{ padding: 3.4pt 7pt; font-size: 8.5pt; }}
 .items th.c-desc, .items td.c-desc {{ border-left: 0.6pt solid #000; }}
 .items th.c-taxed, .items td.c-taxed {{
@@ -237,10 +241,11 @@ p {{ margin: 0; }}
 .items .taxed {{ color: {NAVY}; font-weight: 700; }}
 
 /* ---------- summary ---------- */
-.lower {{ margin-top: 5mm; break-inside: avoid; }}
+.lower {{ margin-top: 7mm; break-inside: avoid; }}
 .lower td {{ vertical-align: top; }}
-.lower .lo-l {{ width: 56%; padding-right: 6mm; }}
-.lower .lo-r {{ width: 40%; }}
+.lower .lo-l {{ width: 58%; }}
+.lower .lo-r {{ width: 42%; }}
+.totals {{ width: 81%; margin-left: auto; }}
 .cmt {{ margin-top: 5pt; padding-left: 4.5mm; }}
 .cmt p {{ font-size: 8.5pt; color: #2A3145; margin-bottom: 2.6pt; }}
 .cmt p.muted {{ color: {MUTED}; font-size: 7.8pt; }}
@@ -266,7 +271,7 @@ p {{ margin: 0; }}
 .paynote .en {{ display: inline; margin-left: 4pt; }}
 
 /* ---------- footer ---------- */
-.foot {{ margin-top: 7mm; text-align: center; break-inside: avoid; }}
+.foot {{ margin-top: 6mm; text-align: center; break-inside: avoid; }}
 .foot .f-contact {{ font-size: 8pt; color: #767676; }}
 .foot .f-contact .en {{ display: inline; margin-left: 4pt; }}
 .foot .f-thanks {{
@@ -274,6 +279,7 @@ p {{ margin: 0; }}
 }}
 .foot .f-thanks .en {{ display: inline; margin-left: 6pt; font-size: 0.7em; color: #A8B0C4; }}
 .foot .f-sub {{ margin-top: 4pt; font-size: 7.5pt; color: #A0A8B8; }}
+.foot .f-sub .en {{ display: inline; margin-left: 4pt; }}
 """
 
 
@@ -516,7 +522,7 @@ def _summary(bill: dict, language: str, settings: dict, options: dict | None = N
 
     rows = [("subtotal", _money(net_subtotal))]
     if service > 0:
-        rows.append(("other", f"{_money(service)} ({service_rate:g}%)"))
+        rows.append(("service_charge", f"{_money(service)} ({service_rate:g}%)"))
     if vat_applicable:
         rows.append(("taxable_amount", _money(vat_base)))
         if exempt > 0:

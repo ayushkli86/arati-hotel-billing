@@ -1,38 +1,65 @@
 #!/usr/bin/env python3
-"""Arati Hotel — billing application.
+"""Arati Hotel — billing and hotel management application.
 
 Desktop till for the front desk: rooms, restaurant and services on one bill,
-Nepal VAT and service charge, A4 invoice plus 80mm thermal receipt.
+Nepal VAT and service charge, A4 invoice plus 80mm/58mm thermal receipts,
+25-room management, a reports dashboard, sales analysis and an automatic
+daily closing at midnight in the hotel's business timezone.
+
+The daily-closing scheduler runs as a background thread inside this process,
+so closing a business day never depends on a browser tab being open. The same
+job is available as a command line for cron-style scheduling
+(:mod:`scripts.close_day`).
 """
 
 from __future__ import annotations
 
 import os
+import sqlite3
 import subprocess
 import sys
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
 
-from arati import db, invoice, ui
+from arati import db, invoice, permissions, printing, scheduler, ui
 from arati.screens.admin import SettingsScreen, StaffScreen
+from arati.screens.analysis import AnalysisScreen
 from arati.screens.billing import BillingScreen
 from arati.screens.bills import BillsScreen
 from arati.screens.catalog import CatalogScreen
+from arati.screens.customers import CustomersScreen
+from arati.screens.dashboard import DashboardScreen
 from arati.screens.login import LoginFrame
+from arati.screens.payments import PaymentsScreen
+from arati.screens.printer import PrinterSettingsScreen
 from arati.screens.reports import ReportsScreen
+from arati.screens.rooms_screen import RoomsScreen
 
 APP_DIR = Path(__file__).resolve().parent
 # ARATI_INVOICE_DIR lets a deployment write PDFs to a different volume.
 INVOICE_DIR = Path(os.environ.get("ARATI_INVOICE_DIR") or (APP_DIR / "invoices"))
+# ARATI_REPORT_DIR holds the daily closing PDFs and the exported reports.
+REPORT_DIR = Path(os.environ.get("ARATI_REPORT_DIR") or (APP_DIR / "reports"))
+# ARATI_DISABLE_SCHEDULER turns the background closing job off, for a
+# machine that only reads the database.
+SCHEDULER_ENABLED = os.environ.get("ARATI_DISABLE_SCHEDULER", "") == ""
 
+# key, label, screen class, permission required to see it
 SCREENS = [
-    ("billing", "Billing", BillingScreen, False),
-    ("bills", "Invoices", BillsScreen, False),
-    ("catalog", "Catalog", CatalogScreen, False),
-    ("reports", "Reports", ReportsScreen, False),
-    ("staff", "Staff", StaffScreen, True),
-    ("settings", "Settings", SettingsScreen, True),
+    ("dashboard", "Dashboard", DashboardScreen, "dashboard.view"),
+    ("billing", "Billing", BillingScreen, "invoice.create"),
+    ("bills", "Invoices", BillsScreen, "invoice.view"),
+    ("customers", "Customers", CustomersScreen, "customer.view"),
+    ("rooms", "Rooms", RoomsScreen, "room.view"),
+    ("payments", "Payments", PaymentsScreen, "payment.view"),
+    ("reports", "Reports", ReportsScreen, "report.view"),
+    ("analysis", "Sales Analysis", AnalysisScreen, "analysis.view"),
+    ("catalog", "Catalog", CatalogScreen, "catalog.view"),
+    ("printer", "Printer Settings", PrinterSettingsScreen, "settings.printer"),
+    ("staff", "Staff", StaffScreen, "staff.manage"),
+    ("settings", "Hotel Settings", SettingsScreen, "settings.hotel"),
 ]
 
 
@@ -50,7 +77,11 @@ class AratiApp(tk.Tk):
         self.user = None
         self.screens: dict[str, ttk.Frame] = {}
         self.nav_buttons: dict[str, ttk.Button] = {}
+        self.report_directory = REPORT_DIR
+        self.scheduler: scheduler.Scheduler | None = None
+        self._scheduler_stop = threading.Event()
         INVOICE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+        REPORT_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
 
         self._container = ttk.Frame(self)
         self._container.pack(fill="both", expand=True)
@@ -88,8 +119,8 @@ class AratiApp(tk.Tk):
 
         nav = ttk.Frame(sidebar, style="Sidebar.TFrame")
         nav.pack(fill="both", expand=True)
-        for key, label, screen_class, admin_only in SCREENS:
-            if admin_only and self.user["role"] != "admin":
+        for key, label, screen_class, permission in SCREENS:
+            if not self._may_see(permission):
                 continue
             button = ttk.Button(nav, text=f"  {label}", style="Nav.TButton",
                                 command=lambda k=key: self.open_screen(k))
@@ -108,7 +139,25 @@ class AratiApp(tk.Tk):
         self.content = ttk.Frame(shell)
         self.content.pack(side="left", fill="both", expand=True, padx=18, pady=16)
 
-        self.open_screen("billing")
+        self._start_scheduler()
+        self.open_screen(self._first_screen())
+
+    def _may_see(self, permission: str) -> bool:
+        """Whether the signed-in role may open a screen.
+
+        The check is a courtesy so a staff account is not offered a screen it
+        cannot use. The data layer asks the same question again before it
+        acts, so hiding the screen is never the only control.
+        """
+        if self.user is None:
+            return False
+        return permissions.can(self.user, permission)
+
+    def _first_screen(self) -> str:
+        for key, _label, _screen, permission in SCREENS:
+            if key in self.nav_buttons:
+                return key
+        return "billing"
 
     def _mark_nav(self, key: str) -> None:
         for nav_key, button in self.nav_buttons.items():
@@ -181,6 +230,99 @@ class AratiApp(tk.Tk):
             messagebox.showerror("Receipt error", str(exc))
             return None
 
+    # -------------------------------------------------------------- printing
+    def print_invoice(
+        self, bill: dict, lines: list, settings: dict | None = None
+    ) -> Path:
+        """Render the invoice for printing and open it in the browser.
+
+        The document carries the paper size and margins the administrator
+        chose. The browser's own print dialog decides which physical printer
+        receives it — that part is the browser's and the driver's, not this
+        app's.
+        """
+        settings = settings if settings is not None else self.settings
+        config = printing.resolve(settings)
+        path = INVOICE_DIR / "print" / f"{bill.get('bill_no') or 'invoice'}.html"
+        printing.build_print_file(path, bill, lines, settings, config)
+        self.open_in_browser(path)
+        return path
+
+    def download_invoice_pdf(
+        self, bill: dict, lines: list, settings: dict | None = None
+    ) -> Path:
+        """Build the downloadable PDF from the very same print document."""
+        settings = settings if settings is not None else self.settings
+        config = printing.resolve(settings)
+        path = INVOICE_DIR / f"{bill.get('bill_no') or 'invoice'}.pdf"
+        printing.build_pdf(path, bill, lines, settings, config)
+        return path
+
+    def sample_invoice(self) -> tuple[dict | None, list]:
+        """A real invoice to test the printer with.
+
+        The most recent issued invoice is used, so a test print carries the
+        same fields a guest will actually see. When the hotel has not raised
+        an invoice yet, a small synthetic one is used instead of showing
+        nothing.
+        """
+        rows = db.list_bills(self.conn, "", limit=1)
+        for row in rows:
+            if row["status"] == "issued" and not row["is_draft"]:
+                found = db.get_bill(self.conn, row["bill_no"])
+                if found:
+                    bill, lines = found
+                    return bill, [dict(line) for line in lines]
+        return self._synthetic_invoice()
+
+    def _synthetic_invoice(self) -> tuple[dict, list]:
+        settings = self.settings
+        total = 1000.0
+        bill = {
+            "bill_no": "SAMPLE",
+            "bill_date": db.now()[:10],
+            "created_at": db.now(),
+            "guest_name": "Sample Guest",
+            "guest_phone": "",
+            "guest_address": "",
+            "guest_pan": "",
+            "room_no": "101",
+            "nights": 1,
+            "subtotal": total,
+            "discount": 0.0,
+            "item_discount": 0.0,
+            "net_subtotal": total,
+            "taxable_net": total,
+            "service_charge_rate": float(settings.get("service_charge_rate", 0) or 0),
+            "service_charge": 0.0,
+            "vat_rate": float(settings.get("vat_rate", 0) or 0),
+            "vat": 0.0,
+            "total": total,
+            "paid": total,
+            "balance": 0.0,
+            "payment_method": "Cash",
+            "bill_type": "tax",
+            "status": "issued",
+            "prepared_by": "Printer test",
+            "payment_terms": settings.get("payment_terms", ""),
+            "notes": "Printer test invoice",
+            "language": settings.get("invoice_language", "en"),
+        }
+        lines = [
+            {
+                "description": "Sample room charge",
+                "category": "room",
+                "qty": 1,
+                "unit_price": total,
+                "unit_price_total": total,
+                "line_total": total,
+                "taxable": True,
+                "unit": "night",
+                "discount": 0.0,
+            }
+        ]
+        return bill, lines
+
     def open_pdf(self, path: Path) -> None:
         if not path or not Path(path).exists():
             return
@@ -194,8 +336,57 @@ class AratiApp(tk.Tk):
         except OSError:
             pass
 
+    def open_in_browser(self, path: Path) -> None:
+        """Open an HTML document in the default browser."""
+        if not path or not Path(path).exists():
+            return
+        target = Path(path).resolve().as_uri()
+        try:
+            if sys.platform.startswith("win"):
+                subprocess.Popen(["cmd", "/c", "start", "", target], shell=False)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", target])
+            else:
+                subprocess.Popen(["xdg-open", target])
+        except OSError:
+            pass
+
+    # ------------------------------------------------------------- settings
     def refresh_settings(self) -> None:
         self.settings = db.get_settings(self.conn)
+
+    # ------------------------------------------------------------ scheduler
+    def _start_scheduler(self) -> None:
+        """Run the daily closing job in the background.
+
+        The job closes the previous business day at the configured local
+        time. It writes its own run history, and it is idempotent, so a
+        restart during the night cannot duplicate a day's report.
+        """
+        if not SCHEDULER_ENABLED:
+            return
+        if self.settings.get("auto_close_enabled", "1") not in ("1", "true", "True"):
+            return
+
+        def factory() -> sqlite3.Connection:
+            conn = sqlite3.connect(str(db.DB_PATH), timeout=10)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout = 5000")
+            return conn
+
+        self.scheduler = scheduler.Scheduler(
+            factory,
+            self.report_directory,
+            settings=self.settings,
+            stop_event=self._scheduler_stop,
+            owns_connection=True,
+        )
+        self.scheduler.start()
+
+    def stop_scheduler(self) -> None:
+        if self.scheduler is not None:
+            self.scheduler.stop()
+        self._scheduler_stop.set()
 
     def _clear(self) -> None:
         for child in self._container.winfo_children():
@@ -204,7 +395,10 @@ class AratiApp(tk.Tk):
 
 def main() -> None:
     app = AratiApp()
-    app.mainloop()
+    try:
+        app.mainloop()
+    finally:
+        app.stop_scheduler()
 
 
 if __name__ == "__main__":

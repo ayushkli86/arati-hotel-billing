@@ -700,14 +700,14 @@ def delete_room(conn: sqlite3.Connection, room_id: int) -> None:
 # billing
 # --------------------------------------------------------------------------- #
 def next_bill_no(conn: sqlite3.Connection, prefix: str) -> str:
-    row = conn.execute(
-        "SELECT bill_no FROM bills WHERE bill_no LIKE ? ORDER BY bill_id DESC LIMIT 1",
-        (f"{prefix}%",),
-    ).fetchone()
-    if not row:
-        return f"{prefix}0000001"
-    tail = "".join(ch for ch in row["bill_no"][len(prefix):] if ch.isdigit())
-    return f"{prefix}{int(tail or 0) + 1:07d}"
+    highest = 0
+    for row in conn.execute(
+        "SELECT bill_no FROM bills WHERE bill_no LIKE ?", (f"{prefix}%",)
+    ):
+        tail = "".join(ch for ch in row["bill_no"][len(prefix):] if ch.isdigit())
+        if tail:
+            highest = max(highest, int(tail))
+    return f"{prefix}{highest + 1:07d}"
 
 
 def create_bill(conn: sqlite3.Connection, **kwargs) -> str:

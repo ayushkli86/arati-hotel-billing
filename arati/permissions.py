@@ -20,11 +20,14 @@ from __future__ import annotations
 # Every permission the app understands, mapped to the roles that hold it.
 PERMISSIONS: dict[str, tuple[str, ...]] = {
     # --- billing -------------------------------------------------------
+    "dashboard.view": ("admin", "staff"),
     "invoice.create": ("admin", "staff"),
+    "invoice.view": ("admin", "staff"),
     "invoice.void": ("admin",),
     "invoice.draft_delete": ("admin",),
     "invoice.print": ("admin", "staff"),
     "invoice.pdf": ("admin", "staff"),
+    "catalog.view": ("admin", "staff"),
     # --- cash ----------------------------------------------------------
     "payment.receive": ("admin", "staff"),
     "payment.refund": ("admin",),

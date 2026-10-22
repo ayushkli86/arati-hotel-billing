@@ -80,7 +80,6 @@ LABELS: dict[str, tuple[str, str]] = {
     "taxed": ("Taxed", "कर लागु"),
     "customer_id": ("Customer ID", "ग्राहक आईडी"),
     "due_date": ("Due Date", "भुक्तानी मिति"),
-    "other": ("Other", "अन्य"),
     "tax_rate": ("Tax Rate", "कर दर"),
     "not_applicable": ("Not applicable", "लागू हुँदैन"),
     "individual": ("Individual", "व्यक्ति"),
