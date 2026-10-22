@@ -1,4 +1,172 @@
-# Release record — Arati Hotel billing 1.0.0
+# Release records — Arati Hotel billing
+
+Newest first. Each record states what was built, what was actually verified and what is still
+open, so a release can be judged on evidence rather than on intent.
+
+| Release | Scope | Decision |
+|---|---|---|
+| **1.1.0** — [Hotel management suite](#release-110--hotel-management-suite) | rooms, stays, payments, dashboard, reports, sales analysis, midnight closing, printer settings, permissions | **Ready with documented limitations** |
+| [1.0.0](#release-100--invoice-design-billing-form-and-release-hardening) | invoice design, billing form, release hardening | Ready with documented limitations |
+
+---
+
+## Release 1.1.0 — Hotel management suite
+
+Commits `7a2a67d` and `7dd8a97`, both pushed to `origin/main`. This is still a **desktop Tkinter +
+SQLite** application: no web server, HTTP API or customer-facing endpoint exists, so the hosting,
+cookie, CSRF and server-side authorization items of a web checklist remain N/A and are answered
+with the local equivalents (file permissions, backup job, in-process permission checks).
+
+### A. Implementation
+
+#### Features added in this pass
+
+- **Room inventory as data** — 25 rooms (`101`–`125`) exist as `rooms` rows pointing at a room
+  type, with a floor. The list is editable from the Room Management screen and the
+  `room_numbers` setting; the hotel's published numbers (`2001`, `2222`, `2224`) are kept in
+  `arati/seed.py` as the alternative.
+- **Room state** — occupancy, reservation and housekeeping (`clean`, `needs_cleaning`,
+  `maintenance`) are separate fields, so a room can be dirty, reserved, occupied or out of
+  service independently. A room under maintenance refuses check-in.
+- **Stays** — reservation, check-in, extend, extra charges and check-out. A stay owns one folio
+  invoice, so room charges land in the ordinary `bills`/`bill_items` tables and are settled by the
+  ordinary `payments` table. There is no second financial ledger.
+- **Cash ledger** — `payments` and `refunds` tables. A payment is dated by the moment the money
+  changed hands, not by the invoice date, so money received today for last month's invoice counts
+  as today's collection and not as today's sale. Refunds and reversals are new rows; nothing is
+  edited away. The payment taken at the time of sale is written to the ledger automatically, and
+  pre-ledger invoices are backfilled once at start-up.
+- **Dashboard** — today's gross sales, net sales, collections, cash in, outstanding, room revenue,
+  invoices issued and occupancy, each labelled so sales and collections cannot be confused.
+- **Reports** — daily sales, monthly sales, custom range, payment collection, outstanding
+  invoices (aged), refunds and adjustments, employee sales, room occupancy, room revenue and the
+  operations summary; each filterable, printable and downloadable as PDF.
+- **Sales analysis** — sales and collection trends, revenue by category, room, payment method and
+  employee, refund and discount trends, headline metrics, and period-over-period comparison.
+- **Midnight closing** — the previous business day is closed in the hotel's timezone
+  (`Asia/Kathmandu`, `00:05`) by a background thread, and a Daily Sales and Operations Report PDF
+  is written. The job is **idempotent** (a second run records `skipped` and changes nothing),
+  **recoverable** (missed days are generated on the next start) and **non-destructive** (it reads
+  the ledger and writes a report, never edits an invoice). Regenerating a day bumps the version,
+  supersedes the old row and leaves an audit line.
+- **Printer settings** — paper size, margins, logo visibility, header/footer, contact and tax
+  details, copies, default workflow and default device, used by the print preview, the PDF
+  download and the thermal receipt.
+- **Permissions** — 38 named permissions over two roles, checked in the UI *and* re-checked in
+  the data layer, so a hidden button is never the only thing standing between a staff account and
+  a refund. An unknown permission is denied, so a typo fails closed.
+
+#### Files changed
+
+| File | Change |
+|---|---|
+| `arati/rooms.py` | new — inventory, room state, reservations, stays, charges, occupancy |
+| `arati/payments.py` | new — payments, refunds, adjustments, legacy backfill |
+| `arati/reports.py` | new — the report queries behind the reports screen |
+| `arati/analysis.py` | new — trends, breakdowns, headline metrics, period comparison |
+| `arati/daily_report.py`, `arati/daily_report_pdf.py` | new — business-day close and its PDF |
+| `arati/scheduler.py` | new — midnight job, catch-up, regeneration, run history |
+| `arati/business_time.py` | new — business timezone and business-day boundaries |
+| `arati/permissions.py` | new — roles, permissions, fail-closed checks |
+| `arati/printing.py`, `arati/report_pdf.py`, `arati/invoice_html.py` | new/updated — print layout and PDF rendering |
+| `arati/db.py` | new tables, additive migrations, room and payment bootstrap |
+| `arati/seed.py` | room numbers moved to `arati/rooms.py`; published numbers kept here |
+| `arati/screens/dashboard.py`, `rooms_screen.py`, `payments.py`, `customers.py`, `printer.py`, `analysis.py`, `reports.py`, `login.py` | new/updated screens |
+| `app.py` | shell with the new screens, role-aware navigation, document rendering, scheduler |
+| `scripts/close_day.py` | new — the closing job as a command line, for cron |
+| `tests/test_hotel_core.py` | new — rooms, stays, payments, closing, permissions |
+| `tests/smoke_app.py` | new — builds every screen and checks the staff restrictions |
+| `README.md`, `RELEASE.md` | documentation |
+
+#### Database changes (additive only)
+
+New tables: `payments`, `refunds`, `reservations`, `stays`, `room_charges`, `daily_reports`,
+`scheduler_runs`, `audit_log`.
+New columns: `rooms.nightly_rate`, `rooms.housekeeping`, `bill_items.stay_id`.
+New settings: `business_timezone`, `auto_close_enabled`, `close_time`, `payment_methods`,
+`room_numbers`, `cash_opening_balance`, `backup_dir`, `backup_hour`, `backup_retention_days` and
+the `printer_*` keys.
+
+No table is dropped and no existing bill is rewritten. Migrations run at start-up, are idempotent
+and only add columns.
+
+### B. Verification
+
+#### Checks actually executed
+
+| Check | Result |
+|---|---|
+| `pytest tests -q` | **93 passed** in 5.87s |
+| `xvfb-run ./.venv/bin/python tests/smoke_app.py` | 12 screens built cleanly (dashboard, billing, invoices, customers, rooms, payments, reports, analysis, catalog, printer, staff, settings) |
+| Smoke test, staff account | denied printer settings, staff, hotel settings and analysis |
+| `scripts/close_day.py` | closes a day, writes the report PDF, second run reports `skipped` |
+| `scripts/close_day.py --catch-up` | generates the missed days, no duplicate sales or payments |
+| `scripts/close_day.py --date … --force` | regenerates as v2, the old row is `superseded`, audit line written |
+| Backup → restore | restored, `integrity_check: ok` (see 1.0.0 for the drill) |
+| Git | `7a2a67d`, `7dd8a97` pushed to `origin/main` |
+
+#### What the financial figures depend on
+
+- Every amount in the reports comes from the same ledger the till writes: `bills` for sales,
+  `payments` for money in, `refunds` for money out. Sales and collections are read from different
+  tables on purpose.
+- The daily report reconciles the day before writing it: opening cash + collections − refunds =
+  closing cash, and the bill total must equal the sum of its lines. A day that does not reconcile
+  is written as `failed` with the reason, not as a clean report.
+- Money is stored in rupees as `REAL` and compared in paisa (`arati/money.py`) so rounding never
+  decides a total.
+
+### C. Deployment
+
+Unchanged from 1.0.0: build the archive, copy it to the till, `./run.sh`. The new pieces add two
+operational notes.
+
+- **The closing job** runs inside the app. If the till is shut at night, schedule the command
+  line version instead:
+  `5 0 * * * /opt/arati/.venv/bin/python /opt/arati/scripts/close_day.py --catch-up >> /opt/arati/reports/close_day.log 2>&1`
+  Set `ARATI_DISABLE_SCHEDULER=1` to stop the in-app job when the cron job owns the schedule.
+- **Back up the database and the `reports/` directory** together. The daily report PDFs are the
+  audit trail for closed days and are not regenerated from the database.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ARATI_DB` | `./arati.db` | database path (keep it in a `700` directory) |
+| `ARATI_INVOICE_DIR` | `./invoices` | generated PDFs |
+| `ARATI_REPORT_DIR` | `./reports` | daily closing reports |
+| `ARATI_DISABLE_SCHEDULER` | unset | set to any value to stop the in-app midnight closing |
+
+### D. Remaining issues
+
+1. **Nepali invoice text and Bikram Sambat dates — still not implemented.** Blocked on a
+   Devanagari shaping engine in the PDF pipeline. This is the same gap as 1.0.0 and is a
+   functional gap against a bilingual hotel.
+2. **Room numbering is a placeholder.** `101`–`125` is the default; the hotel's real numbering
+   must be confirmed in Room Management before go-live.
+3. **Housekeeping is state only.** Rooms can be marked clean, needing cleaning or under
+   maintenance, and a room out of service refuses check-in, but housekeeping is not yet scheduled
+   or reported on.
+4. **The daily report is a PDF, not a signed record.** A regenerated day is versioned and audited,
+   but a closed day is not cryptographically sealed.
+5. **Single-user desktop only.** No server-side authorization; anyone with file access to
+   `arati.db` can read it. Use OS accounts and file permissions. The in-process permission checks
+   stop a staff account inside the app, not a person with the file.
+6. **Not deployed.** No target host or credentials were supplied, so the deployment item is
+   "prepared and documented", not "deployed and verified in the target environment".
+
+### E. Release decision
+
+**READY WITH DOCUMENTED LIMITATIONS** — for the agreed English-only, single-till desktop scope.
+
+- Rooms, stays and the cash ledger work end to end and are covered by tests — verified
+- Reports and analysis read the same ledger the till writes — verified
+- The closing job is idempotent, recovers missed days and versions regenerations — verified
+- Staff accounts are held to the permission list in the data layer, not just in the UI — verified
+- Every screen builds and the app starts — verified
+- Nepali rendering, real room numbering and deployment to a live host — **not done**
+
+---
+
+## Release 1.0.0 — Invoice design, billing form and release hardening
 
 Scope: the redesigned Nepali-format invoice (Tax Invoice / Bill of Supply), the billing form, and
 release hardening. This is a **desktop Tkinter + SQLite** application: there is no web server,
@@ -6,9 +174,9 @@ browser frontend, HTTP API or customer-facing endpoint, so checklist items about
 cookies, XSS, CSRF and server-side authorization do not apply. They are marked N/A with the
 reason rather than silently ticked.
 
-## A. Implementation
+### A. Implementation
 
-### Features completed in this pass
+#### Features completed in this pass
 
 - Invoice types: **Tax Invoice** (service charge + 13% VAT) and **Bill of Supply** (no VAT).
 - Print-ready A4 document: customer block, 10-column items table (S.N., description, code, unit,
@@ -30,7 +198,7 @@ reason rather than silently ticked.
 - Backup/restore tooling with SHA-256 manifests and pre-restore safety copies.
 - Versioned release archive with checksum, excluding database, invoices and virtualenv.
 
-### Files changed
+#### Files changed
 
 | File | Change |
 |---|---|
@@ -45,7 +213,7 @@ reason rather than silently ticked.
 | `tests/` | 41 tests incl. release checks (concurrency, immutability, env, multi-page) |
 | `README.md`, `RELEASE.md` | documentation |
 
-### Database changes (additive only)
+#### Database changes (additive only)
 
 `bills`: `taxable_net`, `bill_type`, `customer_type`, `payment_terms`, `prepared_by`, `received_by`
 `bill_items`: `code`
@@ -53,14 +221,14 @@ reason rather than silently ticked.
 Existing rows receive defaults (`tax`, `individual`, `0`); no bill is rewritten, no table is
 dropped. `taxable_net` is backfilled only for tax bills with VAT and a zero base.
 
-### Dependencies
+#### Dependencies
 
 No new runtime dependencies. `reportlab>=4.0` (verified on 5.0.0 and 5.0.1). `pytest` and
 `pip-audit` are development-only.
 
-## B. Verification
+### B. Verification
 
-### Tests actually executed
+#### Tests actually executed
 
 | Check | Result |
 |---|---|
@@ -80,7 +248,7 @@ No new runtime dependencies. `reportlab>=4.0` (verified on 5.0.0 and 5.0.1). `py
 | `ruff check` | 1 real issue found and fixed (unused import); style-only items remain |
 | `pip check` (project deps) | no conflicts among `reportlab`/`pytest` |
 
-### Financial results
+#### Financial results
 
 | Scenario | Result |
 |---|---|
@@ -91,7 +259,7 @@ No new runtime dependencies. `reportlab>=4.0` (verified on 5.0.0 and 5.0.1). `py
 | Amount in words | “Nepalese Rupees Eleven Thousand One Hundred Sixty-Four and Paisa Sixty-Three Only” |
 | 60-line invoice | 3 pages, header repeated on every page, no UI chrome |
 
-### Nepali / English PDF verification
+#### Nepali / English PDF verification
 
 - **English: verified** — rendered and text-extracted for all five scenarios above.
 - **Nepali: not implemented and not verified.** No Devanagari shaping engine
@@ -99,7 +267,7 @@ No new runtime dependencies. `reportlab>=4.0` (verified on 5.0.0 and 5.0.1). `py
   conjuncts. The earlier decision was English-only. Nepali text and Bikram Sambat dates remain an
   open requirement, not a completed one.
 
-### Security checks performed
+#### Security checks performed
 
 - Dependency audit: no known vulnerabilities.
 - SQL: all user values are bound parameters; the only interpolated SQL is `PRAGMA`/`ALTER` built
@@ -112,12 +280,12 @@ No new runtime dependencies. `reportlab>=4.0` (verified on 5.0.0 and 5.0.1). `py
 - Errors: no stack traces or secrets in the PDF or normal UI paths; save failures surface a
   message box instead of losing the bill.
 
-## C. Deployment
+### C. Deployment
 
 This is an on-premise desktop application; “deployment” means installing the release folder on the
 front-desk PC. **No target environment was provided, so nothing was deployed or published.**
 
-### Exact commands
+#### Exact commands
 
 ```bash
 # build the release
@@ -132,7 +300,7 @@ cd arati-billing-1.0.0
 
 Requirements: Python 3.11+ (verified on 3.13.5), Tkinter (`python3-tk` on Debian/Ubuntu).
 
-### Environment variables
+#### Environment variables
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -142,12 +310,12 @@ Requirements: Python 3.11+ (verified on 3.13.5), Tkinter (`python3-tk` on Debian
 
 None are required. No secrets are read from the environment.
 
-### Migrations
+#### Migrations
 
 Run automatically at startup (`db.bootstrap` → `db.migrate`). Additive only; safe to run on every
 launch and idempotent. Back up before the first launch of a new version anyway.
 
-### Backup and rollback
+#### Backup and rollback
 
 ```bash
 python3 scripts/backup.py --out /path/to/backups     # safe while the till is open
@@ -158,14 +326,14 @@ Rollback of a release: stop the app, restore the pre-upgrade database backup, an
 previous release folder. Because migrations only add columns and backfill a derived value, the
 previous version still opens a migrated database (it ignores the new columns).
 
-### Hosting notes (N/A)
+#### Hosting notes (N/A)
 
 There is no cPanel/Node/PHP/HTTP deployment, no static assets or web fonts to serve, no reverse
 proxy, no TLS or cookie settings, and no health endpoint. The analogous controls are file
 permissions, the backup script and a scheduled backup job (e.g. cron:
 `0 22 * * * cd /opt/arati && python3 scripts/backup.py`).
 
-## D. Remaining issues
+### D. Remaining issues
 
 1. **Nepali invoice text and Bikram Sambat dates — not implemented.** Blocked on Devanagari text
    shaping in the PDF pipeline; this is a functional gap against the bilingual requirement.
@@ -186,7 +354,7 @@ permissions, the backup script and a scheduled backup job (e.g. cron:
 9. **Not deployed.** No target host or credentials were supplied, so the deployment checklist item
    is “prepared and documented”, not “deployed and verified in the target environment”.
 
-## E. Release decision
+### E. Release decision
 
 **READY WITH DOCUMENTED LIMITATIONS** — for the agreed English-only, single-till desktop scope.
 
