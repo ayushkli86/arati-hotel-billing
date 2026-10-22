@@ -1,14 +1,20 @@
 """Live invoice preview for the billing form.
 
-A miniature of the printed A4 invoice, drawn on a canvas. The numbers come
-from :func:`arati.invoice_html.line_amounts` and the stored bill totals, so
-what the staff member sees while typing is what the PDF will contain — the
-preview never re-computes money on its own.
+The preview now shows the **exact printed document**: the same HTML that
+WeasyPrint turns into the A4 PDF is rendered to an image and displayed on a
+scrollable canvas, so what the staff member sees while typing is exactly what
+comes out of the printer — pixel for pixel, no second drawing to keep in sync.
+
+When WeasyPrint or poppler is not available the preview falls back to a
+hand-drawn miniature, clearly marked as approximate.
 """
 
 from __future__ import annotations
 
+import subprocess
+import tempfile
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk
 
 from . import invoice_html, nepali, ui
@@ -21,6 +27,8 @@ INK = "#1A1A1A"
 MUTED = "#6A6A6A"
 RULE = "#9A9A9A"
 LIGHT = "#F2F2F2"
+
+RENDER_DELAY_MS = 400  # debounce: typing re-renders only when typing pauses
 
 
 class InvoicePreview(ttk.Frame):
@@ -43,26 +51,94 @@ class InvoicePreview(ttk.Frame):
         self._bill: dict = {}
         self._lines: list = []
         self._height = 0
+        self._render_job: str | None = None
+        self._serial = 0  # drops stale finished renders
+        self._photos: list[tk.PhotoImage] = []
+        self._exact_mode = False
 
     # ------------------------------------------------------------------ api
     def show(self, bill: dict, lines: list) -> None:
         """Replace the preview content with this bill and its lines."""
         self._bill = bill or {}
         self._lines = lines or []
-        self._redraw()
+        self._schedule()
 
     def set_settings(self, settings: dict) -> None:
         self.settings = settings or {}
         self._redraw()
 
+    # ------------------------------------------------------------- exact doc
+    def _schedule(self) -> None:
+        """Debounce re-renders so typing stays responsive."""
+        if self._render_job:
+            self.after_cancel(self._render_job)
+        self._render_job = self.after(RENDER_DELAY_MS, self._render_exact)
+
+    def _render_exact(self) -> None:
+        self._render_job = None
+        if not self._bill:
+            return
+        self._serial += 1
+        serial = self._serial
+        try:
+            html = invoice_html.build_html(self._bill, self._lines, self.settings)
+            with tempfile.TemporaryDirectory(prefix="arati-preview-") as tmp:
+                pdf = Path(tmp) / "doc.pdf"
+                from weasyprint import HTML as WeasyHTML
+
+                WeasyHTML(string=html, base_url=Path.cwd().as_uri() + "/").write_pdf(pdf)
+                stem = Path(tmp) / "page"
+                subprocess.run(
+                    ["pdftoppm", "-png", "-r", "150", str(pdf), str(stem)],
+                    check=True, timeout=30,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                pages = sorted(Path(tmp).glob("page-*.png"))
+                if not pages:
+                    raise OSError("pdftoppm produced no pages")
+                images = []
+                for page in pages:
+                    from PIL import Image, ImageTk
+
+                    with Image.open(page) as src:
+                        target_w = PAGE_WIDTH - 2 * MARGIN
+                        scale = target_w / src.width
+                        scaled = src.resize((target_w, int(src.height * scale)),
+                                            Image.LANCZOS)
+                        images.append(ImageTk.PhotoImage(scaled))
+        except Exception:  # noqa: BLE001 - a missing renderer must not kill the till
+            self._exact_mode = False
+            self._redraw()
+            return
+        if serial != self._serial:
+            return  # a newer bill arrived while rendering; drop this one
+        canvas = self.canvas
+        canvas.delete("all")
+        self._photos = images
+        self._exact_mode = True
+        y = 10
+        for image in images:
+            canvas.create_image(MARGIN, y, anchor="nw", image=image, tags="doc")
+            y += image.height() + 8
+        self._height = y + 20
+        canvas.configure(scrollregion=(0, 0, PAGE_WIDTH, self._height))
+        canvas.yview_moveto(0)
+
     # --------------------------------------------------------------- drawing
     def _redraw(self) -> None:
+        if self._exact_mode:
+            return
         canvas = self.canvas
         canvas.delete("all")
         if not self._bill:
             return
+        self.canvas.create_text(
+            PAGE_WIDTH // 2, 20, anchor="n",
+            text="Approximate preview — renderer unavailable",
+            fill=MUTED, font=(ui.FONT, 7, "italic"),
+        )
+        y = 34
 
-        y = MARGIN
         x0 = MARGIN
         x1 = PAGE_WIDTH - MARGIN
         right = x1
