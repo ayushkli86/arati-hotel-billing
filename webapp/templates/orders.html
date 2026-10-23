@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% set active_page = 'orders' %}
+{% block title %}Order Bookings{% endblock %}
+{% block header_title %}Order Bookings{% endblock %}
+{% block content %}
+<div class="space-y-4">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">FRONT DESK · WHATSAPP ORDERS</p>
+      <h1 class="page-title">Order Bookings</h1>
+      <p class="page-subtitle">Food orders, room requests, and service bookings from WhatsApp in one queue.</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      {% if wa_connected %}<span class="badge-teal">WhatsApp connected</span>{% else %}<span class="badge-amber">Simulator mode</span>{% endif %}
+      <a href="#wa-simulator" class="btn-secondary">Open simulator</a>
+    </div>
+  </div>
+
+  <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Order summary">
+    <article class="metric-card-hero"><span class="section-label">New requests</span><p class="mt-2 text-2xl font-extrabold {{ 'text-amber-700' if metrics.new else 'text-slate-900' }}">{{ metrics.new }}</p><p class="mt-1 text-xs text-slate-500">Waiting for the front desk</p></article>
+    <article class="metric-card"><span class="section-label">In progress</span><p class="mt-2 text-xl font-extrabold text-slate-900">{{ metrics.active }}</p><p class="mt-1 text-xs text-slate-500">Confirmed, preparing, or ready</p></article>
+    <article class="metric-card"><span class="section-label">Ready to hand over</span><p class="mt-2 text-xl font-extrabold {{ 'text-teal-700' if metrics.ready else 'text-slate-900' }}">{{ metrics.ready }}</p><p class="mt-1 text-xs text-slate-500">Pickup, delivery, or room</p></article>
+    <article class="metric-card"><span class="section-label">Completed today</span><p class="mt-2 text-xl font-extrabold text-slate-900">{{ metrics.completed_today }}</p><p class="mt-1 text-xs text-slate-500">Asia/Kathmandu business day</p></article>
+  </section>
+
+  <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+    <section class="panel !p-0">
+      <form method="get" action="/orders" class="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
+        <label><span class="field-label">Status</span><select name="status" class="form-input">
+          <option value="open" {% if status_filter == 'open' %}selected{% endif %}>Open requests</option>
+          <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All statuses</option>
+          {% for value in ['new', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'] %}
+          <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ status_labels[value] }}</option>
+          {% endfor %}
+        </select></label>
+        <label><span class="field-label">Type</span><select name="kind" class="form-input">
+          <option value="all" {% if kind_filter == 'all' %}selected{% endif %}>All types</option>
+          {% for value, label in kind_labels.items() %}<option value="{{ value }}" {% if kind_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></label>
+        <label><span class="field-label">Search</span><input name="q" value="{{ q }}" maxlength="80" class="form-input" placeholder="Order, guest, phone, room"></label>
+        <div class="flex gap-2"><button class="btn-primary grow">Filter</button><a href="/orders" class="btn-secondary">Reset</a></div>
+      </form>
+
+      <div class="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+        <div><h2 class="panel-title">Requests</h2><p class="panel-subtitle">Newest first · {{ orders|length }} shown</p></div>
+        <div class="flex flex-wrap gap-1.5">
+          {% for value, label in [('open','Open'), ('all','All'), ('completed','Completed')] %}
+          <a href="/orders?status={{ value }}" class="filter-chip {% if status_filter == value %}filter-chip-active{% endif %}">{{ label }}</a>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <table class="data-table soft-table min-w-[900px]">
+          <thead><tr><th>Order</th><th>Guest</th><th>Request</th><th>How</th><th class="text-right">Total</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {% for order in orders %}
+            <tr>
+              <td><a href="/orders/{{ order.id }}" class="font-bold text-teal-700 hover:underline">{{ order.order_number }}</a><span class="mt-1 block text-xs text-slate-400">{{ local_datetime(order.created_at, '%d %b · %H:%M') }}</span></td>
+              <td><span class="font-semibold text-slate-800">{{ order.customer_name or 'WhatsApp guest' }}</span><span class="mt-1 block text-xs text-slate-500">{{ order.customer_phone or '—' }}</span></td>
+              <td class="max-w-[280px] whitespace-normal">
+                <span class="badge-slate">{{ kind_labels.get(order.kind, order.kind) }}</span>
+                {% if order.kind == 'food' %}
+                <span class="mt-1.5 block text-slate-700">{{ item_summary(order) }}</span>
+                {% elif order.kind == 'room' %}
+                <span class="mt-1.5 block text-slate-700">{{ order.check_in_date.strftime('%d %b') if order.check_in_date else '—' }} → {{ order.check_out_date.strftime('%d %b %Y') if order.check_out_date else '—' }}<span class="text-slate-400"> · {{ order.party_size }} guest{{ '' if order.party_size == 1 else 's' }}</span></span>
+                {% else %}
+                <span class="mt-1.5 block text-slate-700">{{ item_summary(order) }}</span>
+                <span class="block text-xs text-slate-500">{{ order.requested_for or 'Time to be arranged' }}</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if order.kind == 'food' %}
+                <span class="font-medium">{{ fulfilment_labels.get(order.fulfilment, 'Pickup') }}</span>
+                {% if order.room_number %}<span class="mt-1 block text-xs text-slate-500">Room {{ order.room_number }}</span>{% endif %}
+                {% if order.delivery_address %}<span class="mt-1 block max-w-[180px] whitespace-normal text-xs text-slate-500">{{ order.delivery_address }}</span>{% endif %}
+                {% else %}
+                <span class="text-slate-500">—</span>
+                {% endif %}
+              </td>
+              <td class="text-right font-semibold">{{ money(order.total) }}{% if order.kind == 'room' and order.total %}<span class="mt-1 block text-[10px] font-normal text-slate-400">estimate</span>{% endif %}</td>
+              <td><span class="badge-{{ status_badges.get(order.status, 'slate') }}">{{ status_labels.get(order.status, order.status) }}</span></td>
+              <td class="text-right"><a href="/orders/{{ order.id }}" class="btn-secondary !px-2.5 !py-1 !text-xs">Open</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="py-12 text-center"><p class="text-sm font-semibold text-slate-700">No order requests here</p><p class="mt-1 text-xs text-slate-500">Send a message in the simulator, or wait for a WhatsApp order.</p></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="wa-simulator" class="panel xl:sticky xl:top-20">
+      {% include "partials/whatsapp_simulator.html" %}
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 class="panel-title">WhatsApp connection</h2>
+        <p class="panel-subtitle">Meta WhatsApp Cloud API · the agent answers the same way here and on a real number.</p>
+      </div>
+      {% if wa_connected %}<span class="badge-teal">Live number configured</span>{% elif wa_enabled %}<span class="badge-amber">Simulator only</span>{% else %}<span class="badge-rose">Processing disabled</span>{% endif %}
+    </div>
+    <div class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div class="space-y-2 text-sm text-slate-600">
+        <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Webhook callback URL</p>
+        <div class="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800">{{ webhook_url }}</div>
+        <p class="text-xs text-slate-500">Paste this into Meta → WhatsApp → Configuration → Webhook, with the same verify token you set in <code>ARATI_WHATSAPP_VERIFY_TOKEN</code>. Subscribe to <strong>messages</strong>.</p>
+        <div class="flex flex-wrap gap-2 pt-1">
+          <span class="badge-{{ 'teal' if wa_connected else 'slate' }}">Token &amp; phone ID {{ 'set' if wa_connected else 'missing' }}</span>
+          <span class="badge-{{ 'teal' if wa_verify_set else 'slate' }}">Verify token {{ 'set' if wa_verify_set else 'missing' }}</span>
+          <span class="badge-{{ 'teal' if wa_secret_set else 'amber' }}">Signature secret {{ 'set' if wa_secret_set else 'not set' }}</span>
+        </div>
+      </div>
+      <details class="rounded-xl border border-slate-200 bg-slate-50 p-3" {% if not wa_connected %}open{% endif %}>
+        <summary class="cursor-pointer text-sm font-bold text-slate-800">Connect the hotel’s WhatsApp number</summary>
+        <ol class="mt-3 list-decimal space-y-2 pl-5 text-xs leading-5 text-slate-600">
+          <li>Create a Meta developer app with the WhatsApp product and add the hotel’s business phone number.</li>
+          <li>Copy the permanent access token and the phone number ID into the environment.</li>
+          <li>Choose a private verify string, set the webhook URL above, and subscribe to messages.</li>
+          <li>Restart the web server. The badge changes to <em>Live number configured</em> and the same agent answers real guests.</li>
+        </ol>
+        <pre class="mt-3 overflow-x-auto rounded-lg bg-slate-900 p-3 text-[11px] leading-5 text-slate-100">ARATI_WHATSAPP_TOKEN=…
+ARATI_WHATSAPP_PHONE_NUMBER_ID=…
+ARATI_WHATSAPP_VERIFY_TOKEN=choose-a-private-string
+ARATI_WHATSAPP_APP_SECRET=…</pre>
+        <p class="mt-2 text-[11px] leading-4 text-slate-500">Keep these values out of source control. Without them the simulator still works and no message leaves this server.</p>
+      </details>
+    </div>
+  </section>
+</div>
+{% endblock %}

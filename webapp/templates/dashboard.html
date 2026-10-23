@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% set active_page = 'dashboard' %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <p class="eyebrow">Front office</p>
+    <h1 class="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Dashboard</h1>
+    <p class="mt-1 text-sm text-slate-500">Business date <span class="font-semibold text-slate-700">{{ business_date }}</span></p>
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    <a href="/dashboard/sales" class="btn-secondary">Sales details</a>
+    <a href="/reports" class="hidden btn-secondary sm:inline-flex">View reports</a>
+    <a href="/billing/create" class="btn-primary">＋ New Invoice</a>
+  </div>
+</div>
+
+<section class="grid grid-cols-1 gap-3 xl:grid-cols-[1.35fr_1fr]">
+  <article class="panel overflow-hidden">
+    <div class="flex items-start justify-between gap-4">
+      <div class="min-w-0">
+        <p class="metric-label">Occupancy right now</p>
+        <div class="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span class="kpi-hero-value">{{ occupied }}</span>
+          <span class="kpi-hero-unit">of {{ capacity }} rooms</span>
+        </div>
+        <p class="mt-2 text-sm text-slate-500"><span class="font-semibold text-emerald-700">{{ occupancy_rate }}%</span> occupied · {{ available }} available</p>
+      </div>
+      <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Live</span>
+    </div>
+    <div class="mt-6 h-4 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Occupancy" aria-valuemin="0" aria-valuemax="{{ capacity }}" aria-valuenow="{{ occupied }}">
+      <div class="h-full rounded-full bg-emerald-500 transition-all" style="width: {{ occupancy_rate }}%"></div>
+    </div>
+    <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <a href="/rooms" class="stat-card stat-card-occupied" aria-label="View occupied rooms"><span class="stat-card-label">Occupied</span><strong class="stat-card-value">{{ occupied }}</strong></a>
+      <a href="/rooms" class="stat-card stat-card-checkout" aria-label="View rooms checking out today"><span class="stat-card-label">Checkout today</span><strong class="stat-card-value">{{ checkouts_today }}</strong></a>
+      <a href="/rooms" class="stat-card stat-card-attention" aria-label="View rooms needing attention"><span class="stat-card-label">Needs attention</span><strong class="stat-card-value">{{ rooms|length }}</strong></a>
+    </div>
+  </article>
+
+  <article class="panel">
+    <div class="panel-heading mb-1">
+      <div><h2 class="panel-title">Today's performance</h2><p class="panel-subtitle">Issued and collected today</p></div>
+      <span class="badge-teal">Live</span>
+    </div>
+    <div class="grid grid-cols-2 gap-x-5">
+      <div class="kpi-row"><span class="kpi-row-label">Gross sales</span><span class="kpi-row-value">{{ money(gross) }}</span></div>
+      <div class="kpi-row"><span class="kpi-row-label">Net sales</span><span class="kpi-row-value">{{ money(net) }}</span></div>
+      <div class="kpi-row"><span class="kpi-row-label">Cash collected</span><span class="kpi-row-value text-teal-700">{{ money(cash_today) }}</span></div>
+      <div class="kpi-row"><span class="kpi-row-label">Invoices issued</span><span class="kpi-row-value">{{ invoice_count }}</span></div>
+    </div>
+    <div class="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
+      <span class="text-xs font-semibold text-slate-500">Room revenue today</span>
+      <span class="text-sm font-bold text-slate-800">{{ money(room_revenue) }}</span>
+    </div>
+  </article>
+</section>
+
+<section class="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-[1.55fr_1fr]">
+  <article class="panel min-w-0">
+    <div class="panel-heading">
+      <div><h2 class="panel-title">Rooms right now</h2><p class="panel-subtitle">Occupied, dirty, and checking out today</p></div>
+      <a href="/rooms" class="link-quiet">Room board →</a>
+    </div>
+    <div id="room-filter-chips" class="room-filter-group mb-4">
+      {% for key, label in [('attention','Needs attention'),('occupied','Occupied'),('dirty','Dirty'),('available','Available'),('all','All rooms')] %}
+      <button class="room-filter-chip {% if room_filter == key %}room-filter-chip-active{% endif %}" hx-get="/dashboard/rooms?room_filter={{ key }}" hx-target="#room-table-body" hx-swap="innerHTML" onclick="document.querySelectorAll('#room-filter-chips .room-filter-chip').forEach(x=>x.classList.remove('room-filter-chip-active'));this.classList.add('room-filter-chip-active')"><span class="room-filter-dot room-filter-dot-{{ key }}"></span>{{ label }}</button>
+      {% endfor %}
+    </div>
+    <div class="table-scroll"><table class="data-table room-now-table min-w-[840px]"><thead><tr><th>Room</th><th>Type</th><th>Status</th><th>Guest</th><th>Checkout date &amp; time</th><th class="text-right">Balance</th><th class="w-10"><span class="sr-only">Actions</span></th></tr></thead><tbody id="room-table-body">{% include "partials/room_rows.html" %}</tbody></table></div>
+  </article>
+
+  <article class="panel outstanding-card min-w-0">
+    <div class="outstanding-banner">
+      <div>
+        <h2 class="panel-title">Outstanding balances</h2>
+        <p class="panel-subtitle">Top {{ outstanding|length }} open guest accounts</p>
+      </div>
+      <div class="text-right">
+        <span class="block text-[10px] font-bold uppercase tracking-wider" style="color:var(--danger)">Total due</span>
+        <span class="text-sm font-bold" style="color:var(--danger)">{{ money(outstanding_total) }}</span>
+      </div>
+    </div>
+    <div class="p-4">
+      {% if outstanding %}
+      <div class="divide-y divide-slate-100">
+        {% for invoice in outstanding %}
+        <div class="flex items-center justify-between gap-3 py-3">
+          <div class="min-w-0">
+            <p class="truncate text-xs font-bold" style="color:var(--text)">{{ invoice.invoice_number }}</p>
+            <p class="mt-1 truncate text-xs" style="color:var(--muted)">{{ invoice.guest.name if invoice.guest else invoice.guest_name }}{% if invoice.room %} · Room {{ invoice.room.number }}{% endif %}</p>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <span class="text-sm font-bold" style="color:var(--text)">{{ money(invoice.balance) }}</span>
+            <button class="btn-amber !px-3 !py-1.5 !text-xs" hx-get="/invoices/{{ invoice.id }}/collect" hx-target="#modal-root" hx-swap="innerHTML">Collect</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+        <span class="text-xs" style="color:var(--muted)">{{ outstanding_count }} open balance{{ '' if outstanding_count == 1 else 's' }}</span>
+        <a href="/payments" class="link-quiet">View all →</a>
+      </div>
+      {% else %}
+      <div class="empty-state min-h-[11rem]"><span class="text-2xl" style="color:var(--primary)">✓</span><p class="mt-2 font-semibold" style="color:var(--text)">All balances are settled</p><p class="mt-1 text-sm" style="color:var(--muted)">There are no open invoices to collect.</p></div>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="panel mt-3">
+  <div class="panel-heading"><div><h2 class="panel-title">Recent invoices</h2><p class="panel-subtitle">The latest 10 invoices</p></div><a href="/invoices" class="link-quiet">View all →</a></div>
+  <div class="table-scroll"><table class="data-table recent-invoices-table min-w-[720px]"><thead><tr><th>Time</th><th>Invoice #</th><th>Guest</th><th>Room</th><th>Payment method</th><th class="text-right">Total</th></tr></thead><tbody>{% for invoice in recent %}{% set method = invoice.payments[-1].method if invoice.payments else 'Unpaid' %}<tr><td class="text-slate-500">{{ local_datetime(invoice.issue_date, '%H:%M') }}</td><td><a class="font-semibold text-teal-800 hover:underline" href="/invoices?q={{ invoice.invoice_number }}">{{ invoice.invoice_number }}</a></td><td>{{ invoice.guest.name if invoice.guest else invoice.guest_name }}</td><td>{% if invoice.room %}{{ invoice.room.number }}{% else %}{{ invoice.room_number or '—' }}{% endif %}</td><td><span class="pay-badge {% if method == 'Cash' %}pay-cash{% elif method == 'Card' %}pay-card{% elif method == 'Bank Transfer' %}pay-bank{% elif method in ['eSewa', 'Khalti', 'Fonepay', 'Digital Wallet'] %}pay-wallet{% elif method == 'Room Credit' %}pay-credit{% else %}pay-unpaid{% endif %}">{{ method }}</span></td><td class="num-tabular text-right font-semibold">{{ money(invoice.total) }}</td></tr>{% else %}<tr><td colspan="6" class="py-10 text-center text-sm text-slate-500">No invoices yet. Create the first invoice to get started.</td></tr>{% endfor %}</tbody></table></div>
+</section>
+
+<section class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+  <div class="mini-metric"><span>Cash collected today</span><strong class="text-teal-700">{{ money(cash_today) }}</strong></div>
+  <div class="mini-metric"><span>Invoices issued today</span><strong>{{ invoice_count }}</strong></div>
+  <div class="mini-metric"><span>Room revenue today</span><strong>{{ money(room_revenue) }}</strong></div>
+</section>
+<script>
+(function(){
+  const closeMenus = () => document.querySelectorAll('[data-row-menu]').forEach(menu => { menu.hidden = true; });
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-row-menu-btn]');
+    if (button) {
+      event.preventDefault();
+      event.stopPropagation();
+      const menu = button.parentElement.querySelector('[data-row-menu]');
+      if (!menu) return;
+      const isOpen = !menu.hidden;
+      closeMenus();
+      if (isOpen) return;
+      const rect = button.getBoundingClientRect();
+      menu.hidden = false;
+      const width = menu.offsetWidth;
+      const height = menu.offsetHeight;
+      const top = rect.bottom + 6 + height > window.innerHeight - 8 ? Math.max(8, rect.top - height - 6) : rect.bottom + 6;
+      menu.style.top = top + 'px';
+      menu.style.left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)) + 'px';
+      return;
+    }
+    closeMenus();
+  });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenus(); });
+  window.addEventListener('scroll', closeMenus);
+  window.addEventListener('resize', closeMenus);
+})();
+</script>
+{% endblock %}

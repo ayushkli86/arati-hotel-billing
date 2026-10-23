@@ -1,0 +1,5 @@
+<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+  {% for key,label,color in [('available','Available','#2f6b45'),('occupied','Occupied','#0D9488'),('dirty','Needs cleaning','#b7791f'),('reserved','Reserved','#3b6f9c'),('maintenance','Maintenance','#7b858b')] %}
+  <article class="room-summary" style="border-top-color:{{ color }}"><div class="room-summary-label">{{ label }}</div><div class="mt-2 flex items-end justify-between"><span class="room-summary-number">{{ room_counts[key] }}</span><span class="mb-1 text-xs font-semibold text-slate-500">{{ room_percentages[key] }}%</span></div></article>
+  {% endfor %}
+</div>

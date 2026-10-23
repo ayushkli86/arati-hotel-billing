@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% set active_page = 'settings' %}
+{% block title %}Hotel Settings{% endblock %}
+{% block header_title %}Hotel Settings{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-5xl space-y-4">
+  <div class="page-heading">
+    <div><p class="eyebrow">System · Hotel configuration</p><h1 class="page-title">Hotel Settings</h1><p class="page-subtitle">Used for new invoices, tax calculations, and printed hotel details</p></div>
+    {% if saved %}<span role="status" class="badge-teal">Settings saved</span>{% endif %}
+  </div>
+  {% if error %}<div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/settings" class="space-y-4 pb-20">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <section class="panel">
+      <div class="mb-4 flex items-start gap-3">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-lg text-teal-700">✿</span>
+        <div><h2 class="panel-title">Hotel identity</h2><p class="panel-subtitle">Contact and registration details shown on invoices</p></div>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label><span class="field-label">Hotel name *</span><input required maxlength="160" name="hotel_name" value="{{ settings.hotel_name }}" class="form-input"></label>
+        <label><span class="field-label">Hotel name (Nepali)</span><input maxlength="160" name="hotel_name_ne" value="{{ settings.hotel_name_ne }}" class="form-input"></label>
+        <label><span class="field-label">Address line 1</span><input maxlength="240" name="hotel_address1" value="{{ settings.hotel_address1 }}" class="form-input"></label>
+        <label><span class="field-label">Address line 2</span><input maxlength="240" name="hotel_address2" value="{{ settings.hotel_address2 }}" class="form-input"></label>
+        <label><span class="field-label">Phone</span><input maxlength="40" name="hotel_phone" value="{{ settings.hotel_phone }}" class="form-input"></label>
+        <label><span class="field-label">Email</span><input type="email" maxlength="180" name="hotel_email" value="{{ settings.hotel_email }}" class="form-input"></label>
+        <label><span class="field-label">Website</span><input maxlength="180" name="hotel_website" value="{{ settings.hotel_website }}" class="form-input"></label>
+        <label><span class="field-label">Logo path under /static/</span><input maxlength="500" name="logo_path" value="{{ settings.logo_path }}" class="form-input" placeholder="/static/hotel-logo.png"></label>
+        <label><span class="field-label">PAN number</span><input maxlength="80" name="hotel_pan" value="{{ settings.hotel_pan }}" class="form-input"></label>
+        <label><span class="field-label">VAT registration number</span><input maxlength="80" name="hotel_vat" value="{{ settings.hotel_vat }}" class="form-input"></label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="mb-4 flex items-start gap-3">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-50 text-lg soft-amber-text">₨</span>
+        <div><h2 class="panel-title">Billing defaults</h2><p class="panel-subtitle">Changes apply to new invoices and room folios — previously issued invoices are not altered</p></div>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label><span class="field-label">Invoice number prefix *</span><input required maxlength="12" pattern="[A-Za-z0-9]+" name="bill_prefix" value="{{ settings.bill_prefix }}" class="form-input"></label>
+        <label><span class="field-label">Default invoice language</span><select name="invoice_language" class="form-input"><option value="en" {% if settings.invoice_language in ('en','english','English') %}selected{% endif %}>English</option><option value="ne" {% if settings.invoice_language in ('ne','nepali','Nepali') %}selected{% endif %}>Nepali</option></select></label>
+        <label><span class="field-label">VAT rate (%)</span><input required type="number" min="0" max="100" step=".001" name="vat_rate" value="{{ settings.vat_rate }}" class="form-input"></label>
+        <label><span class="field-label">Service charge (%)</span><input required type="number" min="0" max="100" step=".001" name="service_charge_rate" value="{{ settings.service_charge_rate }}" class="form-input"></label>
+        <label><span class="field-label">Invoice copy label</span><input maxlength="80" name="invoice_copy" value="{{ settings.invoice_copy }}" class="form-input"></label>
+        <label><span class="field-label">Default payment terms</span><input maxlength="120" name="payment_terms" value="{{ settings.payment_terms }}" class="form-input"></label>
+        <label class="sm:col-span-2"><span class="field-label">Payment methods</span><textarea required maxlength="500" rows="2" name="payment_methods" class="form-input" placeholder="Cash, Card, Bank Transfer">{{ settings.payment_methods }}</textarea><span class="mt-1 block text-xs text-slate-500">Separate methods with commas. These choices appear when receiving payments, issuing invoices, and filtering reports.</span></label>
+        <label><span class="field-label">Date format</span><select name="date_format" class="form-input"><option value="DD/MM/YYYY" {% if settings.date_format == 'DD/MM/YYYY' %}selected{% endif %}>DD/MM/YYYY</option><option value="YYYY-MM-DD" {% if settings.date_format == 'YYYY-MM-DD' %}selected{% endif %}>YYYY-MM-DD</option></select></label>
+        <label><span class="field-label">Daily close time (Asia/Kathmandu)</span><input required type="time" name="close_time" value="{{ settings.close_time or '00:05' }}" class="form-input"><span class="mt-1 block text-xs text-slate-500">The scheduler closes the previous business day at this time.</span></label>
+        <label class="sm:col-span-2"><span class="field-label">Return / exchange policy</span><textarea maxlength="1000" rows="2" name="return_policy" class="form-input">{{ settings.return_policy }}</textarea></label>
+        <label class="sm:col-span-2"><span class="field-label">Invoice footer note</span><textarea maxlength="1000" rows="2" name="footer_note" class="form-input">{{ settings.footer_note }}</textarea></label>
+      </div>
+    </section>
+    <div class="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur lg:pl-[17rem] sm:px-7">
+      <p class="hidden text-xs text-slate-500 sm:block">Review changes before saving — settings affect new invoices only.</p>
+      <button class="btn-primary">Save hotel settings</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

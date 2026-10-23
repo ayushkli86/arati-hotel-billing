@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% set active_page='customers' %}
+{% block title %}Edit guest{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">OPERATIONS / GUESTS</p><h1 class="page-title">Edit guest</h1><p class="page-subtitle">Update the guest profile without changing invoice history.</p></div>
+  <a class="btn-secondary" href="/customers">← Guest directory</a>
+</div>
+<section class="panel max-w-3xl">
+  <form method="post" action="/customers/{{ guest.id }}/edit" class="grid gap-4 sm:grid-cols-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="text-sm font-medium">Name<input class="form-input mt-1" name="name" value="{{ guest.name }}" maxlength="160" required></label>
+    <label class="text-sm font-medium">Phone<input class="form-input mt-1" name="phone" value="{{ guest.phone }}" maxlength="40"></label>
+    <label class="text-sm font-medium">Email<input class="form-input mt-1" name="email" type="email" value="{{ guest.email }}" maxlength="180"></label>
+    <label class="text-sm font-medium">Address<input class="form-input mt-1" name="address" value="{{ guest.address }}" maxlength="240"></label>
+    <label class="text-sm font-medium">PAN / VAT number<input class="form-input mt-1" name="pan_vat_number" value="{{ guest.pan_vat_number }}" maxlength="80"></label>
+    <label class="text-sm font-medium">Guest type<select class="form-input mt-1" name="customer_type"><option value="individual" {% if guest.customer_type == 'individual' %}selected{% endif %}>Individual</option><option value="business" {% if guest.customer_type == 'business' %}selected{% endif %}>Business</option></select></label>
+    <label class="text-sm font-medium">ID type<input class="form-input mt-1" name="id_type" value="{{ guest.id_type }}" maxlength="40"></label>
+    <label class="text-sm font-medium">ID number<input class="form-input mt-1" name="id_number" value="{{ guest.id_number }}" maxlength="100"></label>
+    <div class="flex gap-2 sm:col-span-2"><button class="btn-primary">Save guest</button><a class="btn-secondary" href="/customers">Cancel</a></div>
+  </form>
+</section>
+{% endblock %}

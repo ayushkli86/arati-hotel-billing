@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block unauthenticated %}
+<main class="grid min-h-screen lg:grid-cols-[1.1fr_.9fr]">
+  <section class="hidden flex-col justify-between bg-slate-900 p-12 text-white lg:flex">
+    <div class="flex items-center gap-3">
+      <span class="grid h-12 w-12 place-items-center rounded-xl bg-white p-1.5 shadow-lg shadow-black/20"><img src="/static/aratilogo.webp" alt="Arati Hotel" class="h-full w-full object-contain"></span>
+      <span><span class="block font-semibold tracking-wide">ARATI HOTEL</span><span class="mt-0.5 block text-[10px] font-semibold tracking-[.18em] text-slate-400">KHANDBARI · NEPAL</span></span>
+    </div>
+    <div class="max-w-xl"><p class="mb-4 text-xs font-bold tracking-[.2em] text-teal-300">KHANDBARI · FRONT OFFICE</p><h1 class="text-5xl font-bold leading-tight">A clear view of today’s hotel operations.</h1><p class="mt-5 max-w-md text-base leading-7 text-slate-300">Rooms, invoices, and collections together in one calm workspace.</p></div>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="text-xs text-slate-500">Arati Hotel · Khandbari, Sankhuwasabha</p>
+      <div class="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5" aria-label="BilledIn">
+        <span class="flex items-end gap-[3px]" aria-hidden="true"><span class="block h-4 w-[3px] rounded-sm bg-gradient-to-b from-[#f0c75e] via-[#d4a017] to-[#b8860b]"></span><span class="block h-5 w-[3px] rounded-sm bg-gradient-to-b from-[#f0c75e] via-[#d4a017] to-[#b8860b]"></span><span class="block h-4 w-[3px] rounded-sm bg-gradient-to-b from-[#f0c75e] via-[#d4a017] to-[#b8860b]"></span></span>
+        <span class="bg-gradient-to-r from-[#f0c75e] via-[#d4a017] to-[#c9a227] bg-clip-text text-sm font-bold tracking-tight text-transparent">BilledIn</span>
+      </div>
+    </div>
+  </section>
+  <section class="flex items-center justify-center px-6 py-12">
+    <div class="w-full max-w-md">
+      <div class="mb-8 flex items-center justify-between">
+        <div class="flex items-center gap-2" aria-label="BilledIn">
+          <span class="flex items-end gap-[3px]" aria-hidden="true"><span class="block h-4 w-[3px] rounded-sm bg-gradient-to-b from-[#f0c75e] via-[#d4a017] to-[#b8860b]"></span><span class="block h-5 w-[3px] rounded-sm bg-gradient-to-b from-[#f0c75e] via-[#d4a017] to-[#b8860b]"></span><span class="block h-4 w-[3px] rounded-sm bg-gradient-to-b from-[#f0c75e] via-[#d4a017] to-[#b8860b]"></span></span>
+          <span class="bg-gradient-to-r from-[#c9a227] via-[#d4a017] to-[#a67c00] bg-clip-text text-sm font-bold tracking-tight text-transparent">BilledIn</span>
+        </div>
+        <span class="text-[10px] font-semibold tracking-[.16em] text-slate-400">VERSION 2.0</span>
+      </div>
+      <div class="mb-8 flex items-center gap-3 lg:hidden"><img src="/static/aratilogo.webp" alt="Arati Hotel" class="h-10 w-10 object-contain"><div><div class="text-sm font-bold tracking-wider text-slate-900">ARATI HOTEL</div><div class="mt-1 text-xs text-slate-500">KHANDBARI · NEPAL</div></div></div>
+      <p class="text-xs font-bold tracking-[.17em] text-teal-700">WELCOME BACK</p><h2 class="mt-3 text-3xl font-bold tracking-tight">Sign in to your desk</h2><p class="mt-2 text-sm text-slate-500">Use your hotel staff account to continue.</p>
+      {% if error %}<div class="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ error }}</div>{% endif %}
+      <form method="post" action="/login" class="mt-8 space-y-5">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="block"><span class="mb-2 block text-sm font-medium">Username</span><input required autofocus autocomplete="username" name="username" class="form-input" placeholder="e.g. frontdesk"></label>
+        <label class="block"><span class="mb-2 block text-sm font-medium">Password</span><input required autocomplete="current-password" type="password" name="password" class="form-input" placeholder="Your password"></label>
+        <button class="btn-primary w-full justify-center py-3">Sign in</button>
+      </form>
+      <p class="mt-8 text-xs text-slate-400">Your session is private to this browser.</p>
+    </div>
+  </section>
+</main>
+{% endblock %}

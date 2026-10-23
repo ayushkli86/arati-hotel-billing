@@ -48,8 +48,10 @@ paper. The on-screen form, the stored bill and the PDF all use the same calculat
   tax details, used by the print preview and the PDF download of the same document.
 - **Reports dashboard** — daily, monthly, date-range, payment, outstanding, refund, cashier,
   occupancy and revenue reports, each downloadable and printable.
-- **Sales analysis** — trends, revenue by category/room/payment method/cashier, average invoice
-  value, occupancy rate and period comparisons, computed from the ledger.
+- **Sales analysis** — dashboard trends and category, room, payment-method, and cashier breakdowns,
+  with period comparisons, room KPIs, transaction data-quality review, and explicit forecast
+  availability. Results are calculated from SQLite records; see `ANALYTICS_ENGINE.md` for formulas
+  and data limitations.
 - **Midnight closing** — the previous business day is closed automatically in the hotel's
   timezone (Asia/Kathmandu), a Daily Sales and Operations Report PDF is written, and missed days
   are recovered on the next start. The job is idempotent: running it twice changes nothing.
@@ -64,16 +66,36 @@ paper. The on-screen form, the stored bill and the PDF all use the same calculat
 - Tkinter (`sudo apt install python3-tk` on Debian/Ubuntu)
 - `reportlab`, `weasyprint` and `nepali-datetime` (installed by the run script)
 
-## Run
+## FastAPI web front office
+
+A separate FastAPI application is available in [`webapp/`](webapp/README.md). Its Billing page is the browser-based three-column Create Invoice screen. Launch it with:
 
 ```bash
-cd arati-hotel-billing
-./run.sh
+./run_web.sh
 ```
 
-First sign-in: **admin / arat123** — change it on the Staff screen before real use.
+Then open <http://127.0.0.1:8000/billing/create> and sign in with `admin` / `admin123` for the seeded demo. `./run.sh` still launches the Tk desktop application; it does not serve the FastAPI page. The web app uses its own SQLAlchemy database, separate from the desktop till. Read `webapp/README.md` before using it outside a local demo environment.
 
-Bills live in `arati.db`; PDFs go to `invoices/` (receipts in `invoices/thermal/`).
+## Run on Windows
+
+Build the standalone Windows application on a Windows development computer with Python 3.11, Tcl/Tk, PowerShell and the WeasyPrint GTK runtime:
+
+```powershell
+.\scripts\build_windows_exe.ps1
+```
+
+The client receives a ZIP containing `AratiHotel.exe` and its runtime; Python is not required on the client computer. Run and smoke-check that build on Windows before delivery.
+
+For a source install, extract the Windows source archive and double-click `run.bat`. It installs packages on first launch and requires internet access. On Linux, run `./run.sh`.
+
+To point the Start Menu shortcut at the browser-based front office, run
+`.\scripts\create_web_shortcut.ps1` from the extracted source folder. It updates the **Arati Hotel
+Billing** shortcut to run `run_web.bat`; launching it starts the web server and opens the Room Board
+in your browser. Running `run.bat` directly still starts the desktop billing application.
+
+First sign-in: **admin / arat123**. The app requires a new 12-character administrator password before opening the till.
+
+On Windows, the database and generated files live under `%LOCALAPPDATA%\AratiHotel\Billing`. On Linux, they live under `~/.local/share/arati-hotel-billing`. An existing `arati.db` beside the application stays in place during an upgrade.
 
 ## Tax model
 
@@ -132,9 +154,9 @@ Configuration is optional and read from the environment:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ARATI_DB` | `./arati.db` | database path (keep it in a `700` directory) |
-| `ARATI_INVOICE_DIR` | `./invoices` | generated PDFs |
-| `ARATI_REPORT_DIR` | `./reports` | daily closing reports |
+| `ARATI_DB` | per-user application data folder | database path |
+| `ARATI_INVOICE_DIR` | `invoices` under per-user data | generated PDFs |
+| `ARATI_REPORT_DIR` | `reports` under per-user data | daily closing PDFs and exported reports |
 | `ARATI_DISABLE_SCHEDULER` | unset | set to any value to stop the in-app midnight closing |
 | `PYTHON` | `python3` | interpreter used by `run.sh` |
 

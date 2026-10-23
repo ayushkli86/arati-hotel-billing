@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ report.title }} · {{ hotel_settings.get('hotel_name', 'Arati Hotel') }}</title>
+  <style>
+    @page { size: A4 portrait; margin: 14mm 12mm 16mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #172033; font: 9pt Arial, sans-serif; }
+    header { border-bottom: 2px solid #0d9488; margin-bottom: 12px; padding-bottom: 8px; }
+    h1 { margin: 0; color: #0f766e; font-size: 16pt; }
+    h2 { margin: 8px 0 3px; font-size: 12pt; }
+    p { margin: 3px 0; color: #64748b; font-size: 8pt; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; }
+    th, td { border: .5pt solid #cbd5e1; padding: 4px 5px; text-align: left; }
+    th { background: #f1f5f9; font-size: 7pt; text-transform: uppercase; }
+    td { font-size: 7.5pt; }
+    tfoot td { background: #f8fafc; font-weight: 700; }
+    .empty { border: 1px dashed #94a3b8; margin-top: 16px; padding: 12px; color: #64748b; }
+    .footer { border-top: .5pt solid #cbd5e1; margin-top: 14px; padding-top: 6px; }
+  </style>
+  {% macro format_value(key, value) -%}
+    {%- if value is number -%}
+      {%- if key in ('invoices', 'entries', 'age_days', 'sellable', 'occupied_end', 'occupied_across', 'available', 'nights') -%}
+        {{ value|int }}
+      {%- elif key in ('rate', 'occupancy_rate') -%}
+        {{ '%.2f'|format(value) }}%
+      {%- else -%}
+        {{ money(value) }}
+      {%- endif -%}
+    {%- else -%}
+      {{ value if value is not none else '' }}
+    {%- endif -%}
+  {%- endmacro %}
+</head>
+<body>
+  <header>
+    <h1>{{ hotel_settings.get('hotel_name', 'Arati Hotel') }}</h1>
+    <p>{{ hotel_settings.get('hotel_address1', '') }}{% if hotel_settings.get('hotel_address2') %} · {{ hotel_settings.get('hotel_address2') }}{% endif %}</p>
+    <h2>{{ report.title }}</h2>
+    <p>{{ report.subtitle }} · Generated {{ report.generated_at }}</p>
+  </header>
+  {% if report.rows %}
+  <table>
+    <thead><tr>{% for _key, label in report.columns %}<th>{{ label }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for row in report.rows %}<tr>{% for key, _label in report.columns %}<td>{% if report.key == 'operations_summary' and key == 'value' %}{% if row.metric in ('Occupied rooms', 'Available rooms', 'Sellable rooms') %}{{ row.get(key)|int }}{% elif row.metric == 'Occupancy rate' %}{{ '%.2f'|format(row.get(key)) }}%{% else %}{{ money(row.get(key)) }}{% endif %}{% else %}{{ format_value(key, row.get(key)) }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    {% if report.totals %}<tfoot><tr>{% for key, _label in report.columns %}{% set value = report.totals.get(key) %}<td>{% if loop.first and value is none %}TOTAL{% else %}{{ format_value(key, value) }}{% endif %}</td>{% endfor %}</tr></tfoot>{% endif %}
+  </table>
+  {% else %}<div class="empty">{{ report.empty_message }}</div>{% endif %}
+  <p class="footer">{{ report.period }} · {{ hotel_settings.get('hotel_name', 'Arati Hotel') }}</p>
+</body>
+</html>

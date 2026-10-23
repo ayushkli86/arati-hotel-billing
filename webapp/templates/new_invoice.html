@@ -1,0 +1,233 @@
+{% extends "base.html" %}{% set active_page='billing' %}{% block title %}Create Invoice{% endblock %}
+{% block header_title %}Create Invoice{% endblock %}
+{% block content %}
+<style>#quick-action-bar{display:none!important}.field-label{display:block;margin-bottom:.3rem;color:#475569;font-size:.68rem;font-weight:700}.billing-workspace .panel{padding:1rem}@media(max-width:1279px){.preview-panel{display:block!important;position:static!important;grid-column:1/-1}.invoice-paper{max-width:680px;margin:auto}}</style>
+<div x-data="billingWorkspace({{ rooms|map(attribute='number')|list|tojson|forceescape }}, {{ rooms|map(attribute='type')|list|tojson|forceescape }}, {{ rooms|map(attribute='nightly_rate')|map('string')|list|tojson|forceescape }}, {{ rooms|map(attribute='id')|list|tojson|forceescape }}, {{ rooms|map(attribute='status')|list|tojson|forceescape }}, {{ catalog|map(attribute='name')|list|tojson|forceescape }}, {{ catalog|map(attribute='category')|list|tojson|forceescape }}, {{ catalog|map(attribute='rate')|map('string')|list|tojson|forceescape }}, {{ catalog|map(attribute='id')|list|tojson|forceescape }}, {{ catalog|map(attribute='taxable')|list|tojson|forceescape }}, {{ guests|map(attribute='id')|list|tojson|forceescape }}, {{ guests|map(attribute='name')|list|tojson|forceescape }}, {{ guests|map(attribute='phone')|list|tojson|forceescape }}, {{ guests|map(attribute='address')|list|tojson|forceescape }}, {{ guests|map(attribute='pan_vat_number')|list|tojson|forceescape }}, {{ guests|map(attribute='email')|list|tojson|forceescape }}, {{ billing_settings.get('service_charge_rate', '10')|float }}, {{ billing_settings.get('vat_rate', '13')|float }}, {{ draft_payload|tojson|forceescape }})" class="billing-workspace">
+  <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <p class="eyebrow">Front desk · Billing</p>
+      <h1 class="page-title" x-text="invoiceId ? 'Edit Draft Invoice' : 'Create Invoice'"></h1>
+      <p class="page-subtitle">Invoice workspace <span class="mx-1 text-slate-300">·</span> {{ today }}</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{{ invoice_number }}</span>
+      <button type="button" @click="submitAction('print')" class="btn-primary">Save &amp; Print Invoice</button>
+    </div>
+  </div>
+  {% if error %}<div role="alert" class="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800">{{ error }}</div>{% endif %}
+  <form id="invoice-form" method="post" action="/billing/create" @submit="syncItems($event)" class="pb-24">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="line_items" :value="JSON.stringify(items)"><input type="hidden" name="action" x-model="action"><input type="hidden" name="invoice_id" x-model="invoiceId">
+    <div class="grid items-start gap-4 xl:grid-cols-[23%_minmax(420px,1fr)_30%]">
+      <section class="panel picker-panel">
+        <div class="form-section-head">
+          <div><h2 class="panel-title">1 · Select items</h2><p class="panel-subtitle">Rooms, restaurant, services</p></div>
+          <span class="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600" x-text="items.length"></span>
+        </div>
+        <label class="search-field mb-3 block"><span class="search-icon">⌕</span><span class="sr-only">Search rooms and items</span><input class="form-input" x-model="search" placeholder="Search rooms, types, items..."></label>
+        <div class="mb-3 grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+          <template x-for="tab in ['Rooms','Restaurant','Services']" :key="tab"><button type="button" @click="category=tab" :class="category===tab?'bg-teal-700 text-white shadow-sm':'text-slate-600 hover:bg-white'" class="rounded-lg px-2 py-2 text-xs font-bold" x-text="tab"></button></template>
+        </div>
+        <label class="mb-3 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-2 text-xs font-medium text-slate-600"><span><span class="mr-1.5 text-emerald-600">●</span>Available rooms only</span><input type="checkbox" x-model="availableOnly" class="h-4 w-4 accent-teal-700"></label>
+
+        <div class="mb-3 rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+          <div class="mb-1.5 flex items-center justify-between">
+            <span class="section-label">Selected</span>
+            <button type="button" x-show="items.length" @click="items=[]" class="text-[10px] font-bold text-slate-500 hover:text-slate-800">Clear all</button>
+          </div>
+          <div class="flex flex-wrap gap-1.5" x-show="items.length">
+            <template x-for="(item,index) in items" :key="item.key"><span class="chip-removable"><span x-text="item.short"></span><button type="button" @click="removeItem(index)" :aria-label="'Remove '+item.short">×</button></span></template>
+          </div>
+          <p x-show="!items.length" class="py-1 text-[11px] text-slate-400">No items selected yet.</p>
+        </div>
+
+        <div class="max-h-[55vh] divide-y divide-slate-100 overflow-y-auto pr-1">
+          <template x-if="category==='Rooms'"><template x-for="room in filteredRooms()" :key="room.id"><div class="flex items-center gap-2.5 py-3"><span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-lg text-teal-700">▣</span><div class="min-w-0 flex-1"><p class="truncate text-sm font-bold text-slate-800" x-text="room.number"></p><p class="mt-0.5 text-[11px] text-slate-500" x-text="room.type+' · NPR '+fmt(room.rate)+' / night'"></p><span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold" :class="room.status==='Available'?'bg-[#e8f5ec] text-[#2f6b45]':room.status.toLowerCase()==='occupied'?'bg-[#e6f5f3] text-[#0f766e]':room.status.toLowerCase()==='dirty'?'bg-[#fdf3df] text-[#8a5a12]':'bg-slate-100 text-slate-600'" x-text="statusLabel(room.status)"></span></div><button type="button" @click="addRoom(room)" :disabled="room.status!=='Available'||items.some(i=>i.room_id===room.id)" class="rounded-lg bg-[#0D9488] px-2.5 py-2 text-xs font-bold text-white hover:bg-[#0F766E] disabled:bg-slate-300" x-text="items.some(i=>i.room_id===room.id)?'Added':room.status==='Available'?'Add':'—'"></button></div></template></template>
+          <template x-if="category!=='Rooms'"><template x-for="entry in filteredCatalog()" :key="entry.id"><div class="flex items-center gap-2.5 py-3"><span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-50 text-lg text-violet-700" x-text="category==='Restaurant'?'◉':'✦'"></span><div class="min-w-0 flex-1"><p class="truncate text-sm font-bold text-slate-800" x-text="entry.name"></p><p class="mt-0.5 text-[11px] text-slate-500" x-text="'Rs. '+fmt(entry.rate)"></p></div><button type="button" @click="addCatalog(entry)" class="rounded-lg bg-teal-700 px-2.5 py-2 text-xs font-bold text-white hover:bg-teal-800">Add</button></div></template></template>
+          <div x-show="category==='Rooms' && filteredRooms().length===0" class="py-10 text-center text-xs text-slate-500">No matching rooms.</div><div x-show="category!=='Rooms' && filteredCatalog().length===0" class="py-10 text-center text-xs text-slate-500">No items in this category yet.</div>
+        </div>
+      </section>
+
+      <div class="min-w-0 space-y-3">
+        <section class="panel" x-data="{open:true}">
+          <button type="button" class="flex w-full items-center justify-between text-left" @click="open=!open">
+            <span class="flex items-center gap-2"><span class="step-number">2</span><span><span class="panel-title">Guest information</span><span class="mt-0.5 block text-xs text-slate-500" x-text="guestName || 'Walk-in guest (details optional)'"></span></span></span>
+            <span class="text-slate-500" x-text="open?'⌄':'›'"></span>
+          </button>
+          <div x-show="open" class="mt-4 grid gap-3 sm:grid-cols-2">
+            <label class="block sm:col-span-2"><span class="field-label">Select existing guest</span><select class="form-input" name="guest_id" x-model="guestId" @change="fillGuest"><option value="">Walk-in / new guest</option>{% for guest in guests %}<option value="{{ guest.id }}">{{ guest.name }}{% if guest.phone %} · {{ guest.phone }}{% endif %}</option>{% endfor %}</select></label>
+            <label class="block"><span class="field-label">Guest name</span><input class="form-input" name="guest_name" x-model="guestName" placeholder="Walk-in guest" maxlength="160"></label><label class="block"><span class="field-label">Phone</span><input class="form-input" name="guest_phone" x-model="guestPhone" placeholder="98XXXXXXXX"></label>
+            <label class="block"><span class="field-label">Email (optional)</span><input class="form-input" type="email" name="guest_email" x-model="guestEmail" placeholder="guest@example.com" maxlength="180"></label>
+            <label class="block"><span class="field-label">Address</span><input class="form-input" name="guest_address" x-model="guestAddress" placeholder="Address"></label>
+            <label class="block"><span class="field-label">PAN / VAT No. (optional)</span><input class="form-input" name="guest_pan" x-model="guestPan" placeholder="Tax registration no."></label>
+            <label class="block"><span class="field-label">Customer type</span><select class="form-input" name="customer_type" x-model="customerType"><option value="individual">Individual</option><option value="business">Business</option></select></label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="form-section-head">
+            <div class="flex items-center gap-2"><span class="step-number">3</span><div><h2 class="panel-title">Invoice details</h2><p class="panel-subtitle">Stay dates, format, and payment terms</p></div></div>
+          </div>
+          <div class="grid gap-x-3 gap-y-3 sm:grid-cols-3">
+            <label><span class="field-label">Invoice type</span><select name="invoice_type" x-model="invoiceType" class="form-input"><option>Tax Invoice</option><option>Bill of Supply</option><option>Proforma</option></select></label>
+            <label><span class="field-label">Invoice date</span><input name="invoice_date" type="date" value="{{ today }}" x-model="invoiceDate" class="form-input"></label>
+            <label><span class="field-label">Language</span><select name="language" x-model="language" class="form-input"><option>English</option><option>Nepali</option></select></label>
+            <label><span class="field-label">Copy type</span><select name="copy_type" x-model="copyType" class="form-input"><option value="{{ invoice_copy_default }}">{{ invoice_copy_default }}</option>{% for copy in ('Customer Copy','Office Copy') %}{% if copy != invoice_copy_default %}<option>{{ copy }}</option>{% endif %}{% endfor %}</select></label>
+            <label><span class="field-label">Room (auto)</span><input class="form-input bg-slate-50" readonly :value="roomNumbers() || 'No room selected'"></label>
+            <label><span class="field-label">Nights</span><input type="number" min="1" name="nights" x-model.number="nights" @input="updateCheckoutFromNights" class="form-input"></label>
+            <label><span class="field-label">Check-in</span><input type="datetime-local" name="check_in" x-model="checkIn" @change="updateNights" class="form-input"></label>
+            <label><span class="field-label">Check-out</span><input type="datetime-local" name="check_out" x-model="checkOut" @change="updateNights" class="form-input"></label>
+            <label><span class="field-label">Payment terms</span><select name="payment_terms" x-model="paymentTerms" class="form-input"><option value="{{ payment_terms_default }}">{{ payment_terms_default }}</option>{% for terms in ('Due on Check-out','Due on Presentation','Due within 7 days','Due within 30 days') %}{% if terms != payment_terms_default %}<option>{{ terms }}</option>{% endif %}{% endfor %}</select></label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading mb-2"><div class="flex items-center gap-2"><span class="step-number">4</span><div><h2 class="panel-title">Line items</h2><p class="panel-subtitle">Edit quantities, rates, discounts, and VAT</p></div></div><span class="badge-slate" x-text="items.length+' item'+(items.length===1?'':'s')"></span></div>
+          <div class="table-scroll"><table class="data-table min-w-[720px] soft-table"><thead><tr><th>#</th><th>Description</th><th>Qty</th><th>Rate</th><th>Disc</th><th>VAT</th><th>Total</th><th></th></tr></thead><tbody>
+            <template x-for="(item,index) in items" :key="item.key"><tr><td class="text-slate-400" x-text="index+1"></td><td class="min-w-[145px]"><input class="form-input !px-2 !py-1.5 text-xs" x-model="item.description"></td><td><input class="form-input w-16 !px-2 !py-1.5 text-xs" type="number" min=".01" step=".01" x-model.number="item.quantity"></td><td><input class="form-input w-24 !px-2 !py-1.5 text-xs" type="number" min="0" step=".01" x-model.number="item.rate"></td><td><input class="form-input w-20 !px-2 !py-1.5 text-xs" type="number" min="0" step=".01" x-model.number="item.discount"></td><td class="text-center"><input type="checkbox" x-model="item.taxable" class="h-4 w-4 accent-teal-700" :aria-label="'VAT taxable: '+item.description"></td><td class="text-xs font-semibold" x-text="'NPR '+fmt(vat(item))"></td><td class="font-bold text-slate-800" x-text="'NPR '+fmt(total(item))"></td><td><button type="button" @click="removeItem(index)" class="rounded-md px-2 py-1 text-base text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Remove item">×</button></td></tr></template>
+          </tbody></table></div>
+          <div x-show="!items.length" class="empty-state min-h-[135px] py-5"><span class="text-3xl text-teal-600">▤</span><p class="mt-2 text-sm font-semibold text-slate-700">No items added yet</p><p class="mt-1 text-xs text-slate-500">Add a room or service from the left panel.</p></div>
+          <button type="button" @click="addCustom()" class="mt-3 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs font-semibold text-teal-700 hover:border-teal-500">＋ Add custom item</button>
+        </section>
+
+        <section class="panel"><label class="block"><span class="field-label">Notes (visible on invoice)</span><textarea name="notes" x-model="notes" rows="2" maxlength="2000" class="form-input resize-y" placeholder="Thank you for staying with us."></textarea></label></section>
+
+        <section class="panel ml-auto max-w-xl">
+          <div class="mb-2 flex items-center gap-2"><span class="step-number">5</span><h2 class="panel-title">Payment summary</h2></div>
+          <div class="space-y-2.5">
+            <div class="flex justify-between text-sm text-slate-600"><span>Subtotal</span><span x-text="'NPR '+fmt(subtotal)"></span></div>
+            <div class="flex justify-between text-sm text-slate-600"><span>Item discount</span><span x-text="'− NPR '+fmt(itemDiscountTotal)"></span></div>
+            <div class="grid grid-cols-[1fr_5rem_7rem] items-end gap-2"><label class="text-sm text-slate-600">Invoice discount</label><select name="discount_kind" x-model="discountKind" class="form-input !px-2 !py-1.5 text-xs"><option value="amount">NPR</option><option value="percent">%</option></select><input name="discount_value" type="number" min="0" step=".01" x-model.number="discountValue" class="form-input !px-2 !py-1.5 text-right text-xs" aria-label="Invoice discount"></div>
+            <div class="flex justify-between text-sm text-slate-600"><span x-text="'Service charge ('+serviceChargeRate+'%)'"></span><span x-text="'NPR '+fmt(serviceCharge)"></span></div>
+            <div class="flex justify-between text-sm text-slate-600"><span x-text="invoiceType==='Bill of Supply'?'VAT (not applicable)':'VAT ('+vatRate+'%)'"></span><span x-text="'NPR '+fmt(vatTotal)"></span></div>
+            <div class="flex items-center justify-between border-t border-slate-100 pt-3 text-xl font-extrabold text-slate-900"><span>Grand total</span><span class="text-teal-700" x-text="'NPR '+fmt(grandTotal)"></span></div>
+            <div class="grid grid-cols-2 gap-2 pt-1"><label><span class="field-label">Amount received</span><input name="amount_paid" type="number" min="0" step=".01" x-model.number="amountPaid" class="form-input"></label><label><span class="field-label">Payment method</span><select name="payment_method" x-model="paymentMethod" class="form-input">{% for method in payment_methods %}<option>{{ method }}</option>{% endfor %}</select></label></div>
+            <div class="flex justify-between rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold soft-amber-text"><span>Balance due</span><span x-text="'NPR '+fmt(balance)"></span></div>
+          </div>
+        </section>
+      </div>
+
+      <aside class="panel preview-panel sticky top-20">
+        <div class="panel-heading"><div><h2 class="panel-title">Live invoice preview</h2><p class="panel-subtitle">Full layout, updates as you edit</p></div><span class="badge-teal">Live</span></div>
+        <div class="invoice-paper">
+          <div class="flex items-center gap-3 border-b-2 border-teal-700 pb-3"><span class="grid h-11 w-11 place-items-center rounded-full bg-teal-50 text-2xl text-teal-700">✿</span><div class="flex-1"><p class="font-serif text-base font-bold text-slate-800">Arati Hotel</p><p class="text-xs text-slate-500">Khandbari</p></div><div class="text-right text-[9px] leading-4 text-slate-600">Khandbari, Sankhuwasabha, Nepal<br>Phone: +977 29-560123<br>Email: info@aratihotel.com.np</div></div>
+          <div class="mt-4 flex items-start justify-between"><div><p class="font-bold tracking-wide text-teal-800" x-text="invoiceType.toUpperCase()"></p><p class="mt-2 text-[10px] font-bold text-slate-700">Bill to:</p><p class="text-xs font-semibold text-slate-800" x-text="guestName||'Walk-in guest'"></p><p class="text-[10px] text-slate-500" x-text="guestPhone||'Phone: —'"></p><p class="text-[10px] text-slate-500" x-text="guestEmail||'Email: —'"></p><p class="text-[10px] text-slate-500" x-text="guestAddress||'Address: —'"></p></div><div class="text-right text-[10px] text-slate-600">Invoice No: <strong>{{ invoice_number }}</strong><br>Date: <span x-text="invoiceDate"></span><br><span x-text="copyType"></span></div></div>
+          <div class="mt-4 overflow-hidden"><table class="w-full text-left text-[9px]"><thead><tr class="border-y border-slate-200 text-slate-500"><th class="py-2">Description</th><th class="py-2 text-right">Qty</th><th class="py-2 text-right">Rate</th><th class="py-2 text-right">VAT</th><th class="py-2 text-right">Total (Rs.)</th></tr></thead><tbody><template x-for="item in items" :key="item.key"><tr class="border-b border-slate-100"><td class="py-2 pr-1" x-text="item.description"></td><td class="py-2 text-right" x-text="item.quantity"></td><td class="py-2 text-right" x-text="fmt(item.rate*item.quantity)"></td><td class="py-2 text-right" x-text="fmt(vat(item))"></td><td class="py-2 text-right font-bold" x-text="fmt(total(item))"></td></tr></template><tr x-show="!items.length"><td colspan="5" class="py-3 text-center text-[10px] text-slate-400">No line items yet — add a room or service.</td></tr></tbody></table></div>
+          <div class="ml-auto mt-4 w-3/4 space-y-1.5 text-[10px]"><div class="flex justify-between"><span>Subtotal</span><span x-text="fmt(subtotal)"></span></div><div class="flex justify-between"><span>Item discount</span><span x-text="fmt(itemDiscountTotal)"></span></div><div class="flex justify-between"><span>Invoice discount</span><span x-text="fmt(discountTotal)"></span></div><div class="flex justify-between"><span x-text="'Service charge ('+serviceChargeRate+'%)'"></span><span x-text="fmt(serviceCharge)"></span></div><div class="flex justify-between"><span x-text="invoiceType==='Bill of Supply'?'VAT not applicable':'VAT ('+vatRate+'%)'"></span><span x-text="fmt(vatTotal)"></span></div><div class="flex justify-between rounded border border-teal-600 px-2 py-2 text-sm font-extrabold text-teal-800"><span>Grand total</span><span x-text="fmt(grandTotal)"></span></div></div>
+          <p class="mt-4 text-[9px] leading-4 text-slate-600"><strong>Amount in words:</strong> <span x-text="amountWords()"></span></p><p class="mt-7 text-center text-xs font-semibold text-slate-700">Thank you for staying with us.<br>We hope to see you again.</p><p class="mt-4 border-t border-slate-100 pt-2 text-center text-[9px] text-slate-500" x-text="copyType"></p>
+        </div>
+      </aside>
+    </div>
+  </form>
+
+  <div class="fixed inset-x-0 bottom-0 z-30 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur lg:pl-[17rem] sm:px-7">
+    <div class="flex items-center gap-1">
+      <button type="button" @click="submitAction('draft')" class="btn-secondary">Save as draft</button>
+      <details class="row-menu"><summary aria-label="More invoice actions">⋯</summary><div class="row-menu-panel bottom-11 top-auto left-0">
+        <button type="button" @click="submitAction('preview')">◉ Preview PDF</button>
+        <button type="button" @click="submitAction('pdf')">↓ Download PDF</button>
+        <button type="button" class="menu-danger" @click="if(confirm('Reset this invoice?')) location.reload()">↺ Reset invoice</button>
+      </div></details>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="hidden text-xs text-slate-500 sm:inline" x-text="items.length ? items.length+' line item'+(items.length===1?'':'s') : 'Add at least one item'"></span>
+      <button type="button" @click="submitAction('print')" class="btn-primary !px-5 !py-3">Save &amp; Print Invoice</button>
+    </div>
+  </div>
+</div>
+<script>
+function billingWorkspace(roomNumbers, roomTypes, roomRates, roomIds, roomStatuses, catalogNames, catalogCats, catalogRates, catalogIds, catalogTaxable, guestIds, guestNames, guestPhones, guestAddresses, guestPans, guestEmails, serviceChargeRate, vatRate, draft) {
+  const now = new Date(); const local = new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  const tomorrow = new Date(now.getTime()+86400000-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  return {
+    rooms: roomIds.map((id,i)=>({id,number:roomNumbers[i],type:roomTypes[i],rate:Number(roomRates[i]),status:roomStatuses[i]==='available'?'Available':roomStatuses[i]})),
+    catalog: catalogIds.map((id,i)=>({id,name:catalogNames[i],category:catalogCats[i],rate:Number(catalogRates[i]),taxable:catalogTaxable[i]})),
+    guests: guestIds.map((id,i)=>({id,name:guestNames[i],phone:guestPhones[i],address:guestAddresses[i],pan:guestPans[i],email:guestEmails[i]})), search:'', category:'Rooms', availableOnly:true, items:draft?.items||[], serial:0,
+    invoiceId:draft?.id||'', guestId:draft?.guest_id?String(draft.guest_id):'', guestName:draft?.guest_name||'Walk-in guest', guestPhone:draft?.guest_phone||'', guestAddress:draft?.guest_address||'', guestPan:draft?.guest_pan||'', guestEmail:draft?.guest_email||'', customerType:draft?.customer_type||'individual',
+    invoiceType:draft?.invoice_type||'Tax Invoice', invoiceDate:draft?.invoice_date||'{{ today }}', language:draft?.language||{{ invoice_language_default|tojson }}, copyType:draft?.copy_type||{{ invoice_copy_default|tojson }}, paymentTerms:draft?.payment_terms||{{ payment_terms_default|tojson }}, checkIn:draft?.check_in||local, checkOut:draft?.check_out||tomorrow, nights:draft?.nights||1, notes:draft?.notes||'Thank you for staying with us.', action:'issue',
+    serviceChargeRate:Number(serviceChargeRate)||0, vatRate:Number(vatRate)||0, discountKind:'amount', discountValue:Number(draft?.discount_amount)||0, amountPaid:Number(draft?.paid_amount)||0, paymentMethod:{{ payment_methods|tojson }}.includes(draft?.payment_method)?draft.payment_method:{{ payment_methods[0]|tojson }},
+    fmt(value){return (Number(value)||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})},
+    filteredRooms(){return this.rooms.filter(r=>(!this.search||(r.number+' '+r.type).toLowerCase().includes(this.search.toLowerCase()))&&(!this.availableOnly||r.status==='Available'))},
+    statusLabel(status){return status.charAt(0).toUpperCase()+status.slice(1)},
+    filteredCatalog(){const categories=this.category==='Restaurant'?['restaurant','food']:['service','other'];return this.catalog.filter(i=>categories.includes(i.category.toLowerCase())&&(!this.search||i.name.toLowerCase().includes(this.search.toLowerCase())))},
+    addRoom(room){
+      if(this.items.some(i=>i.room_id===room.id)) return;
+      this.serial++;
+      const key = 'item_' + this.serial + '_' + Date.now();
+      this.items.push({
+        key: key, room_id: room.id,
+        description: 'Room ' + room.number + ' - ' + room.type,
+        short: room.number + ' · ' + room.type,
+        quantity: this.nights || 1,
+        rate: Number(room.rate) || 0,
+        discount: 0, taxable:true, category:'room'
+      });
+    },
+    addCatalog(entry){
+      this.serial++;
+      const key = 'item_' + this.serial + '_' + Date.now();
+      this.items.push({
+        key: key, catalog_id: entry.id,
+        description: entry.name,
+        short: entry.name,
+        quantity: 1,
+        rate: Number(entry.rate) || 0,
+        discount: 0, taxable:entry.taxable, category:entry.category
+      });
+    },
+    addCustom(){
+      this.serial++;
+      const key = 'item_' + this.serial + '_' + Date.now();
+      this.items.push({
+        key: key,
+        description: 'Custom item',
+        short: 'Custom item',
+        quantity: 1,
+        rate: 0,
+        discount: 0, taxable:true, category:'service'
+      });
+    },
+    removeItem(index){
+      if(index >= 0 && index < this.items.length){
+        this.items.splice(index, 1);
+      }
+    },
+    get subtotal(){return this.items.reduce((s,i)=>s+(Number(i.quantity)||0)*(Number(i.rate)||0),0)},
+    get itemDiscountTotal(){return this.items.reduce((s,i)=>s+Math.min(Number(i.discount)||0,(Number(i.quantity)||0)*(Number(i.rate)||0)),0)},
+    get discountTotal(){const available=Math.max(0,this.subtotal-this.itemDiscountTotal);const entered=Number(this.discountValue)||0;return Math.min(available,this.discountKind==='percent'?available*Math.min(entered,100)/100:entered)},
+    get netSubtotal(){return Math.max(0,this.subtotal-this.itemDiscountTotal-this.discountTotal)},
+    get taxableShare(){const taxable=this.items.filter(i=>i.taxable!==false).reduce((s,i)=>s+Math.max(0,(Number(i.quantity)||0)*(Number(i.rate)||0)-(Number(i.discount)||0)),0);return this.subtotal-this.itemDiscountTotal?taxable/(this.subtotal-this.itemDiscountTotal):0},
+    get serviceCharge(){return Math.round(this.netSubtotal*this.serviceChargeRate)/100},
+    get vatTotal(){if(this.invoiceType==='Bill of Supply')return 0;const taxable=this.items.filter(i=>i.taxable!==false).reduce((s,i)=>s+Math.max(0,(Number(i.quantity)||0)*(Number(i.rate)||0)-(Number(i.discount)||0)),0);const taxableNet=Math.max(0,taxable-this.discountTotal*this.taxableShare);return Math.round((taxableNet+this.serviceCharge*this.taxableShare)*this.vatRate)/100},
+    get grandTotal(){return this.netSubtotal+this.serviceCharge+this.vatTotal},get balance(){return Math.max(0,this.grandTotal-(Number(this.amountPaid)||0))},
+    vat(i){if(this.invoiceType==='Bill of Supply'||i.taxable===false)return 0;return Math.round(Math.max(0,(Number(i.quantity)||0)*(Number(i.rate)||0)-(Number(i.discount)||0))*this.vatRate)/100},total(i){return (Number(i.quantity)||0)*(Number(i.rate)||0)-(Number(i.discount)||0)+this.vat(i)},
+    roomNumbers(){return this.items.filter(i=>i.room_id).map(i=>i.description.match(/^Room ([^ ]+)/)?.[1]).join(', ')},
+    updateNights(){
+      const a = new Date(this.checkIn), b = new Date(this.checkOut);
+      if(b > a){
+        this.nights = Math.max(1, Math.ceil((b - a) / 86400000));
+        this.updateRoomQuantities();
+      }
+    },
+    updateCheckoutFromNights(){
+      if(this.nights >= 1 && this.checkIn){
+        const cin = new Date(this.checkIn);
+        const cout = new Date(cin.getTime() + this.nights * 86400000);
+        this.checkOut = new Date(cout.getTime() - cout.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        this.updateRoomQuantities();
+      }
+    },
+    updateRoomQuantities(){this.items.filter(i=>i.room_id).forEach(i=>i.quantity=this.nights);},
+    fillGuest(){
+      const g=this.guests.find(x=>String(x.id)===String(this.guestId));
+      if(g){
+        this.guestName=g.name;this.guestPhone=g.phone||'';this.guestAddress=g.address||'';this.guestPan=g.pan||'';this.guestEmail=g.email||'';
+      } else {
+        this.guestName='Walk-in guest';this.guestPhone='';this.guestAddress='';this.guestPan='';this.guestEmail='';
+      }
+    },
+    amountWords(){let n=Math.round(this.grandTotal);if(!n)return 'Zero Rupees Only';const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];const tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];const under=x=>x<20?ones[x]:tens[Math.floor(x/10)]+(x%10?' '+ones[x%10]:'');let words='';if(n>=10000000){words+=under(Math.floor(n/10000000))+' Crore ';n%=10000000}if(n>=100000){words+=under(Math.floor(n/100000))+' Lakh ';n%=100000}if(n>=1000){words+=under(Math.floor(n/1000))+' Thousand ';n%=1000}if(n>=100){words+=ones[Math.floor(n/100)]+' Hundred ';n%=100}if(n)words+=under(n)+' ';return words.trim()+' Rupees Only'},
+    syncItems(evt){if(!this.items.length){evt.preventDefault();alert('Add at least one item before saving.')}else if((Number(this.amountPaid)||0)>this.grandTotal){evt.preventDefault();alert('Amount received cannot exceed the invoice total.')}},submitAction(value){this.action=value;this.$nextTick(()=>document.getElementById('invoice-form').requestSubmit())}
+  }
+}
+</script>
+{% endblock %}

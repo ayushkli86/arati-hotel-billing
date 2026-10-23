@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% set active_page = 'rooms' %}
+{% block title %}Reservations{% endblock %}
+{% block header_title %}Reservations{% endblock %}
+{% block content %}
+<div class="space-y-5">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div><p class="eyebrow">FRONT DESK / ROOM OPERATIONS</p><h1 class="page-title">Reservations</h1><p class="page-subtitle">Review bookings, manage cancellations, and reconcile any recorded deposits separately.</p></div>
+    <a href="/rooms" class="btn-secondary">← Room board</a>
+  </div>
+  {% if cancelled %}<div role="status" class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">Reservation cancelled. Review its recorded deposit and process any refund separately.</div>{% endif %}
+  <section class="panel !p-0">
+    <form method="get" action="/reservations" class="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-2 xl:grid-cols-5 xl:items-end">
+      <label><span class="field-label">Status</span><select name="status" class="form-input">
+        {% for value, label in [('confirmed','Confirmed'),('checked_in','Checked in'),('checked_out','Checked out'),('cancelled','Cancelled'),('all','All statuses')] %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select></label>
+      <label><span class="field-label">Room number</span><input name="room" maxlength="20" value="{{ room_filter }}" class="form-input" placeholder="All rooms"></label>
+      <label><span class="field-label">Check-in from</span><input type="date" name="check_in" value="{{ check_in_filter }}" class="form-input"></label>
+      <label><span class="field-label">Check-out through</span><input type="date" name="check_out" value="{{ check_out_filter }}" class="form-input"></label>
+      <div class="flex gap-2"><button class="btn-secondary grow">Filter</button><a href="/reservations" class="btn-secondary">Reset</a></div>
+    </form>
+    <div class="table-scroll">
+      <table class="data-table min-w-[1120px]">
+        <thead><tr><th>Guest / Contact</th><th>Room</th><th>Expected stay</th><th>Nightly rate</th><th>Deposit</th><th>Notes</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>
+          {% for reservation in reservations %}
+          <tr>
+            <td><span class="font-semibold">{{ reservation.guest_name or (reservation.guest.name if reservation.guest else 'Guest unavailable') }}</span><span class="mt-1 block text-xs text-slate-500">{{ reservation.guest_phone or 'No phone recorded' }}</span></td>
+            <td class="font-semibold">{{ reservation.room.number if reservation.room else reservation.room_number or 'Archived room' }}</td>
+            <td>{{ local_datetime(reservation.check_in, '%d %b %Y · %H:%M') }}<span class="my-1 block text-xs text-slate-400">to</span>{{ local_datetime(reservation.check_out, '%d %b %Y · %H:%M') }}</td>
+            <td>{{ money(reservation.nightly_rate) }}</td>
+            <td>{{ money(reservation.deposit) }}</td>
+            <td class="max-w-[220px] whitespace-normal">{{ reservation.notes or '—' }}{% if reservation.cancel_reason %}<span class="mt-1 block text-xs text-red-700">Cancellation: {{ reservation.cancel_reason }}</span>{% endif %}</td>
+            <td><span class="room-status-badge room-status-{{ 'reserved' if reservation.status == 'confirmed' else 'occupied' if reservation.status == 'checked_in' else 'available' if reservation.status == 'checked_out' else 'maintenance' }}">{{ reservation.status|replace('_',' ')|title }}</span></td>
+            <td>
+              {% if reservation.status == 'confirmed' %}
+              <details class="min-w-40">
+                <summary class="cursor-pointer text-xs font-bold text-red-600">Cancel reservation</summary>
+                <form method="post" action="/reservations/{{ reservation.id }}/cancel" class="mt-2 space-y-2" onsubmit="return confirm('Cancel this reservation? Any deposit refund must be recorded separately.')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <label class="block"><span class="field-label">Reason (optional)</span><textarea name="cancel_reason" maxlength="1000" rows="2" class="form-input"></textarea></label>
+                  <button class="btn-danger w-full">Confirm cancellation</button>
+                </form>
+              </details>
+              {% else %}<span class="text-xs text-slate-400">—</span>{% endif %}
+            </td>
+          </tr>
+          {% else %}<tr><td colspan="8" class="py-10 text-center text-sm text-slate-500">No reservations match these filters.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

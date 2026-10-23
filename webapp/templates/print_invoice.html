@@ -1,0 +1,131 @@
+{% set hotel_settings = hotel_settings|default({}) %}
+{% set hotel_name = hotel_settings.get('hotel_name', 'Arati Hotel') %}
+{% set hotel_address1 = hotel_settings.get('hotel_address1', 'Khandbari, Sankhuwasabha, Nepal') %}
+{% set hotel_address2 = hotel_settings.get('hotel_address2', '') %}
+{% set print_hotel_name = hotel_settings.get('hotel_name_ne', '') if invoice.language|lower in ('ne','nepali') and hotel_settings.get('hotel_name_ne') else hotel_name %}
+{% set date_format = '%d/%m/%Y' if hotel_settings.get('date_format', 'DD/MM/YYYY') == 'DD/MM/YYYY' else '%Y-%m-%d' %}
+{% set printer_config = printer_config|default({'paper': 'A4', 'margin_mm': 12, 'copies': 1, 'show_logo': true, 'show_header': true, 'show_footer': true, 'show_contact': true, 'show_tax': true}) %}
+{% set thermal = printer_config.paper in ('80', '58') %}
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{{ invoice.invoice_number }} · {{ hotel_name }}</title><style>
+@page{size:{% if thermal %}{{ printer_config.paper }}mm auto{% else %}A4 portrait{% endif %};margin:{{ printer_config.margin_mm }}mm}*{box-sizing:border-box}body{font:12px Inter,Arial,sans-serif;color:#172033;margin:0}.sheet{max-width:800px;margin:24px auto;padding:35px;border:1px solid #e2e8f0;border-radius:12px}.header{display:flex;align-items:center;border-bottom:3px solid #0d9488;padding-bottom:15px}.mark{font-size:29px;color:#0d9488;margin-right:12px}.hotel{flex:1}.hotel h1{margin:0;font-size:22px}.hotel p,.contact{margin:4px 0;color:#64748b;font-size:10px}.contact{text-align:right;line-height:1.7}.title{display:flex;justify-content:space-between;align-items:start;margin:20px 0}.title h2{margin:0;color:#0f766e;font-size:18px}.billto{margin-top:14px;line-height:1.7}.muted{color:#64748b}.table{width:100%;border-collapse:collapse;margin-top:24px}.table th{background:#f1f5f9;color:#475569;font-size:10px;text-transform:uppercase}.table th,.table td{padding:10px 8px;border-bottom:1px solid #e2e8f0;text-align:right}.table th:first-child,.table td:first-child{text-align:left}.totals{width:300px;margin:18px 0 0 auto}.totals div{display:flex;justify-content:space-between;padding:5px 0}.grand{border:1px solid #0d9488;border-radius:6px;padding:10px!important;font-size:15px;font-weight:bold;color:#0f766e}.notes{margin-top:20px;background:#f8fafc;padding:12px;border-radius:8px}.thanks{text-align:center;margin-top:40px;font-weight:600}.sign{text-align:right;margin-top:30px;color:#0f766e;font-style:italic}.copy{margin-top:18px;padding:9px;background:#e6f5f3;text-align:center;color:#0f766e;border-radius:8px;font-weight:bold}.toolbar{max-width:800px;margin:18px auto;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.share-actions,.invoice-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.toolbar a,.toolbar button{border:0;border-radius:7px;padding:10px 14px;background:#0d9488;color:white;text-decoration:none;cursor:pointer}.toolbar button:disabled{opacity:.6;cursor:wait}.receipt-items{margin-top:18px;border-top:1px dashed #94a3b8}.receipt-item{padding:8px 0;border-bottom:1px dashed #cbd5e1}.receipt-description{font-weight:700}.receipt-row{display:flex;justify-content:space-between;margin-top:3px;font-size:11px}.thermal-sheet{width:calc({{ printer_config.paper }}mm - {{ printer_config.margin_mm * 2 }}mm);max-width:none;padding:5mm;margin:12px auto;border:0;border-bottom:1px dashed #94a3b8;border-radius:0;font-size:10px}.thermal-sheet .header{display:block;text-align:center;padding-bottom:8px}.thermal-sheet .mark{display:block;margin:0}.thermal-sheet .hotel h1{font-size:16px}.thermal-sheet .contact{text-align:center}.thermal-sheet .title{display:block;margin:12px 0}.thermal-sheet .title h2{font-size:14px}.thermal-sheet .billto{margin-top:8px}.thermal-sheet .table{margin-top:10px}.thermal-sheet .totals{width:100%;margin:10px 0 0}.thermal-sheet .totals div{padding:3px 0}.thermal-sheet .grand{font-size:13px}.thermal-sheet .notes{margin-top:10px;padding:8px}.thermal-sheet .thanks{margin-top:16px}.thermal-sheet .sign{margin-top:12px}.thermal-sheet .copy{margin-top:10px;padding:6px}.page-copy{break-after:page}.page-copy.thermal-sheet{break-after:page}@media screen{.page-copy~.sheet{display:none}}@media print{body{background:#fff}.sheet{margin:0 auto;padding:0;border:0}.thermal-sheet{width:100%;padding:0}.toolbar,.saved-message{display:none}}
+</style></head><body>
+<div class="toolbar">
+  {% if is_test_print %}
+  <span style="display:inline-flex;align-items:center;padding:0 12px;background:#fef3c7;color:#92400e;border-radius:6px;font-size:12px;font-weight:bold">Sample Only · Not Saved</span>
+  <button onclick="window.print()">Print Test</button>
+  {% elif is_preview %}
+  <button onclick="if(history.length>1){history.back()}else{window.close()}" style="background:#475569">← Back to Edit</button>
+  <span style="display:inline-flex;align-items:center;padding:0 12px;background:#fef3c7;color:#92400e;border-radius:6px;font-size:12px;font-weight:bold">Preview Only · Not Saved</span>
+  <button onclick="window.print()">Print Preview</button>
+  {% else %}
+  <div class="share-actions">
+  <a href="/billing/invoices/{{ invoice.id }}/receipt">Print Receipt</a>
+  <a href="/billing/invoices/{{ invoice.id }}/receipt.pdf">Receipt PDF</a>
+  {% if invoice.status not in ('draft', 'void') %}
+  <button type="button" onclick="shareInvoice(this, 'email')" data-pdf-url="/billing/invoices/{{ invoice.id }}/pdf" data-invoice-number="{{ invoice.invoice_number }}" data-guest-name="{{ invoice.guest_name or invoice.guest.name }}" data-recipient="{{ invoice.guest.email or '' }}" data-items="{{ invoice.items|map(attribute='description')|join(', ') }}" data-total="{{ invoice.total }}" data-paid="{{ invoice.paid_amount }}" data-balance="{{ invoice.balance }}">Email PDF</button>
+  <button type="button" onclick="shareInvoice(this, 'whatsapp')" data-pdf-url="/billing/invoices/{{ invoice.id }}/pdf" data-invoice-number="{{ invoice.invoice_number }}" data-guest-name="{{ invoice.guest_name or invoice.guest.name }}" data-recipient="{{ invoice.guest_phone or invoice.guest.phone or '' }}" data-items="{{ invoice.items|map(attribute='description')|join(', ') }}" data-total="{{ invoice.total }}" data-paid="{{ invoice.paid_amount }}" data-balance="{{ invoice.balance }}">WhatsApp PDF</button>
+  {% endif %}
+  </div>
+  <div class="invoice-actions">
+    <a href="/invoices?status={{ invoice.status }}">Back to Invoices</a>
+    <a href="/billing/invoices/{{ invoice.id }}/pdf">Download PDF</a>
+    <button onclick="window.print()">Print</button>
+  </div>
+  {% endif %}
+</div>
+{% if not is_preview and not is_test_print and not receipt_mode %}
+<p class="saved-message" style="max-width:800px;margin:0 auto 16px;padding:12px 16px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;border-radius:8px;font-size:13px">
+  <strong>Invoice saved.</strong> {{ invoice.invoice_number }} is recorded as {{ invoice.status }}. Use Download PDF to save a copy, or Print to open your printer dialog.
+</p>
+<p id="share-status" role="status" aria-live="polite" style="max-width:800px;margin:0 auto 12px;color:#475569;font-size:12px"></p>
+<script>
+async function shareInvoice(button, channel) {
+  const {pdfUrl, invoiceNumber, guestName, recipient, items, total, paid, balance} = button.dataset;
+  const email = channel === 'email';
+  const subject = `Arati Hotel invoice ${invoiceNumber}`;
+  const message = `Hello ${guestName},\n\nPlease find invoice ${invoiceNumber} attached.\nItems: ${items}\nTotal: NPR ${Number(total).toFixed(2)}\nPaid: NPR ${Number(paid).toFixed(2)}\nBalance due: NPR ${Number(balance).toFixed(2)}\n\nThank you for staying with Arati Hotel.`;
+  const status = document.getElementById('share-status');
+  const phoneDigits = recipient.replace(/\D/g, '');
+  const whatsappNumber = phoneDigits.startsWith('977')
+    ? phoneDigits
+    : phoneDigits.startsWith('0')
+      ? `977${phoneDigits.slice(1)}`
+      : phoneDigits.length === 10 && phoneDigits.startsWith('9')
+        ? `977${phoneDigits}`
+        : phoneDigits;
+  const fallbackUrl = email
+    ? `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`
+    : `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+  const supportsFileShare = typeof navigator.share === 'function'
+    && typeof navigator.canShare === 'function'
+    && navigator.canShare({files: [new File([''], `${invoiceNumber}.pdf`, {type: 'application/pdf'})]});
+
+  if (!supportsFileShare) {
+    const shareWindow = window.open(fallbackUrl, '_blank', 'noopener');
+    const download = document.createElement('a');
+    download.href = pdfUrl;
+    download.download = `${invoiceNumber}.pdf`;
+    download.click();
+    status.textContent = shareWindow
+      ? 'The PDF is downloading. Attach it to the ready-to-send message in the opened app.'
+      : 'The PDF is downloading. Open your email or WhatsApp app and attach it to the ready-to-send message.';
+    return;
+  }
+
+  button.disabled = true;
+  status.textContent = 'Preparing invoice PDF…';
+  try {
+    const response = await fetch(pdfUrl, {credentials: 'same-origin'});
+    if (!response.ok) {
+      throw new Error(`Invoice PDF request failed (${response.status}).`);
+    }
+    const blob = await response.blob();
+    if (blob.type !== 'application/pdf') {
+      throw new Error('The invoice PDF could not be generated.');
+    }
+    const file = new File([blob], `${invoiceNumber}.pdf`, {type: 'application/pdf'});
+    if (!navigator.canShare({files: [file]})) {
+      throw new Error('This device cannot share the generated PDF as an attachment.');
+    }
+    await navigator.share({files: [file], title: subject, text: message});
+    status.textContent = 'Invoice shared. Complete sending in the selected app.';
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      status.textContent = 'Sharing cancelled.';
+    } else {
+      console.error('Unable to share invoice PDF:', error);
+      status.textContent = `Could not share the invoice PDF: ${error.message}`;
+    }
+  } finally {
+    button.disabled = false;
+  }
+}
+</script>
+{% endif %}
+{% if request.query_params.get('fallback') %}
+<div style="max-width:800px;margin:10px auto;padding:12px 16px;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:8px;font-size:12px">
+  <strong>Print View:</strong> Use the Print button above (or Ctrl+P) and choose "Save as PDF" to save this invoice.
+</div>
+{% endif %}
+{% for copy_index in range(printer_config.copies|int) %}
+<main class="sheet{% if thermal %} thermal-sheet{% endif %}{% if not loop.last %} page-copy{% endif %}">
+{% if printer_config.show_header %}
+<header class="header">
+  {% if printer_config.show_logo %}{% if printer_logo_src %}<img src="{{ printer_logo_src }}" alt="{{ hotel_name }} logo" style="max-width:56px;max-height:56px;margin-right:12px;object-fit:contain">{% else %}<span class="mark">✿</span>{% endif %}{% endif %}
+  <div class="hotel"><h1>{{ print_hotel_name }}</h1><p>{{ hotel_address1 }}{% if hotel_address2 %} · {{ hotel_address2 }}{% endif %}</p></div>
+  <div class="contact">{% if printer_config.show_contact %}{% if hotel_settings.get('hotel_phone') %}Phone: {{ hotel_settings.get('hotel_phone') }}<br>{% endif %}{% if hotel_settings.get('hotel_email') %}Email: {{ hotel_settings.get('hotel_email') }}<br>{% endif %}{% if hotel_settings.get('hotel_website') %}{{ hotel_settings.get('hotel_website') }}{% endif %}{% endif %}{% if printer_config.show_tax %}{% if hotel_settings.get('hotel_pan') %}<br>PAN: {{ hotel_settings.get('hotel_pan') }}{% endif %}{% if hotel_settings.get('hotel_vat') %}<br>VAT: {{ hotel_settings.get('hotel_vat') }}{% endif %}{% endif %}</div>
+</header>
+{% endif %}
+<div class="title"><div><h2>{% if receipt_mode %}PAYMENT RECEIPT{% elif invoice.invoice_type == 'Proforma' %}Proforma{% elif invoice.bill_type == 'supply' %}{{ billing_label('bill_of_supply', invoice.language) }}{% else %}{{ billing_label('tax_invoice', invoice.language) }}{% endif %}</h2><div class="billto"><strong>{{ billing_label('bill_to', invoice.language) }}</strong><br>{{ invoice.guest_name or invoice.guest.name }}<br><span class="muted">{{ invoice.guest_phone or invoice.guest.phone or billing_label('phone', invoice.language) ~ ': —' }}{% if invoice.guest and invoice.guest.email %}<br>{{ invoice.guest.email }}{% endif %}<br>{{ invoice.guest_address or invoice.guest.address or billing_label('address', invoice.language) ~ ': —' }}{% if printer_config.show_tax and (invoice.guest_pan or invoice.guest.pan_vat_number) %}<br>{{ billing_label('pan', invoice.language) }}: {{ invoice.guest_pan or invoice.guest.pan_vat_number }}{% endif %}</span></div></div><div style="text-align:right;line-height:1.8"><strong>{{ billing_label('invoice_no', invoice.language) }}</strong> {{ invoice.invoice_number }}<br><strong>{{ billing_label('date', invoice.language) }}</strong> {{ local_datetime(invoice.issue_date,date_format) }}<br><strong>{{ billing_label('payment_terms', invoice.language) }}</strong> {{ invoice.payment_terms }}{% if invoice.room_number or invoice.room %}<br>Room {{ invoice.room_number or invoice.room.number }}{% endif %}</div></div>
+{% if thermal %}
+<div class="receipt-items">{% for item in invoice.items %}<div class="receipt-item"><div class="receipt-description">{{ item.description }}</div><div class="receipt-row"><span>{{ item.quantity }} × {{ money(item.rate) }}{% if item.discount_amount %} · Disc. {{ money(item.discount_amount) }}{% endif %}</span><strong>{{ money(item.amount) }}</strong></div></div>{% endfor %}</div>
+{% else %}
+<table class="table"><thead><tr><th>{{ billing_label('description', invoice.language) }}</th><th>{{ billing_label('qty', invoice.language) }}</th><th>{{ billing_label('rate', invoice.language) }} (Rs.)</th><th>{{ billing_label('discount', invoice.language) }}</th>{% if printer_config.show_tax %}<th>{{ billing_label('vat_amount', invoice.language) }} ({{ invoice.vat_rate }}%)</th>{% endif %}<th>{{ billing_label('total', invoice.language) }} (Rs.)</th></tr></thead><tbody>{% for item in invoice.items %}<tr><td>{{ item.description }}</td><td>{{ item.quantity }}</td><td>{{ money(item.rate) }}</td><td>{{ money(item.discount_amount) }}</td>{% if printer_config.show_tax %}<td>{{ money(item.vat_amount) }}</td>{% endif %}<td>{{ money(item.amount) }}</td></tr>{% endfor %}</tbody></table>
+{% endif %}
+<div class="totals"><div><span>{{ billing_label('subtotal', invoice.language) }}</span><strong>{{ money(invoice.subtotal) }}</strong></div>{% if invoice.item_discount %}<div><span>{{ billing_label('item_discount', invoice.language) }}</span><strong>− {{ money(invoice.item_discount) }}</strong></div>{% endif %}<div><span>{{ billing_label('discount', invoice.language) }}</span><strong>− {{ money(invoice.discount_amount) }}</strong></div><div><span>{{ billing_label('net_amount', invoice.language) }}</span><strong>{{ money(invoice.net_subtotal if invoice.net_subtotal else invoice.subtotal - invoice.item_discount - invoice.discount_amount) }}</strong></div><div><span>{{ billing_label('service_charge', invoice.language) }} ({{ invoice.service_charge_rate }}%)</span><strong>{{ money(invoice.service_charge) }}</strong></div>{% if printer_config.show_tax %}<div><span>{% if invoice.bill_type == 'tax' %}{{ billing_label('vat_amount', invoice.language) }} ({{ invoice.vat_rate }}%){% else %}{{ billing_label('not_applicable', invoice.language) }}{% endif %}</span><strong>{{ money(invoice.vat_amount) }}</strong></div>{% endif %}<div class="grand"><span>{{ billing_label('grand_total', invoice.language) }}</span><span>{{ money(invoice.total) }}</span></div><div><span>{{ billing_label('amount_paid', invoice.language) }}</span><strong>{{ money(invoice.paid_amount) }}</strong></div><div><span>{{ billing_label('balance', invoice.language) }}</span><strong>{{ money(invoice.balance) }}</strong></div></div>
+{% if printer_config.show_footer %}
+<p style="margin-top:18px"><strong>{{ billing_label('in_words', invoice.language) }}:</strong> {{ amount_in_words_ne(invoice.total) if invoice.language|lower in ('nepali', 'ne') else amount_in_words(invoice.total) }}</p><p class="muted"><strong>{{ billing_label('payment_method', invoice.language) }}:</strong> {{ invoice.payment_method }}{% if invoice.prepared_by %} · <strong>{{ billing_label('prepared_by', invoice.language) }}:</strong> {{ invoice.prepared_by }}{% endif %}{% if invoice.received_by %} · <strong>{{ billing_label('received_by', invoice.language) }}:</strong> {{ invoice.received_by }}{% endif %}</p>{% if invoice.notes %}<div class="notes"><strong>{{ billing_label('notes', invoice.language) }}</strong><br>{{ invoice.notes }}</div>{% endif %}{% if hotel_settings.get('return_policy') %}<div class="notes"><strong>Return policy</strong><br>{{ hotel_settings.get('return_policy') }}</div>{% endif %}<div class="thanks">{{ hotel_settings.get('footer_note') or billing_label('thank_you', invoice.language) }}<br>We hope to see you again.</div><div class="sign">{{ hotel_name }} · Khandbari</div><div class="copy">{{ invoice.copy_type }}</div>
+{% endif %}
+</main>
+{% endfor %}
+{% if auto_print %}<script>window.addEventListener('load',()=>window.print())</script>{% endif %}</body></html>

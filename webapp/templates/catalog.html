@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% set active_page = 'catalog' %}
+{% block title %}Catalog{% endblock %}
+{% block header_title %}Catalog{% endblock %}
+{% block content %}
+{% set form_values = form_values|default({}) %}
+{% set category_labels = {'restaurant':'Restaurant','food':'Food','service':'Service','room':'Room type','other':'Other'} %}
+<div class="space-y-4">
+  <div class="page-heading">
+    <div><p class="eyebrow">System · Billing items</p><h1 class="page-title">Catalog</h1><p class="page-subtitle">Restaurant items and services offered on invoices · existing invoices keep their original line details</p></div>
+    {% if saved %}<span role="status" class="badge-teal">Catalog saved</span>{% endif %}
+  </div>
+  {% if error %}<div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{{ error }}</div>{% endif %}
+  <div class="grid items-start gap-4 xl:grid-cols-[minmax(300px,360px)_minmax(0,1fr)]">
+    {% if current_user.role == 'admin' %}
+    <section class="panel sticky top-20">
+      <h2 class="panel-title">{{ 'Edit catalog item' if editing or form_values.item_id else 'Add catalog item' }}</h2>
+      <p class="panel-subtitle">Prices and VAT settings apply to new invoices only</p>
+      <form method="post" action="/catalog/items" class="mt-4 space-y-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="item_id" value="{{ form_values.item_id|default(editing.id if editing else '') }}">
+        <label class="block"><span class="field-label">Item name</span><input required maxlength="160" name="name" value="{{ form_values.name|default(editing.name if editing else '') }}" class="form-input" placeholder="e.g. Chicken Momo"></label>
+        <label class="block"><span class="field-label">Category</span><select required name="category" class="form-input">{% for value, label in category_labels.items() %}<option value="{{ value }}" {% if form_values.category|default(editing.category if editing else 'restaurant') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <div class="grid grid-cols-2 gap-3">
+          <label><span class="field-label">Price (NPR)</span><input required type="number" min="0" max="9999999999.99" step=".01" name="rate" value="{{ form_values.rate|default(editing.rate if editing else '') }}" class="form-input" placeholder="0.00"></label>
+          <label><span class="field-label">Unit</span><input maxlength="30" name="unit" value="{{ form_values.unit|default(editing.unit if editing else 'pcs') }}" class="form-input"></label>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <label><span class="field-label">Item code</span><input maxlength="80" name="item_code" value="{{ form_values.item_code|default(editing.item_code if editing else '') }}" class="form-input"></label>
+          <label><span class="field-label">Display order</span><input type="number" min="0" max="1000000" name="sort_order" value="{{ form_values.sort_order|default(editing.sort_order if editing else '0') }}" class="form-input"></label>
+        </div>
+        <label class="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700"><input type="checkbox" name="taxable" value="1" class="h-4 w-4 accent-teal-700" {% if form_values.taxable|default(editing.taxable if editing else True) %}checked{% endif %}> VAT applies to this item</label>
+        <div class="flex gap-2"><button class="btn-primary grow">{{ 'Save changes' if editing or form_values.item_id else 'Add item' }}</button>{% if editing or form_values.item_id %}<a href="/catalog" class="btn-secondary">Cancel</a>{% endif %}</div>
+      </form>
+    </section>
+    {% endif %}
+
+    <section class="panel !p-0">
+      <form method="get" action="/catalog" class="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
+        <label class="xl:col-span-2"><span class="field-label">Search</span><span class="relative block"><span class="search-icon">⌕</span><input name="q" value="{{ q }}" class="form-input !pl-9" placeholder="Search name or item code"></span></label>
+        <label><span class="field-label">Category</span><select name="category" class="form-input"><option value="all">All categories</option>{% for value, label in category_labels.items() %}<option value="{{ value }}" {% if category_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <div class="flex gap-2"><label class="min-w-0 flex-1"><span class="field-label">Status</span><select name="status" class="form-input"><option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option><option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option><option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option></select></label><button class="btn-secondary self-end">Filter</button></div>
+      </form>
+      <div class="table-scroll"><table class="data-table soft-table min-w-[760px]"><thead><tr><th>Item</th><th>Category</th><th>Code</th><th>Unit</th><th>VAT</th><th class="text-right">Price</th><th>Status</th>{% if current_user.role == 'admin' %}<th class="text-right">Actions</th>{% endif %}</tr></thead><tbody>
+        {% for item in items %}<tr class="{% if not item.active %}opacity-60{% endif %}">
+          <td class="font-semibold text-slate-800">{{ item.name }}</td><td>{{ category_labels.get(item.category, item.category|title) }}</td><td class="text-slate-500">{{ item.item_code or '—' }}</td><td>{{ item.unit }}</td><td>{{ 'Yes' if item.taxable else 'No' }}</td><td class="text-right font-semibold">{{ money(item.rate) }}</td><td><span class="badge-{{ 'teal' if item.active else 'slate' }}">{{ 'Active' if item.active else 'Inactive' }}</span></td>
+          {% if current_user.role == 'admin' %}<td class="text-right whitespace-nowrap"><a href="/catalog?status=all&amp;edit_id={{ item.id }}" class="btn-secondary !px-2.5 !py-1 !text-xs">Edit</a><details class="row-menu ml-1 inline-block align-middle"><summary aria-label="More item actions">⋯</summary><div class="row-menu-panel">
+            <a href="/catalog?status=all&amp;edit_id={{ item.id }}">Edit item</a>
+            {% if item.active %}<form method="post" action="/catalog/items/{{ item.id }}/active"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="active" value="false"><button class="menu-danger">Deactivate item</button></form>{% else %}<form method="post" action="/catalog/items/{{ item.id }}/active"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="active" value="true"><button>Reactivate item</button></form>{% endif %}
+          </div></details></td>{% endif %}
+        </tr>{% else %}<tr><td colspan="{{ 8 if current_user.role == 'admin' else 7 }}" class="py-12 text-center"><p class="text-sm font-semibold text-slate-700">No catalog items match these filters</p><p class="mt-1 text-xs text-slate-500">Add an item or clear the filters.</p></td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+  </div>
+</div>
+{% endblock %}

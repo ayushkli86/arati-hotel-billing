@@ -1,0 +1,72 @@
+{% extends "base.html" %}{% set active_page='invoices' %}{% block title %}Invoices{% endblock %}
+{% block header_title %}Invoices{% endblock %}
+{% block content %}
+{% set open_invoices = invoices|selectattr('status','equalto','issued')|list %}
+{% set paid_invoices = invoices|selectattr('status','equalto','paid')|list %}
+<div class="page-heading">
+  <div><p class="eyebrow">Finance</p><h1 class="page-title">{% if selected_guest %}Invoices for {{ selected_guest.name }}{% else %}Invoices{% endif %}</h1><p class="page-subtitle">Search, review, print, and collect guest bills</p></div>
+  <div class="flex flex-wrap gap-2"><a class="btn-secondary" href="/payments">Payments</a><a class="btn-primary" href="/billing/create">＋ Create invoice</a></div>
+</div>
+{% if room_id %}<div class="mb-4 inline-flex items-center gap-2 rounded-lg border border-teal-100 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-900"><span>Showing invoices for room filter</span><a href="/invoices{% if q %}?q={{ q }}{% endif %}" class="ml-1 text-teal-700 hover:underline">✕ Clear</a></div>{% endif %}
+{% if selected_guest %}<div class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-xs text-teal-900"><span>Guest history · {{ selected_guest.phone or 'No phone recorded' }} · {{ selected_guest.address or 'No address recorded' }}</span><a href="/customers" class="font-semibold hover:underline">Back to guest directory</a></div>{% endif %}
+<div class="mb-4 grid gap-3 sm:grid-cols-3">
+  <div class="metric-card"><span class="section-label">Invoices shown</span><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ invoices|length }}</p><p class="mt-1 text-xs text-slate-500">Up to 300 most recent</p></div>
+  <div class="metric-card"><span class="section-label">Open invoices</span><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ open_invoices|length }}</p><p class="mt-1 text-xs text-slate-500">Issued and awaiting payment</p></div>
+  <div class="metric-card"><span class="section-label">Outstanding balance</span><p class="mt-2 text-2xl font-extrabold soft-amber-text">{{ money(open_invoices|sum(attribute='balance')) }}</p><p class="mt-1 text-xs text-slate-500">{{ paid_invoices|length }} paid invoice{{ '' if paid_invoices|length == 1 else 's' }} listed</p></div>
+</div>
+<section class="panel !p-0">
+  <div class="border-b border-slate-100 p-4">
+    <form class="flex flex-wrap items-center gap-2" method="get">
+      <input type="hidden" name="room_id" value="{{ room_id or '' }}"><input type="hidden" name="guest_id" value="{{ guest_id or '' }}">
+      <label class="relative min-w-[240px] flex-1"><span class="sr-only">Search invoices</span><span class="search-icon">⌕</span><input class="form-input !py-2 !pl-9" name="q" value="{{ q }}" placeholder="Invoice number, guest, or room"></label>
+      <select class="form-input w-44 !py-2" name="status" aria-label="Filter by status">
+        <option value="all" {% if status_filter=='all' %}selected{% endif %}>All statuses</option>
+        <option value="outstanding" {% if status_filter=='outstanding' %}selected{% endif %}>Outstanding balance</option>
+        <option value="issued" {% if status_filter=='issued' %}selected{% endif %}>Open / issued</option>
+        <option value="paid" {% if status_filter=='paid' %}selected{% endif %}>Paid</option>
+        <option value="draft" {% if status_filter=='draft' %}selected{% endif %}>Draft</option>
+        <option value="void" {% if status_filter=='void' %}selected{% endif %}>Void</option>
+      </select>
+      <button class="btn-secondary">Filter</button>
+      {% if room_id or q or status_filter != 'all' %}<a href="/invoices{% if guest_id %}?guest_id={{ guest_id }}{% endif %}" class="px-2 text-xs font-semibold text-slate-500 hover:text-slate-800">Clear filters</a>{% endif %}
+    </form>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table soft-table min-w-[860px]">
+      <thead><tr><th>Invoice</th><th>Issued</th><th>Guest</th><th>Room</th><th>Status</th><th class="text-right">Total</th><th class="text-right">Balance</th><th class="text-right">Actions</th></tr></thead>
+      <tbody>
+        {% for invoice in invoices %}
+        <tr class="{% if invoice.status == 'issued' and invoice.balance > 0 %}tr-outstanding{% endif %}">
+          <td><a href="/billing/invoices/{{ invoice.id }}/print" class="font-semibold text-teal-800 hover:underline" title="View / print invoice">{{ invoice.invoice_number }}</a></td>
+          <td class="whitespace-nowrap text-slate-600">{{ local_datetime(invoice.issue_date, '%d %b %Y') }}</td>
+          <td class="font-medium text-slate-800">{{ invoice.guest_name or invoice.guest.name }}</td>
+          <td>{{ invoice.room_number or (invoice.room.number if invoice.room else '—') }}</td>
+          <td><span class="status-badge status-{{ invoice.status }}">{{ invoice.status|title }}</span></td>
+          <td class="text-right font-medium">{{ money(invoice.total) }}</td>
+          <td class="text-right font-semibold {% if invoice.status == 'issued' and invoice.balance > 0 %}soft-amber-text{% else %}text-slate-500{% endif %}">{{ money(invoice.balance) }}</td>
+          <td class="text-right whitespace-nowrap">
+            {% if invoice.status in ('issued', 'paid') and invoice.balance > 0 %}
+            <button class="btn-amber" hx-get="/invoices/{{ invoice.id }}/collect" hx-target="#modal-root">Collect</button>
+            {% elif invoice.status == 'draft' %}
+            <a href="/billing/create?draft_id={{ invoice.id }}" class="btn-primary !px-3 !py-1.5 !text-xs">Edit draft</a>
+            {% else %}
+            <a href="/billing/invoices/{{ invoice.id }}/print" class="btn-secondary !px-3 !py-1.5 !text-xs">View</a>
+            {% endif %}
+            <details class="row-menu ml-1 inline-block align-middle"><summary aria-label="More invoice actions">⋯</summary><div class="row-menu-panel">
+              {% if invoice.status != 'draft' %}<a href="/billing/invoices/{{ invoice.id }}/print" title="Print invoice">Print invoice</a><a href="/billing/invoices/{{ invoice.id }}/pdf" title="Download invoice PDF">Download PDF</a>{% endif %}
+              <a href="/billing/invoices/{{ invoice.id }}/receipt" title="Print thermal receipt">Print receipt</a>
+              <a href="/billing/invoices/{{ invoice.id }}/receipt.pdf" title="Download receipt PDF">Receipt PDF</a>
+              <a href="/invoices?guest_id={{ invoice.guest_id }}">Guest history</a>
+              {% if invoice.status == 'draft' and current_user and current_user.role == 'admin' %}<form method="post" action="/billing/invoices/{{ invoice.id }}/delete-draft" onsubmit="return confirm('Delete this draft invoice?')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="menu-danger">Delete draft</button></form>
+              {% elif invoice.status != 'void' and invoice.status != 'draft' and current_user and current_user.role == 'admin' %}<form method="post" action="/billing/invoices/{{ invoice.id }}/void" onsubmit="return confirm('Void this invoice? This action cannot be undone.')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="menu-danger">Void invoice</button></form>{% endif %}
+            </div></details>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="py-12 text-center"><p class="text-sm font-semibold text-slate-700">No invoices match your search</p><p class="mt-1 text-xs text-slate-500">Try clearing filters or create a new invoice.</p><a href="/billing/create" class="btn-primary mt-3 !px-3 !py-1.5 !text-xs">＋ Create invoice</a></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

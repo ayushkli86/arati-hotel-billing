@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% set active_page = 'orders' %}
+{% set action_labels = {'confirmed': 'Confirm request', 'preparing': 'Start preparing', 'ready': 'Mark ready', 'completed': 'Mark completed', 'cancelled': 'Cancel request'} %}
+{% block title %}{{ order.order_number }}{% endblock %}
+{% block header_title %}Order {{ order.order_number }}{% endblock %}
+{% block content %}
+<div class="space-y-4">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">FRONT DESK · ORDER REQUEST</p>
+      <h1 class="page-title flex flex-wrap items-center gap-3">{{ order.order_number }} <span class="badge-{{ status_badges.get(order.status, 'slate') }}">{{ status_labels.get(order.status, order.status) }}</span></h1>
+      <p class="page-subtitle">{{ kind_labels.get(order.kind, order.kind) }} · received {{ local_datetime(order.created_at, '%d %b %Y · %H:%M') }}{% if order.channel == 'whatsapp' %} · WhatsApp{% endif %}</p>
+    </div>
+    <div class="flex flex-wrap gap-2"><a href="/orders" class="btn-secondary">← All orders</a></div>
+  </div>
+
+  {% if notice == 'sent' %}<div role="status" class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{{ 'Status updated. The guest was messaged on WhatsApp.' if wa_connected else 'Status updated. Simulator mode — no real WhatsApp message was sent.' }}</div>{% elif notice == 'failed' %}<div role="alert" class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">Status updated, but the WhatsApp update could not be sent. Check the connection.</div>{% endif %}
+  {% if error %}<div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{{ error }}</div>{% endif %}
+  {% if reply_state == 'sent' %}<div role="status" class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{{ 'Message delivered to the guest.' if wa_connected else 'Message recorded in the simulator. No real WhatsApp message was sent.' }}</div>{% endif %}
+  {% if reply_state == 'failed' %}<div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">The message could not be sent. Check the WhatsApp connection or ask the guest to contact the front desk.</div>{% endif %}
+
+  <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
+    <div class="space-y-4">
+      <section class="panel">
+        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3">
+          <div><h2 class="panel-title">Request details</h2><p class="panel-subtitle">Guest information and how the request should be handled</p></div>
+          <span class="badge-slate">{{ kind_labels.get(order.kind, order.kind) }}</span>
+        </div>
+        <dl class="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+          <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Guest</dt><dd class="mt-0.5 font-semibold text-slate-800">{{ order.customer_name or 'WhatsApp guest' }}</dd></div>
+          <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">WhatsApp</dt><dd class="mt-0.5 font-medium text-slate-700">{% if order.customer_phone %}<a href="https://wa.me/{{ order.customer_phone }}" rel="noopener" target="_blank" class="text-teal-700 hover:underline">+{{ order.customer_phone }}</a>{% else %}—{% endif %}</dd></div>
+          {% if order.kind == 'food' %}
+          <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Fulfilment</dt><dd class="mt-0.5 font-medium text-slate-700">{{ fulfilment_labels.get(order.fulfilment, 'Pickup') }}</dd></div>
+          <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Needed</dt><dd class="mt-0.5 font-medium text-slate-700">{{ order.requested_for or 'As soon as possible' }}</dd></div>
+          {% if order.room_number %}<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Room</dt><dd class="mt-0.5 font-semibold text-slate-800">{{ order.room_number }}</dd></div>{% endif %}
+          {% if order.delivery_address %}<div class="sm:col-span-2"><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Delivery address</dt><dd class="mt-0.5 whitespace-pre-line font-medium text-slate-700">{{ order.delivery_address }}</dd></div>{% endif %}
+          {% elif order.kind == 'room' %}
+          <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Check-in</dt><dd class="mt-0.5 font-medium text-slate-700">{{ order.check_in_date.strftime('%d %b %Y') if order.check_in_date else '—' }}</dd></div>
+          <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Check-out</dt><dd class="mt-0.5 font-medium text-slate-700">{{ order.check_out_date.strftime('%d %b %Y') if order.check_out_date else '—' }}</dd></div>
+          <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Guests</dt><dd class="mt-0.5 font-medium text-slate-700">{{ order.party_size or '—' }}</dd></div>
+          <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Availability</dt><dd class="mt-0.5 font-medium text-slate-700">To be confirmed by the front desk</dd></div>
+          {% else %}
+          <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Requested for</dt><dd class="mt-0.5 font-medium text-slate-700">{{ order.requested_for or 'To be arranged' }}</dd></div>
+          {% endif %}
+          {% if order.invoice_number %}<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Invoice</dt><dd class="mt-0.5 font-semibold text-slate-800">{{ order.invoice_number }}</dd></div>{% endif %}
+        </dl>
+        {% if order.notes %}<div class="mt-4 rounded-xl bg-slate-50 p-3"><p class="text-xs font-bold uppercase tracking-wider text-slate-400">Notes</p><p class="mt-1 whitespace-pre-line text-sm text-slate-700">{{ order.notes }}</p></div>{% endif %}
+      </section>
+
+      <section class="panel !p-0">
+        <div class="border-b border-slate-100 px-5 py-4"><h2 class="panel-title">Requested items</h2><p class="panel-subtitle">Prices are captured when the guest confirms</p></div>
+        <div class="table-scroll">
+          <table class="data-table soft-table min-w-[560px]">
+            <thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Rate</th><th class="text-right">Amount</th></tr></thead>
+            <tbody>
+              {% for item in order.items %}
+              <tr><td class="font-semibold text-slate-800">{{ item.description }}<span class="mt-1 block text-xs font-normal text-slate-500">{{ item.category|title }}</span></td><td class="text-right">{{ (item.quantity|int) if item.quantity == (item.quantity|int) else item.quantity }}</td><td class="text-right">{{ money(item.unit_price) }}</td><td class="text-right font-semibold">{{ money(item.amount) }}</td></tr>
+              {% else %}
+              <tr><td colspan="4" class="py-8 text-center text-sm text-slate-500">No items — this request was taken as a note.</td></tr>
+              {% endfor %}
+            </tbody>
+            <tfoot><tr><td colspan="3" class="text-right font-bold">{{ 'Estimated total' if order.kind == 'room' else 'Items total' }}</td><td class="text-right text-base font-extrabold text-teal-700">{{ money(order.total) }}</td></tr></tfoot>
+          </table>
+        </div>
+        <p class="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">No VAT or service charge is included on this request. Those are applied when the order is billed.</p>
+      </section>
+    </div>
+
+    <div class="space-y-4">
+      <section class="panel">
+        <h2 class="panel-title">Move this request</h2>
+        <p class="panel-subtitle">Each change is audited; with a connected number the guest is notified on WhatsApp.</p>
+        {% if available_statuses %}
+        <form method="post" action="/orders/{{ order.id }}/status" class="mt-4 space-y-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label class="block"><span class="field-label">Staff note (optional)</span><textarea name="note" rows="2" maxlength="500" class="form-input" placeholder="e.g. Called the guest to confirm"></textarea></label>
+          <div class="flex flex-wrap gap-2">
+            {% if primary_status %}<button name="status" value="{{ primary_status }}" class="btn-primary">{{ action_labels.get(primary_status, status_labels.get(primary_status)) }}</button>{% endif %}
+            {% for value in available_statuses if value != primary_status %}
+            <button name="status" value="{{ value }}" class="{{ 'btn-danger' if value == 'cancelled' else 'btn-secondary' }}">{{ action_labels.get(value, status_labels.get(value)) }}</button>
+            {% endfor %}
+          </div>
+        </form>
+        {% else %}
+        <p class="mt-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">This request is closed. Its record is kept for reporting.</p>
+        {% endif %}
+      </section>
+
+      <section class="panel">
+        <div class="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-3">
+          <div><h2 class="panel-title">WhatsApp conversation</h2><p class="panel-subtitle">The guest sees these messages in the same chat.</p></div>
+          {% if conversation %}
+          <form method="post" action="/orders/conversations/{{ conversation.id }}/bot">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="next_url" value="/orders/{{ order.id }}">
+            {% if conversation.bot_paused %}
+            <button name="action" value="resume" class="badge-teal">Resume assistant</button>
+            {% else %}
+            <button name="action" value="pause" class="btn-ghost">Pause assistant</button>
+            {% endif %}
+          </form>
+          {% endif %}
+        </div>
+        {% if conversation and conversation.bot_paused %}
+        <div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs font-medium text-amber-800">The assistant is paused for this chat. Manual replies still reach the guest.</div>
+        {% endif %}
+        <div class="mt-3 max-h-80 space-y-2 overflow-y-auto rounded-xl bg-slate-50 p-3">
+          {% for message in messages %}
+          <div class="flex {{ 'justify-end' if message.direction == 'out' else 'justify-start' }}">
+            <div class="max-w-[88%] rounded-2xl px-3 py-2 text-xs leading-relaxed shadow-sm {{ 'bg-teal-600 text-white' if message.direction == 'out' else 'border border-slate-200 bg-white text-slate-700' }}">
+              <p class="whitespace-pre-line">{{ message.body }}</p>
+              <p class="mt-1 text-[10px] {{ 'text-teal-100' if message.direction == 'out' else 'text-slate-400' }}">{{ local_datetime(message.created_at, '%d %b · %H:%M') }}{% if message.direction == 'out' and message.status == 'failed' %} · not delivered{% endif %}</p>
+            </div>
+          </div>
+          {% else %}
+          <p class="py-8 text-center text-xs text-slate-500">No messages recorded for this guest yet.</p>
+          {% endfor %}
+        </div>
+        <form method="post" action="/orders/{{ order.id }}/reply" class="mt-3 space-y-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label class="block"><span class="field-label">Reply to the guest</span><textarea name="body" rows="3" maxlength="1000" class="form-input" placeholder="e.g. Your table is ready at 7 pm." required></textarea></label>
+          <button class="btn-primary w-full">Send on WhatsApp</button>
+          <p class="text-[11px] leading-4 text-slate-400">{{ 'Messages are sent from the connected hotel number.' if wa_connected else 'Simulator mode: the message is recorded here but not sent to WhatsApp.' }}</p>
+        </form>
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,89 @@
+{% macro room_card(row) %}{% set room=row.room %}{% set stay=row.stay %}{% set reservation=row.reservation %}{% set guest=row.guest %}
+<article class="room-card room-{{ row.status }}">
+  <div class="room-card-head">
+    <div><h2 class="room-number">{{ room.number }}</h2><p class="room-type">{{ room.type }}</p></div>
+    <span class="room-dot" aria-hidden="true"></span>
+  </div>
+  <p class="room-state">{{ 'Needs cleaning' if row.status == 'dirty' else row.status|replace('_',' ')|title }}</p>
+  <div class="room-body">
+  {% if row.status == 'occupied' %}
+    <p class="room-guest" title="{{ guest.name if guest else 'Walk-in guest' }}">{{ guest.name if guest else 'Walk-in guest' }}</p>
+    <p><span class="font-semibold">In:</span> {{ local_datetime(stay.check_in,'%d %b %H:%M') if stay else '—' }}</p>
+    <p><span class="font-semibold">Out:</span> {{ local_datetime(stay.check_out,'%d %b') if stay else '—' }}</p>
+    <p class="font-semibold {% if row.balance > 0 %}soft-amber-text{% else %}text-slate-500{% endif %}">Balance: {{ money(row.balance) }}</p>
+  {% elif row.status == 'dirty' %}
+    <p class="text-amber-800">Waiting for housekeeping.</p>
+    <p class="mt-1 text-slate-500">Clean the room to make it bookable again.</p>
+  {% elif row.status == 'reserved' %}
+    <p class="room-guest">{{ guest.name if guest else 'Guest not assigned' }}</p>
+    <p><span class="font-semibold">Expected:</span> {{ local_datetime(reservation.check_in,'%d %b %H:%M') if reservation else '—' }}</p>
+  {% elif row.status == 'available' %}
+    <p class="text-slate-500">Rate per night</p><p class="text-sm font-bold text-slate-700">{{ money(room.nightly_rate) }}</p>
+  {% else %}
+    <p class="font-semibold text-slate-600">Unavailable for stays</p><p class="text-slate-500">Contact a manager for maintenance updates.</p>
+  {% endif %}
+  </div>
+  <div class="room-actions">
+  {% if row.status == 'occupied' %}
+    <button hx-get="/rooms/{{ room.id }}/checkout" hx-target="#modal-root" hx-swap="innerHTML" class="btn-primary col-span-2">Checkout</button>
+  {% elif row.status == 'dirty' %}
+    <form class="col-span-2" hx-post="/rooms/{{ room.id }}/clean" hx-target="this" hx-swap="none"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn-primary w-full">Mark clean</button></form>
+  {% elif row.status == 'reserved' %}
+    <button hx-get="/rooms/{{ room.id }}/checkin" hx-target="#modal-root" hx-swap="innerHTML" class="btn-primary col-span-2">Check in</button>
+  {% elif row.status == 'available' %}
+    <button hx-get="/rooms/{{ room.id }}/checkin" hx-target="#modal-root" hx-swap="innerHTML" class="btn-primary col-span-2">Check in</button>
+  {% elif row.status == 'maintenance' and current_user.role == 'admin' %}
+    <form class="col-span-2" hx-post="/rooms/{{ room.id }}/maintenance" hx-target="this" hx-swap="none"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="state" value="clean"><button class="btn-primary w-full">Return to service</button></form>
+  {% else %}
+    <span class="col-span-2 text-center text-xs font-medium text-slate-500">No actions available</span>
+  {% endif %}
+    <details class="row-menu col-span-2">
+      <summary class="w-full text-center">More actions</summary>
+      <div class="row-menu-panel right-0 top-auto bottom-11 left-0">
+        {% if row.status == 'occupied' %}
+        <button hx-get="/rooms/{{ room.id }}/extend" hx-target="#modal-root" hx-swap="innerHTML">Extend stay</button>
+        <button hx-get="/rooms/{{ room.id }}/charge" hx-target="#modal-root" hx-swap="innerHTML">Add charge</button>
+        {% elif row.status == 'available' %}
+        <button hx-get="/rooms/{{ room.id }}/reserve" hx-target="#modal-root" hx-swap="innerHTML">Reserve room</button>
+        {% endif %}
+        <a href="/invoices?room_id={{ room.id }}">Open folio</a>
+        <button hx-get="/rooms/{{ room.id }}/history" hx-target="#modal-root" hx-swap="innerHTML">Stay history</button>
+        {% if current_user.role == 'admin' %}
+        <button hx-get="/rooms/{{ room.id }}/rate" hx-target="#modal-root" hx-swap="innerHTML">Set rate</button>
+        {% if row.status == 'maintenance' %}
+        <form hx-post="/rooms/{{ room.id }}/maintenance" hx-target="this" hx-swap="none"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="state" value="clean"><button>Return to service</button></form>
+        {% elif row.status not in ('occupied', 'reserved') %}
+        <form hx-post="/rooms/{{ room.id }}/maintenance" hx-target="this" hx-swap="none"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="state" value="maintenance"><button>Mark maintenance</button></form>
+        {% endif %}
+        {% endif %}
+      </div>
+    </details>
+  </div>
+</article>{% endmacro %}
+{% if view == 'grid' %}
+  {% set attention = room_rows|selectattr('status','in',['occupied','dirty'])|list %}
+  {% set other = room_rows|selectattr('status','in',['reserved','maintenance'])|list %}
+  {% set free = room_rows|selectattr('status','equalto','available')|list %}
+  {% if attention %}<section class="mb-6"><h3 class="room-section-title">Needs attention <span class="room-section-count">{{ attention|length }}</span></h3><div class="room-grid">{% for row in attention %}{{ room_card(row) }}{% endfor %}</div></section>{% endif %}
+  {% if other %}<section class="mb-6"><h3 class="room-section-title">Reserved &amp; maintenance <span class="room-section-count">{{ other|length }}</span></h3><div class="room-grid">{% for row in other %}{{ room_card(row) }}{% endfor %}</div></section>{% endif %}
+  {% if free %}<section><h3 class="room-section-title">Available <span class="room-section-count">{{ free|length }}</span></h3><div class="room-grid">{% for row in free %}{{ room_card(row) }}{% endfor %}</div></section>{% endif %}
+  {% if not room_rows %}<div class="empty-state rounded-xl border border-dashed border-slate-300 bg-white py-14"><span class="text-3xl text-slate-300">▦</span><p class="mt-2 text-sm font-semibold text-slate-700">No rooms match these filters</p><p class="mt-1 text-xs text-slate-500">Try another status or search term.</p></div>{% endif %}
+{% else %}
+  <section class="panel !p-0"><div class="table-scroll"><table class="data-table soft-table"><thead><tr><th>Room</th><th>Type</th><th>Status</th><th>Guest</th><th>Check-in / Expected</th><th>Check-out</th><th>Balance / Rate</th><th class="text-right">Actions</th></tr></thead><tbody>
+  {% for row in room_rows %}{% set room=row.room %}{% set guest=row.guest %}<tr><td class="font-bold">{{ room.number }}</td><td>{{ room.type }}</td><td><span class="room-status-badge room-status-{{ row.status }}">{{ 'Needs cleaning' if row.status=='dirty' else row.status|title }}</span></td><td>{{ guest.name if guest else '—' }}</td><td>{{ local_datetime(row.stay.check_in if row.stay else row.reservation.check_in if row.reservation else none,'%d %b · %H:%M') }}</td><td>{{ local_datetime((row.stay.expected_checkout or row.stay.check_out) if row.stay else row.reservation.check_out if row.reservation else none,'%d %b · %H:%M') }}</td><td class="{% if row.status=='occupied' and row.balance %}soft-amber-text font-semibold{% endif %}">{{ money(row.balance if row.status=='occupied' else room.nightly_rate) }}</td><td class="text-right whitespace-nowrap">
+    {% if row.status=='occupied' %}
+      <button hx-get="/rooms/{{ room.id }}/checkout" hx-target="#modal-root" hx-swap="innerHTML" class="btn-primary !px-3 !py-1.5 !text-xs">Checkout</button>
+    {% elif row.status=='dirty' %}
+      <form class="inline" hx-post="/rooms/{{ room.id }}/clean" hx-target="this" hx-swap="none"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn-primary !px-3 !py-1.5 !text-xs">Mark clean</button></form>
+    {% elif row.status in ('available','reserved') %}
+      <button hx-get="/rooms/{{ room.id }}/checkin" hx-target="#modal-root" hx-swap="innerHTML" class="btn-primary !px-3 !py-1.5 !text-xs">Check in</button>
+    {% endif %}
+    <details class="row-menu inline-block align-middle"><summary aria-label="More actions">⋯</summary><div class="row-menu-panel">
+      {% if row.status=='occupied' %}<button hx-get="/rooms/{{ room.id }}/extend" hx-target="#modal-root" hx-swap="innerHTML">Extend stay</button><button hx-get="/rooms/{{ room.id }}/charge" hx-target="#modal-root" hx-swap="innerHTML">Add charge</button>{% endif %}
+      <button hx-get="/rooms/{{ room.id }}/history" hx-target="#modal-root" hx-swap="innerHTML">Stay history</button>
+      <a href="/invoices?room_id={{ room.id }}">Open folio</a>
+      {% if current_user.role == 'admin' %}<button hx-get="/rooms/{{ room.id }}/rate" hx-target="#modal-root" hx-swap="innerHTML">Set rate</button>{% endif %}
+    </div></details>
+    </td></tr>
+  {% else %}<tr><td colspan="8" class="py-10 text-center text-sm text-slate-500">No rooms match these filters.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endif %}

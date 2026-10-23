@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% set active_page = 'dashboard' %}
+{% block title %}Sales details{% endblock %}
+{% block content %}
+<div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <p class="text-xs font-bold uppercase tracking-[.15em] text-teal-700">Dashboard / Sales</p>
+    <h1 class="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Sales details</h1>
+    <p class="mt-1 text-sm text-slate-500">{{ period_label }} · {{ period_start }} to {{ period_end }} · {{ timezone }}</p>
+  </div>
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <a href="/dashboard" class="text-sm font-semibold text-slate-600 hover:text-teal-800">← Dashboard</a>
+    <form method="get" action="/dashboard/sales" class="flex flex-wrap items-center gap-2">
+      <label for="sales-period" class="text-sm font-semibold text-slate-600">Period</label>
+      <select id="sales-period" name="period" class="form-input !w-auto !max-w-[170px] !py-2" onchange="this.form.submit()">
+        {% for key, option in period_options.items() %}
+        <option value="{{ key }}" {% if key == period %}selected{% endif %}>{{ option[0] }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn-secondary !py-2" type="submit">Apply</button>
+    </form>
+  </div>
+</div>
+
+<section class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  <article class="metric-card"><p class="metric-label">Gross sales</p><p class="metric-value">{{ money(metrics.gross_sales) }}</p><p class="metric-note">Issued invoices in this period</p></article>
+  <article class="metric-card"><p class="metric-label">Room revenue</p><p class="metric-value">{{ money(metrics.room_revenue) }}</p><p class="metric-note">After line and invoice discounts</p></article>
+  <article class="metric-card"><p class="metric-label">Collections</p><p class="metric-value">{{ money(metrics.collected) }}</p><p class="metric-note">Payments recorded in this period</p></article>
+  <article class="metric-card"><p class="metric-label">Invoices</p><p class="metric-value">{{ "{:,.0f}".format(metrics.transactions) }}</p><p class="metric-note">Issued, non-void invoices</p></article>
+</section>
+
+<section class="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-[1.45fr_1fr]">
+  <article class="panel min-w-0">
+    <div class="panel-heading"><div><h2 class="panel-title">Sales and collections</h2><p class="panel-subtitle">Grouped by {{ 'day' if period in ('today', '7') else 'week' }}</p></div></div>
+    {% if trend %}
+    <div class="space-y-4">
+      {% for point in trend %}
+      <div>
+        <div class="mb-1 flex justify-between gap-3 text-xs"><span class="font-semibold text-slate-700">{{ point.label }}</span><span class="text-slate-500">Sales {{ money(point.sales) }} · Collected {{ money(point.collections) }}</span></div>
+        <div class="space-y-1">
+          <div class="h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-teal-700" style="width: {{ point.sales_width }}%"></div></div>
+          <div class="h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-amber-500" style="width: {{ point.collections_width }}%"></div></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="mt-4 flex gap-5 border-t border-slate-100 pt-3 text-xs text-slate-500"><span><i class="mr-1 inline-block h-2 w-2 rounded-full bg-teal-700"></i>Sales</span><span><i class="mr-1 inline-block h-2 w-2 rounded-full bg-amber-500"></i>Collections</span></div>
+    {% else %}<div class="empty-state"><p class="font-semibold text-slate-700">No sales in this period</p><p class="mt-1 text-sm text-slate-500">Sales and collection activity will appear here when recorded.</p></div>{% endif %}
+  </article>
+
+  <article class="panel min-w-0">
+    <div class="panel-heading"><div><h2 class="panel-title">Room performance</h2><p class="panel-subtitle">{{ room_performance.capacity_status }}</p></div></div>
+    <div class="grid grid-cols-3 gap-2">
+      <div class="rounded-lg bg-slate-50 p-3"><p class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Occupancy</p><p class="mt-1 text-lg font-bold text-slate-900">{% if room_performance.occupancy_rate is not none %}{{ room_performance.occupancy_rate }}%{% else %}—{% endif %}</p></div>
+      <div class="rounded-lg bg-slate-50 p-3"><p class="text-[10px] font-bold uppercase tracking-wide text-slate-500">ADR</p><p class="mt-1 text-sm font-bold text-slate-900">{% if room_performance.adr is not none %}{{ money(room_performance.adr) }}{% else %}—{% endif %}</p></div>
+      <div class="rounded-lg bg-slate-50 p-3"><p class="text-[10px] font-bold uppercase tracking-wide text-slate-500">RevPAR</p><p class="mt-1 text-sm font-bold text-slate-900">{% if room_performance.revpar is not none %}{{ money(room_performance.revpar) }}{% else %}—{% endif %}</p></div>
+    </div>
+    <p class="mt-3 text-xs text-slate-500">{{ room_performance.occupied_room_nights }} occupied room-night(s) out of {{ room_performance.capacity }} available capacity-nights. Historical room maintenance snapshots are not stored, so multi-day capacity uses current active inventory.</p>
+  </article>
+</section>
+
+<section class="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
+  {% set chart_groups = [('Item sales by category (before tax)', categories), ('Room line sales by room', rooms), ('Payments by method', methods)] %}
+  {% for title, points in chart_groups %}
+  <article class="panel min-w-0">
+    <div class="panel-heading"><div><h2 class="panel-title">{{ title }}</h2><p class="panel-subtitle">Highest values first</p></div></div>
+    {% if points %}
+    <div class="space-y-3">
+      {% for point in points %}
+      <div>
+        <div class="mb-1 flex justify-between gap-3 text-sm"><span class="truncate font-medium text-slate-700">{{ point.label }}</span><span class="shrink-0 font-semibold text-slate-800">{{ money(point.value) }}</span></div>
+        <div class="h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-sky-700" style="width: {{ point.width }}%"></div></div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<p class="py-5 text-center text-sm text-slate-500">No records for this period.</p>{% endif %}
+  </article>
+  {% endfor %}
+</section>
+
+<section class="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-[1.4fr_1fr]">
+  <article class="panel min-w-0">
+    <div class="panel-heading"><div><h2 class="panel-title">Review findings</h2><p class="panel-subtitle">{{ data_quality.finding_count }} record(s) flagged across {{ data_quality.findings|length }} check(s) · guest contact details are excluded</p></div><span class="rounded-lg px-3 py-2 text-sm font-bold {% if data_quality.finding_count %}bg-amber-50 text-amber-800{% else %}bg-teal-50 text-teal-800{% endif %}">{{ 'Review' if data_quality.finding_count else 'Clear' }}</span></div>
+    {% if insights %}
+    <div class="divide-y divide-slate-100">
+      {% for insight in insights %}
+      <div class="py-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide {% if insight.severity == 'high' %}bg-red-50 text-red-700{% elif insight.severity == 'medium' %}bg-amber-50 text-amber-800{% elif insight.severity == 'review' %}bg-orange-50 text-orange-800{% else %}bg-slate-100 text-slate-600{% endif %}">{{ insight.severity }}</span>
+          <h3 class="text-sm font-bold text-slate-800">{{ insight.title }}</h3>
+        </div>
+        <p class="mt-1 text-sm text-slate-600">{{ insight.explanation }}</p>
+        {% if insight.source_records %}
+        <p class="mt-1 text-xs text-slate-500">Records:
+          {% for record in insight.source_records[:4] %}<span class="mr-2">{{ record.table }} #{{ record.id }}{% if record.invoice_no %} · {{ record.invoice_no }}{% endif %}</span>{% endfor %}
+        </p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty-state"><span class="text-2xl text-teal-600">✓</span><p class="mt-2 font-semibold text-slate-700">No review findings</p><p class="mt-1 text-sm text-slate-500">No data-quality issues or period changes were identified.</p></div>{% endif %}
+  </article>
+  <article class="panel min-w-0">
+    <div class="panel-heading"><div><h2 class="panel-title">Forecast availability</h2><p class="panel-subtitle">History threshold and current support</p></div></div>
+    <p class="text-sm leading-6 text-slate-600">{{ forecast.reason }}</p>
+    <div class="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-sm"><span class="text-slate-500">Distinct sales dates</span><strong class="text-slate-800">{{ forecast.training_business_days }} / {{ forecast.minimum_business_days }}</strong></div>
+    <p class="mt-3 text-xs text-slate-500">Forecasts are not shown until the baseline is supported and back-tested.</p>
+  </article>
+</section>
+{% endblock %}

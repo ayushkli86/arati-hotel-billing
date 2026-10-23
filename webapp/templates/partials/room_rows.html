@@ -1,0 +1,20 @@
+{% for row in rooms %}{% set room = row.room %}<tr>
+  <td class="font-bold text-slate-900">{{ room.number }}</td>
+  <td class="text-slate-600">{{ room.type }}</td>
+  <td><span class="status-badge status-{{ room.status }}">{{ room.status|replace('_',' ')|title }}{% if room.housekeeping_status == 'dirty' and room.status == 'occupied' %} · Dirty{% endif %}</span></td>
+  <td>{{ row.guest or '—' }}</td>
+  <td class="font-medium text-slate-700">{% if row.checkout %}{{ local_datetime(row.checkout) }}{% else %}<span class="text-slate-400">—</span>{% endif %}</td>
+  <td class="num-tabular text-right font-semibold {% if row.balance %}soft-amber-text{% else %}text-slate-400{% endif %}">{% if row.balance %}{{ money(row.balance) }}{% else %}—{% endif %}</td>
+  <td class="text-right">
+    <button type="button" class="row-actions-btn" data-row-menu-btn aria-haspopup="menu" aria-label="Quick actions for room {{ room.number }}">⋯</button>
+    <div class="row-actions-menu" data-row-menu role="menu" hidden>
+      {% if room.status == 'occupied' and row.checkout %}
+      <button type="button" class="row-actions-item" role="menuitem" hx-get="/rooms/{{ room.id }}/checkout" hx-target="#modal-root" hx-swap="innerHTML">Checkout</button>
+      {% elif room.status in ['available', 'reserved'] %}
+      <button type="button" class="row-actions-item" role="menuitem" hx-get="/rooms/{{ room.id }}/checkin" hx-target="#modal-root" hx-swap="innerHTML">Check in</button>
+      {% endif %}
+      <button type="button" class="row-actions-item" role="menuitem" hx-get="/rooms/{{ room.id }}/history" hx-target="#modal-root" hx-swap="innerHTML">Stay history</button>
+      <a href="/rooms" class="row-actions-item" role="menuitem">Open room board</a>
+    </div>
+  </td>
+</tr>{% else %}<tr><td colspan="7" class="py-10 text-center text-sm text-slate-500">No rooms need attention right now.</td></tr>{% endfor %}

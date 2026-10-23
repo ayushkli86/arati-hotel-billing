@@ -1,11 +1,16 @@
 .venv/
+.windows-build-venv/
+.windows-pyinstaller-dist/
+.windows-pyinstaller-work/
 __pycache__/
 *.pyc
 .pytest_cache/
 arati.db
+webapp/data/
 *.db-shm
 *.db-wal
 invoices/
+receipts/
 /*.csv
 *.log
 dist/
@@ -14,3 +19,4 @@ dist/
 *.tar.gz.sha256
 backups/
 arati/*.csv
+.run/

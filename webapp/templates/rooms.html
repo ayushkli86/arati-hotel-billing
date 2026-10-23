@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% set active_page = 'rooms' %}
+{% block title %}Room Board{% endblock %}
+{% block header_title %}Room Board · {{ business_date }}{% endblock %}
+{% block content %}
+<style>#quick-action-bar{display:none!important}</style>
+<div
+  x-data="roomBoard()"
+  @room-board-refresh.window="refresh()"
+  @room-modal-close.window="document.getElementById('modal-root').innerHTML=''"
+  class="room-board space-y-5"
+>
+  <h1 class="sr-only">Room Board</h1>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <p class="eyebrow">FRONT DESK <span class="mx-1 text-slate-300">/</span> ROOM OPERATIONS</p>
+      <p class="page-subtitle">{{ room_total }} rooms in the inventory</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a href="/reservations" class="btn-secondary">Reservations</a>
+      {% if current_user.role == 'admin' %}<a href="/rooms/inventory" class="btn-secondary">Manage inventory</a>{% endif %}
+      <a href="/billing/create" class="btn-primary">＋ New Invoice</a>
+    </div>
+  </div>
+
+  <div id="room-summary-region">{% include "partials/room_summary.html" %}</div>
+
+  <section class="room-toolbar" aria-label="Room board controls">
+    <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter rooms">
+        <span class="mr-1 text-xs font-semibold text-slate-500">Show</span>
+        <button type="button" @click="selectAttention()" :aria-pressed="filters.includes('attention').toString()" :class="filters.includes('attention')?'filter-chip-active':''" class="filter-chip">Needs attention</button>
+        <button type="button" @click="selectAll()" :aria-pressed="filters.includes('all').toString()" :class="filters.includes('all')?'filter-chip-active':''" class="filter-chip">All</button>
+        <template x-for="filter in filterOptions" :key="filter.id">
+          <button
+            type="button"
+            @click="toggle(filter.id)"
+            :aria-pressed="filters.includes(filter.id).toString()"
+            :class="filters.includes(filter.id)?'filter-chip-active':''"
+            class="filter-chip"
+            x-text="filter.label"
+          ></button>
+        </template>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <label class="relative min-w-[220px] flex-1">
+          <span class="sr-only">Search rooms or guests</span>
+          <span aria-hidden="true" class="absolute left-3 top-2.5 text-slate-400">⌕</span>
+          <input x-model="q" @input.debounce.250ms="refresh()" class="form-input !py-2 !pl-9 text-sm" placeholder="Room or guest">
+        </label>
+        <div class="view-toggle" role="group" aria-label="Room layout">
+          <button type="button" @click="setView('grid')" :aria-pressed="(view==='grid').toString()" :class="view==='grid'?'on':''">▦ Cards</button>
+          <button type="button" @click="setView('list')" :aria-pressed="(view==='list').toString()" :class="view==='list'?'on':''">☷ List</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="room-board-content">{% include "partials/room_board_content.html" %}</div>
+</div>
+<script>
+function roomBoard() {
+  return {
+    filters: ['attention'],
+    filterOptions: [
+      { id: 'occupied', label: 'Occupied' },
+      { id: 'dirty', label: 'Dirty' },
+      { id: 'available', label: 'Available' },
+      { id: 'reserved', label: 'Reserved' },
+      { id: 'maintenance', label: 'Maintenance' }
+    ],
+    q: '',
+    view: 'grid',
+    selectAttention() {
+      this.filters = ['attention'];
+      this.refresh();
+    },
+    selectAll() {
+      this.filters = ['all'];
+      this.refresh();
+    },
+    toggle(id) {
+      if (this.filters.includes('all') || this.filters.includes('attention')) {
+        this.filters = [id];
+      } else if (this.filters.includes(id)) {
+        this.filters = this.filters.filter(value => value !== id);
+      } else {
+        this.filters = [...this.filters, id];
+      }
+      this.filters = this.filters.length ? this.filters : ['attention'];
+      this.refresh();
+    },
+    setView(value) {
+      this.view = value;
+      this.refresh();
+    },
+    refresh() {
+      if (!window.htmx) return;
+      const filters = encodeURIComponent(this.filters.join(','));
+      const query = encodeURIComponent(this.q);
+      htmx.ajax('GET', `/rooms/board?filters=${filters}&q=${query}&view=${this.view}`, {
+        target: '#room-board-content',
+        swap: 'innerHTML'
+      });
+      htmx.ajax('GET', '/rooms/board/summary', {
+        target: '#room-summary-region',
+        swap: 'innerHTML'
+      });
+    }
+  };
+}
+</script>
+{% endblock %}

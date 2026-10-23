@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% set active_page = 'reports' %}
+{% block title %}Excel Analysis{% endblock %}
+{% block header_title %}Excel Analysis{% endblock %}
+{% block content %}
+<div class="space-y-4">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">Insights · Imported data</p>
+      <h1 class="page-title">Excel analysis</h1>
+      {% if analysis %}
+      <p class="page-subtitle">{{ analysis.filename }} · Sheet “{{ analysis.sheet }}” · Analysed {{ analysis.generated_at }}</p>
+      {% else %}
+      <p class="page-subtitle">Upload a workbook to summarise totals, trends, and data quality.</p>
+      {% endif %}
+    </div>
+    <div class="flex flex-wrap gap-2 no-print">
+      {% if analysis %}<button onclick="window.print()" class="btn-secondary">Print / Save PDF</button>{% endif %}
+      <a href="/reports" class="btn-secondary">Back to reports</a>
+    </div>
+  </div>
+
+  <section class="panel no-print">
+    <div class="panel-heading">
+      <div><h2 class="panel-title">Import a workbook</h2><p class="panel-subtitle">The first non-empty sheet is analysed. Numbers stored as text are included in totals.</p></div>
+      <span class="badge-slate">.xlsx / .xlsm</span>
+    </div>
+    {% if error %}
+    <div role="alert" class="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/reports/excel" enctype="multipart/form-data" class="flex flex-wrap items-end gap-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="min-w-[240px] flex-1"><span class="field-label">Excel file</span><input required type="file" name="file" accept=".xlsx,.xlsm" class="form-input !py-2"></label>
+      <button class="btn-primary">Analyse Excel</button>
+    </form>
+    <p class="mt-2 text-xs text-slate-500">Up to 10 MB and {{ 15000 }} rows. Files are analysed in memory and not stored.</p>
+  </section>
+
+  {% if analysis %}
+  <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <article class="metric-card-hero">
+      <p class="section-label">Rows analysed</p>
+      <p class="mt-2 text-2xl font-extrabold text-teal-700">{{ analysis.row_count }}</p>
+      <p class="mt-1 text-[10px] leading-4 text-slate-500">Non-empty data rows after the header</p>
+    </article>
+    {% if analysis.primary_total %}
+    <article class="metric-card-hero">
+      <p class="section-label">Total · {{ analysis.primary_total.name }}</p>
+      <p class="mt-2 text-2xl font-extrabold text-teal-700">{{ analysis.primary_total.total }}</p>
+      <p class="mt-1 text-[10px] leading-4 text-slate-500">Sum of the primary amount column</p>
+    </article>
+    {% elif analysis.date_total %}
+    <article class="metric-card-hero">
+      <p class="section-label">Date range</p>
+      <p class="mt-2 text-xl font-extrabold text-teal-700">{{ analysis.date_total }}</p>
+      <p class="mt-1 text-[10px] leading-4 text-slate-500">Earliest to latest dated value</p>
+    </article>
+    {% else %}
+    <article class="metric-card-hero">
+      <p class="section-label">Columns</p>
+      <p class="mt-2 text-2xl font-extrabold text-teal-700">{{ analysis.column_count }}</p>
+      <p class="mt-1 text-[10px] leading-4 text-slate-500">Detected after header normalisation</p>
+    </article>
+    {% endif %}
+    <article class="metric-card">
+      <p class="section-label">Columns</p>
+      <p class="mt-2 text-2xl font-extrabold text-slate-900">{{ analysis.column_count }}</p>
+      <p class="mt-1 text-[10px] leading-4 text-slate-500">{{ analysis.numeric_count }} numeric · {{ analysis.date_total or 'no dates' }}</p>
+    </article>
+    <article class="metric-card">
+      <p class="section-label">Sheets</p>
+      <p class="mt-2 text-2xl font-extrabold text-slate-900">{{ analysis.sheets|length }}</p>
+      <p class="mt-1 truncate text-[10px] leading-4 text-slate-500" title="{{ analysis.sheets|join(', ') }}">{{ analysis.sheets|join(', ') }}</p>
+    </article>
+  </section>
+
+  {% if analysis.truncated %}
+  <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">Large file: only the first 15,000 rows were analysed.</div>
+  {% endif %}
+
+  {% if analysis.trend %}
+  <section class="panel">
+    <div class="panel-heading"><h2 class="panel-title">{{ analysis.trend.name }}</h2><span class="badge-slate">{{ analysis.trend.points|length }} buckets</span></div>
+    <div class="space-y-3">
+      {% for point in analysis.trend.points %}
+      <div class="grid grid-cols-[minmax(82px,120px)_1fr_auto] items-center gap-2 text-xs">
+        <span class="truncate font-medium text-slate-600" title="{{ point.label }}">{{ point.label }}</span>
+        <span class="h-2.5 overflow-hidden rounded-full bg-slate-100"><span class="block h-full rounded-full bg-gradient-to-r from-teal-500 to-teal-700" style="width:{{ point.width }}%"></span></span>
+        <span class="min-w-24 text-right font-semibold tabular-nums text-slate-700">{{ point.display }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if analysis.numeric_columns %}
+  <section class="panel !p-0">
+    <div class="border-b border-slate-100 p-5"><h2 class="panel-title">Numeric summary</h2><p class="panel-subtitle">Every detected numeric column, including amounts stored as text.</p></div>
+    <div class="table-scroll">
+      <table class="data-table soft-table min-w-full">
+        <thead><tr><th>Column</th><th>Type</th><th class="text-right">Values</th><th class="text-right">Sum</th><th class="text-right">Average</th><th class="text-right">Minimum</th><th class="text-right">Maximum</th></tr></thead>
+        <tbody>
+          {% for column in analysis.numeric_columns %}
+          <tr>
+            <td class="font-semibold text-slate-800">{{ column.name }}</td>
+            <td>{% if column.money %}<span class="badge-teal">Amount</span>{% else %}<span class="badge-slate">Number</span>{% endif %}</td>
+            <td class="text-right tabular-nums">{{ column.count }}</td>
+            <td class="text-right font-semibold tabular-nums">{{ column.sum }}</td>
+            <td class="text-right tabular-nums">{{ column.mean }}</td>
+            <td class="text-right tabular-nums">{{ column.min }}</td>
+            <td class="text-right tabular-nums">{{ column.max }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if analysis.breakdowns %}
+  <section class="grid gap-4 xl:grid-cols-2">
+    {% for breakdown in analysis.breakdowns %}
+    <article class="panel !p-0 min-w-0">
+      <div class="border-b border-slate-100 p-5"><h2 class="panel-title">{{ breakdown.name }}</h2><p class="panel-subtitle">Top groups by {% if breakdown.has_total %}{{ 'amount' if breakdown.money else 'value' }}{% else %}row count{% endif %}.</p></div>
+      <div class="table-scroll">
+        <table class="data-table soft-table min-w-full">
+          <thead><tr><th>Group</th><th class="text-right">Rows</th>{% if breakdown.has_total %}<th class="text-right">Total</th><th class="text-right">Share</th>{% endif %}</tr></thead>
+          <tbody>
+            {% for row in breakdown.rows %}
+            <tr>
+              <td class="font-semibold text-slate-800">{{ row.label }}</td>
+              <td class="text-right tabular-nums">{{ row.count }}</td>
+              {% if breakdown.has_total %}<td class="text-right font-semibold tabular-nums">{{ row.total }}</td><td class="text-right tabular-nums">{{ row.share }}%</td>{% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section class="panel">
+    <div class="panel-heading"><h2 class="panel-title">Data check</h2><span class="badge-slate">{{ analysis.findings|length }} finding(s)</span></div>
+    <ul class="space-y-2">
+      {% for finding in analysis.findings %}
+      <li class="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5 text-sm text-slate-700">
+        <span class="badge-{{ 'rose' if finding.level == 'high' else 'amber' if finding.level == 'medium' else 'slate' if finding.level == 'review' else 'teal' }}">{{ finding.level|title }}</span>
+        <span>{{ finding.text }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="panel !p-0">
+    <div class="border-b border-slate-100 p-5">
+      <h2 class="panel-title">Data preview</h2>
+      <p class="panel-subtitle">First {{ analysis.preview.rows_shown }} of {{ analysis.preview.rows_total }} rows · {{ analysis.preview.columns_shown }} of {{ analysis.preview.columns_total }} columns.</p>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table soft-table min-w-full">
+        <thead><tr>{% for header in analysis.preview.headers %}<th>{{ header }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in analysis.preview.rows %}
+          <tr>{% for value in row %}<td class="max-w-[240px] truncate" title="{{ value }}">{{ value }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{{ invoice.invoice_number }}</title>
+<style>
+@page { size: {{ printer_config.paper }}mm auto; margin: {{ printer_config.margin_mm }}mm; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0;
+  color: #000;
+  background: #fff;
+  font-family: 'AratiNepali', 'Noto Sans Devanagari', 'DejaVu Sans', sans-serif;
+  font-size: 8pt;
+  line-height: 1.25;
+}
+.copy { page-break-after: always; }
+.copy:last-child { page-break-after: auto; }
+.toolbar {
+  max-width: {{ printer_config.paper }}mm;
+  margin: 12px auto 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: Inter, Arial, sans-serif;
+  font-size: 12px;
+}
+.toolbar a, .toolbar button {
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: #0f766e;
+  color: #fff;
+  text-decoration: none;
+  cursor: pointer;
+}
+.toolbar .secondary { background: #475569; }
+@media screen {
+  body { background: #f2f2f2; padding: 12px; }
+  .copy {
+    background: #fff;
+    width: {{ printer_config.paper }}mm;
+    margin: 0 auto 12px;
+    padding: 4mm;
+    box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  }
+  .toolbar { width: {{ printer_config.paper }}mm; }
+}
+@media print {
+  body { background: #fff; padding: 0; }
+  .copy { box-shadow: none; padding: 0; }
+  .toolbar { display: none !important; }
+}
+.head { text-align: center; font-size: 9pt; font-weight: bold; margin: 1px 0; }
+.head.small { font-size: 7pt; font-weight: normal; }
+.head.title { font-size: 9pt; font-weight: bold; text-transform: uppercase; }
+.head.copy-label { font-size: 7pt; font-weight: normal; }
+.rule { border-top: 0.5pt dashed #000; margin: 3px 0; }
+.row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 8pt;
+  font-weight: normal;
+  margin: 1px 0;
+}
+.row.bold { font-weight: bold; }
+.desc { font-size: 8pt; margin: 2px 0 0; }
+.line-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 8pt;
+  margin: 1px 0;
+}
+.words { text-align: center; font-size: 6pt; margin: 1px 0; }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <button onclick="window.print()">Print Receipt</button>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="/billing/invoices/{{ invoice.id }}/receipt.pdf">Receipt PDF</a>
+    <a class="secondary" href="/invoices">Back to invoices</a>
+  </div>
+</div>
+{% for _ in range(printer_config.copies) %}
+<section class="copy">
+{% if printer_config.show_header %}
+  {% if printer_config.show_logo and printer_logo_src %}
+<div style="text-align:center;"><img src="{{ printer_logo_src }}" style="max-height:28px;max-width:60px;"></div>
+  {% endif %}
+<div class="head" style="font-size:11pt;">{{ hotel_settings.get('hotel_name','Arati Hotel') }}</div>
+  {% if hotel_settings.get('hotel_address1') %}<div class="head small">{{ hotel_settings.get('hotel_address1') }}</div>{% endif %}
+  {% if hotel_settings.get('hotel_address2') %}<div class="head small">{{ hotel_settings.get('hotel_address2') }}</div>{% endif %}
+  {% if printer_config.show_contact and hotel_settings.get('hotel_phone') %}<div class="head small">Tel: {{ hotel_settings.get('hotel_phone') }}</div>{% endif %}
+  {% if printer_config.show_tax and hotel_settings.get('hotel_pan') %}<div class="head small">PAN/VAT: {{ hotel_settings.get('hotel_pan') }}</div>{% endif %}
+<div class="rule"></div>
+<div class="head title">{{ receipt_title }}</div>
+<div class="head copy-label">{{ copy_label }}</div>
+<div class="rule"></div>
+{% endif %}
+
+<div class="row"><span>Bill No</span><span>{{ invoice.invoice_number }}</span></div>
+<div class="row"><span>Date</span><span>{{ receipt_date }}</span></div>
+<div class="row"><span>Time</span><span>{{ receipt_time }}</span></div>
+{% if invoice.guest_name %}<div class="row"><span>Guest</span><span>{{ invoice.guest_name }}</span></div>{% endif %}
+{% if invoice.guest_phone %}<div class="row"><span>Phone</span><span>{{ invoice.guest_phone }}</span></div>{% endif %}
+{% if invoice.room_number %}<div class="row"><span>Room</span><span>{{ invoice.room_number }} · {{ invoice.nights or 0 }}N</span></div>{% endif %}
+{% if invoice.prepared_by %}<div class="row"><span>Cashier</span><span>{{ invoice.prepared_by }}</span></div>{% endif %}
+<div class="rule"></div>
+
+{% for item in invoice.items %}
+<div class="desc">{{ item.description }}</div>
+<div class="line-row"><span>&nbsp;&nbsp;{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} × {{ receipt_money(item.rate) }}</span><span>{{ receipt_money(item.amount) }}</span></div>
+{% endfor %}
+<div class="rule"></div>
+
+<div class="row"><span>Subtotal</span><span>{{ receipt_money(invoice.subtotal) }}</span></div>
+{% if invoice.discount_amount and invoice.discount_amount > 0 %}<div class="row"><span>Discount</span><span>-{{ receipt_money(invoice.discount_amount) }}</span></div>{% endif %}
+{% if printer_config.show_tax %}
+  {% if invoice.bill_type != 'supply' and invoice.vat_rate and invoice.vat_rate > 0 %}
+<div class="row"><span>VAT {{ invoice.vat_rate }}%</span><span>{{ receipt_money(invoice.vat_amount) }}</span></div>
+  {% else %}
+<div class="row"><span>VAT</span><span>Not applicable</span></div>
+  {% endif %}
+{% endif %}
+{% if invoice.service_charge and invoice.service_charge > 0 %}<div class="row"><span>Service charge</span><span>{{ receipt_money(invoice.service_charge) }}</span></div>{% endif %}
+<div class="row bold"><span>TOTAL</span><span>{{ hotel_settings.get('currency_symbol','रु.') }} {{ receipt_money(invoice.total) }}</span></div>
+<div class="row"><span>Paid</span><span>{{ receipt_money(invoice.paid_amount) }}</span></div>
+{% if invoice.balance and invoice.balance > 0 %}<div class="row bold"><span>Balance</span><span>{{ receipt_money(invoice.balance) }}</span></div>{% endif %}
+<div class="row"><span>Payment</span><span>{{ invoice.payment_method or '—' }}</span></div>
+<div class="row"><span>Status</span><span>{{ status_text }}</span></div>
+<div class="rule"></div>
+
+{% if printer_config.show_footer %}
+<div class="words">{{ amount_words }}</div>
+{% if invoice.payment_terms %}<div class="words">{{ invoice.payment_terms }}</div>{% endif %}
+<div class="head small">{{ hotel_settings.get('footer_note') or 'Thank you!' }}</div>
+<div class="head small">Computer generated invoice</div>
+{% endif %}
+</section>
+{% endfor %}
+{% if auto_print %}
+<script>window.addEventListener('load', function(){ window.print(); });</script>
+{% endif %}
+</body>
+</html>
