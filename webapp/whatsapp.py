@@ -370,6 +370,8 @@ def _create_order(db: Session, conversation: WhatsAppConversation, state: dict) 
         notes=(state.get("notes") or "")[:2000],
         total=Decimal("0.00"),
         conversation_id=conversation.id,
+        # Day-wise ledger: the local business day the order came in.
+        business_date=local_now().date().isoformat(),
         created_at=now,
         updated_at=now,
     )

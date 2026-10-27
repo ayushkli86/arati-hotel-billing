@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
+
 <meta charset="utf-8">
-<title>{{ invoice.invoice_number }}</title>
+<title>{{ invoice.invoice_number }} · BilledIn</title>
 <style>
 @page { size: {{ printer_config.paper }}mm auto; margin: {{ printer_config.margin_mm }}mm; }
 * { box-sizing: border-box; }
@@ -11,7 +13,7 @@ body {
   padding: 0;
   color: #000;
   background: #fff;
-  font-family: 'AratiNepali', 'Noto Sans Devanagari', 'DejaVu Sans', sans-serif;
+  font-family: 'Noto Sans Devanagari', Inter, Arial, sans-serif;
   font-size: 8pt;
   line-height: 1.25;
 }
@@ -25,27 +27,27 @@ body {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  font-family: Inter, Arial, sans-serif;
+  font-family: Inter, 'Noto Sans Devanagari', Arial, sans-serif;
   font-size: 12px;
 }
 .toolbar a, .toolbar button {
   border: 0;
   border-radius: 6px;
   padding: 8px 12px;
-  background: #0f766e;
+  background: #1b3a2a;
   color: #fff;
   text-decoration: none;
   cursor: pointer;
 }
-.toolbar .secondary { background: #475569; }
+.toolbar .secondary { background: #3f5b4c; }
 @media screen {
-  body { background: #f2f2f2; padding: 12px; }
+  body { background: #efe7d2; padding: 12px; }
   .copy {
     background: #fff;
     width: {{ printer_config.paper }}mm;
     margin: 0 auto 12px;
     padding: 4mm;
-    box-shadow: 0 1px 4px rgba(0,0,0,.25);
+    box-shadow: 0 2px 6px rgba(27,58,42,.28);
   }
   .toolbar { width: {{ printer_config.paper }}mm; }
 }
@@ -79,7 +81,7 @@ body {
 </head>
 <body>
 <div class="toolbar">
-  <button onclick="window.print()">Print Receipt</button>
+  <button type="button" onclick="window.print()" style="background:linear-gradient(135deg,#f0c75e,#d4a017);color:#1b3a2a;font-weight:600">Print Receipt</button>
   <div style="display:flex;gap:8px;flex-wrap:wrap;">
     <a href="/billing/invoices/{{ invoice.id }}/receipt.pdf">Receipt PDF</a>
     <a class="secondary" href="/invoices">Back to invoices</a>

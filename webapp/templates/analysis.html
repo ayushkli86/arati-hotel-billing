@@ -3,54 +3,229 @@
 {% block title %}Sales Analysis{% endblock %}
 {% block header_title %}Sales Analysis{% endblock %}
 {% block content %}
-<div class="space-y-4">
-  <div class="page-heading"><div><p class="eyebrow">Insights · Trends</p><h1 class="page-title">Sales Analysis</h1><p class="page-subtitle">Recorded invoice, payment, refund, and room data — no forecasted values</p></div><span class="stat-pill">{{ start }} → {{ end }}</span></div>
+
+{% set icon_by_key = {
+  'gross_sales': 'chart-bar', 'net_sales': 'currency-circle-dollar',
+  'transactions': 'receipt', 'average_invoice': 'receipt', 'collected': 'wallet',
+  'collection_ratio': 'coins', 'discount_ratio': 'tag', 'refunds': 'arrow-u-up-left',
+  'outstanding': 'clock-countdown', 'occupancy_rate': 'bed',
+  'occupied_end_of_day': 'bed', 'occupied_across_day': 'door-open',
+  'room_revenue': 'currency-circle-dollar', 'average_room_revenue': 'currency-circle-dollar'
+} %}
+
+{% macro metric_value(metric) -%}
+{% if metric.unit == 'percent' %}{{ '%.2f'|format(metric.value) }}%{% elif metric.unit == 'count' %}{{ metric.value|int }}{% else %}{{ money(metric.value) }}{% endif %}
+{%- endmacro %}
+
+{% macro delta(row) -%}
+{% if row and row.change is not none %}<span class="an-delta {{ 'an-up' if row.change > 0 else 'an-down' if row.change < 0 else 'an-flat' }}" title="Change against the comparison period"><i class="ph ph-{{ 'trend-up' if row.change > 0 else 'trend-down' if row.change < 0 else 'minus' }}"></i>{{ '%+.2f'|format(row.change) }}%</span>{% elif row and row.change_status == 'new_activity' %}<span class="an-delta an-up" title="No activity in the comparison period"><i class="ph ph-trend-up"></i>New</span>{% elif row %}<span class="an-delta an-flat" title="No activity in either period"><i class="ph ph-minus"></i>Flat</span>{% endif %}
+{%- endmacro %}
+
+{% macro bar_list(points, icon) -%}
+{% if points %}
+<div class="an-list">
+  {% for point in points %}
+  <div class="an-list-row">
+    <span class="an-list-label" title="{{ point.label }}">{{ point.label }}</span>
+    <span class="an-list-track"><span class="an-list-fill" style="width:{{ point.width }}%"></span></span>
+    <span class="an-list-value">{{ money(point.value) }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state min-h-[150px]"><i class="ph ph-{{ icon }}" style="font-size:1.4rem;color:var(--color-secondary);"></i><p class="mt-2 text-sm font-semibold text-slate-700">No data in this period</p><p class="mt-1 text-xs text-slate-500">Try a wider date range.</p></div>
+{% endif %}
+{%- endmacro %}
+
+<div class="space-y-5">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">Insights · Trends</p>
+      <h1 class="page-title"><span class="room-icon-chip" style="display:inline-flex;justify-content:center;width:2.1rem;height:2.1rem;font-size:1.1rem;margin-right:.55rem;vertical-align:-.55em;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-chart-bar"></i></span>Sales Analysis</h1>
+      <p class="page-subtitle">Recorded invoice, payment, refund, and room data — no forecasted values</p>
+    </div>
+    <span class="stat-pill text-right"><span>Period</span><strong>{{ start }} → {{ end }}</strong></span>
+  </div>
 
   <form method="get" action="/analysis" class="panel">
-    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-      <label><span class="field-label">From</span><input required type="date" name="start" value="{{ start }}" class="form-input"></label>
-      <label><span class="field-label">To</span><input required type="date" name="end" value="{{ end }}" class="form-input"></label>
-      <label><span class="field-label">Trend bucket</span><select name="bucket" class="form-input"><option value="day" {% if bucket == 'day' %}selected{% endif %}>Day</option><option value="week" {% if bucket == 'week' %}selected{% endif %}>Week</option><option value="month" {% if bucket == 'month' %}selected{% endif %}>Month</option></select></label>
-      <label class="flex items-center gap-2 self-end rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700"><input type="checkbox" name="compare" value="1" {% if compare %}checked{% endif %} class="h-4 w-4 accent-teal-700"> Compare periods</label>
-      <button class="btn-primary self-end">Analyse</button>
-      {% if compare %}<label><span class="field-label">Compare from</span><input type="date" name="compare_start" value="{{ compare_start }}" class="form-input"></label><label><span class="field-label">Compare to</span><input type="date" name="compare_end" value="{{ compare_end }}" class="form-input"></label>{% endif %}
+    <div class="grid gap-x-4 gap-y-5 sm:grid-cols-2 xl:grid-cols-5">
+      <label><span class="field-label"><i class="ph ph-calendar-blank" style="font-size:.95rem;margin-right:.4rem;vertical-align:-.15em;"></i>From</span><input required type="date" name="start" value="{{ start }}" class="form-input"></label>
+      <label><span class="field-label"><i class="ph ph-calendar-blank" style="font-size:.95rem;margin-right:.4rem;vertical-align:-.15em;"></i>To</span><input required type="date" name="end" value="{{ end }}" class="form-input"></label>
+      <label><span class="field-label"><i class="ph ph-squares-four" style="font-size:.95rem;margin-right:.4rem;vertical-align:-.15em;"></i>Trend bucket</span><select name="bucket" class="form-input"><option value="day" {% if bucket == 'day' %}selected{% endif %}>Day</option><option value="week" {% if bucket == 'week' %}selected{% endif %}>Week</option><option value="month" {% if bucket == 'month' %}selected{% endif %}>Month</option></select></label>
+      <label class="flex items-center gap-2 self-end rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700"><input type="checkbox" name="compare" value="1" {% if compare %}checked{% endif %} class="h-4 w-4 accent-[color:var(--color-secondary)]"> Compare periods</label>
+      <button class="btn-primary self-end"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-chart-bar"></i></span>Analyse</button>
+      {% if compare %}<label><span class="field-label"><i class="ph ph-calendar-blank"></i>Compare from</span><input type="date" name="compare_start" value="{{ compare_start }}" class="form-input"></label><label><span class="field-label"><i class="ph ph-calendar-blank"></i>Compare to</span><input type="date" name="compare_end" value="{{ compare_end }}" class="form-input"></label>{% endif %}
     </div>
     <p class="mt-3 text-xs text-slate-500">{{ bucket|title }} buckets · Generated {{ analysis.generated_at }}</p>
   </form>
 
-  <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-    {% for metric in analysis.metrics %}
-    <article class="{{ 'metric-card-hero' if loop.index <= 2 else 'metric-card' }}" title="{{ metric.formula }}">
-      <p class="section-label">{{ metric.label }}</p>
-      <p class="mt-2 text-2xl font-extrabold {% if loop.index <= 2 %}text-teal-700{% else %}text-slate-900{% endif %}">{% if metric.unit == 'percent' %}{{ '%.2f'|format(metric.value) }}%{% elif metric.unit == 'count' %}{{ metric.value|int }}{% else %}{{ money(metric.value) }}{% endif %}</p>
-      <p class="mt-1 text-[10px] leading-4 text-slate-500">{{ metric.formula }}</p>
+  {% set hero = ['gross_sales', 'net_sales', 'collected', 'outstanding'] %}
+  {% set hero_note = {
+    'gross_sales': 'Issued invoice value before refunds',
+    'net_sales': 'Gross sales less refunds and reversals',
+    'collected': 'Payments received against invoices',
+    'outstanding': 'Unpaid balance on issued invoices'
+  } %}
+  <section class="an-kpis">
+    {% for key in hero %}
+    {% set metric = metrics[key] %}
+    <article class="metric-card an-kpi" title="{{ metric.formula }}">
+      <div class="an-kpi-top">
+        <span class="an-kpi-icon"><i class="ph ph-{{ icon_by_key[key] }}"></i></span>
+        {{ delta(changes.get(key)) }}
+      </div>
+      <p class="section-label mt-3">{{ metric.label }}</p>
+      <p class="an-kpi-value" data-count="{{ metric.value }}" data-unit="{{ metric.unit }}">{{ metric_value(metric) }}</p>
+      <p class="an-kpi-note">{{ hero_note[key] }}{% if changes.get(key) %} · vs previous period{% endif %}</p>
     </article>
     {% endfor %}
   </section>
 
-  <section class="grid gap-4 xl:grid-cols-2">
-    {% for chart in analysis.charts %}
+  <section class="an-charts">
     <article class="panel min-w-0">
-      <div class="panel-heading"><h2 class="panel-title">{{ chart.label }}</h2><span class="badge-slate">{{ bucket|title }} buckets</span></div>
-      {% if chart.points %}
-      <div class="mt-4 space-y-3">
-        {% for point in chart.points %}
-        <div class="grid grid-cols-[minmax(72px,120px)_1fr_auto] items-center gap-2 text-xs">
-          <span class="truncate font-medium text-slate-600" title="{{ point.label }}">{{ point.label }}</span>
-          <span class="h-2.5 overflow-hidden rounded-full bg-slate-100"><span class="block h-full rounded-full bg-gradient-to-r from-teal-500 to-teal-700" style="width:{{ point.width }}%"></span></span>
-          <span class="min-w-20 text-right font-semibold tabular-nums text-slate-700">{{ money(point.value) }}</span>
+      <div class="panel-heading">
+        <div><h2 class="panel-title"><i class="ph ph-chart-line-up" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Sales trend</h2><p class="panel-subtitle">Issued invoice value per {{ bucket }}</p></div>
+        <span class="badge-slate">{{ trend.count }} bucket{{ '' if trend.count == 1 else 's' }}</span>
+      </div>
+      <div class="an-trend-head">
+        <b data-count="{{ metrics.gross_sales.value }}" data-unit="amount">{{ money(metrics.gross_sales.value) }}</b>
+        <span class="an-kpi-note">gross sales in view</span>
+        {{ delta(changes.get('gross_sales')) }}
+      </div>
+      {% if trend.marks %}
+      <div class="an-trend">
+        <svg viewBox="0 0 600 {{ trend.height + 34 }}" width="100%" role="img" aria-label="Sales trend from {{ start }} to {{ end }}">
+          <defs>
+            <linearGradient id="an-trend-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="var(--color-primary)" stop-opacity=".26"></stop>
+              <stop offset="1" stop-color="var(--color-primary)" stop-opacity="0"></stop>
+            </linearGradient>
+          </defs>
+          <line x1="0" y1="{{ trend.height }}" x2="600" y2="{{ trend.height }}" stroke="var(--color-border)" stroke-width="1"></line>
+          <path d="{{ trend.area }}" fill="url(#an-trend-fill)"></path>
+          <path d="{{ trend.line }}" fill="none" stroke="var(--color-primary)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></path>
+          {% for mark in trend.marks if mark.show %}
+          <circle cx="{{ mark.x }}" cy="{{ mark.y }}" r="2.6" fill="var(--color-surface)" stroke="var(--color-primary)" stroke-width="1.8"><title>{{ mark.label }} · {{ money(mark.value) }}</title></circle>
+          {% endfor %}
+          {% for label in trend.labels %}
+          <text x="{{ label.x }}" y="{{ trend.height + 22 }}" fill="var(--color-text-secondary)" font-size="11" text-anchor="{{ label.anchor }}">{{ label.label }}</text>
+          {% endfor %}
+        </svg>
+      </div>
+      {% else %}
+      <div class="empty-state min-h-[190px]"><i class="ph ph-chart-line-up" style="font-size:1.5rem;color:var(--color-secondary);"></i><p class="mt-2 text-sm font-semibold text-slate-700">No sales in this period</p><p class="mt-1 text-xs text-slate-500">Widen the date range to see a trend.</p></div>
+      {% endif %}
+    </article>
+
+    <article class="panel min-w-0">
+      <div class="panel-heading">
+        <div><h2 class="panel-title"><i class="ph ph-credit-card" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Payment mix</h2><p class="panel-subtitle">Where collections came from</p></div>
+      </div>
+      {% if mix.legend %}
+      <div class="an-donut">
+        <svg viewBox="0 0 42 42" width="170" height="170" role="img" aria-label="Collections by payment method">
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="rgba(27,58,42,.08)" stroke-width="5"></circle>
+          {% for segment in mix.segments %}
+          <circle class="an-sweep" cx="21" cy="21" r="15.9" fill="none" stroke="{{ segment.color }}" stroke-width="5" stroke-dasharray="{{ segment.share }} {{ (100 - segment.share)|round(2) }}" stroke-dashoffset="{{ segment.offset }}"><title>{{ segment.label }} · {{ '%.1f'|format(segment.share) }}%</title></circle>
+          {% endfor %}
+        </svg>
+        <div class="an-donut-mid"><b data-count="{{ mix.total }}" data-unit="amount">{{ money(mix.total) }}</b><small>collected</small></div>
+      </div>
+      <div class="an-legend">
+        {% for row in mix.legend %}
+        <div class="an-legend-row"><i style="background:{{ row.color }}"></i><span title="{{ row.label }}">{{ row.label }}</span><b>{{ '%.1f'|format(row.share) }}%</b></div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state min-h-[190px]"><i class="ph ph-credit-card" style="font-size:1.4rem;color:var(--color-secondary);"></i><p class="mt-2 text-sm font-semibold text-slate-700">No payments collected</p><p class="mt-1 text-xs text-slate-500">Try a wider date range.</p></div>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="an-two">
+    <article class="panel min-w-0">
+      <div class="panel-heading">
+        <div><h2 class="panel-title"><i class="ph ph-chart-bar" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Sales vs collections</h2><p class="panel-subtitle">Issued sales and payments received per {{ bucket }}</p></div>
+        <span class="badge-slate">{{ bars|length }} shown</span>
+      </div>
+      {% if bars %}
+      <div class="an-bars" role="img" aria-label="Sales and collections per {{ bucket }}">
+        {% for bar in bars %}
+        <div class="an-bar-group">
+          <span class="an-bar an-bar-sales" style="height:{{ bar.sales_height }}%" title="{{ bar.label }} sales {{ money(bar.sales) }}"></span>
+          <span class="an-bar an-bar-collections" style="height:{{ bar.collection_height }}%" title="{{ bar.label }} collections {{ money(bar.collections) }}"></span>
         </div>
         {% endfor %}
       </div>
-      {% else %}<div class="empty-state mt-4 min-h-[160px]"><p class="text-sm font-semibold text-slate-700">No data in this period</p><p class="mt-1 text-xs text-slate-500">Try a wider date range.</p></div>{% endif %}
+      <div class="an-bars-axis">{% for bar in bars %}<span title="{{ bar.label }}">{{ bar.label }}</span>{% endfor %}</div>
+      <p class="an-key"><i style="background:var(--color-primary)"></i>Sales<i class="an-key-gap" style="background:var(--secondary-light)"></i>Collections</p>
+      {% else %}
+      <div class="empty-state min-h-[200px]"><i class="ph ph-chart-bar" style="font-size:1.5rem;color:var(--color-secondary);"></i><p class="mt-2 text-sm font-semibold text-slate-700">No sales in this period</p><p class="mt-1 text-xs text-slate-500">Try a wider date range.</p></div>
+      {% endif %}
     </article>
-    {% endfor %}
+
+    <article class="panel min-w-0">
+      <div class="panel-heading">
+        <div><h2 class="panel-title"><i class="ph ph-tag" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>{{ charts.categories.label }}</h2><p class="panel-subtitle">Item and service revenue split</p></div>
+      </div>
+      {{ bar_list(charts.categories.points, 'tag') }}
+    </article>
+  </section>
+
+  <section class="an-two">
+    <article class="panel min-w-0">
+      <div class="panel-heading">
+        <div><h2 class="panel-title"><i class="ph ph-bed" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>{{ charts.rooms.label }}</h2><p class="panel-subtitle">Revenue recorded against each room</p></div>
+      </div>
+      {{ bar_list(charts.rooms.points, 'bed') }}
+    </article>
+
+    <article class="panel min-w-0">
+      <div class="panel-heading">
+        <div><h2 class="panel-title"><i class="ph ph-user" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>{{ charts.cashiers.label }}</h2><p class="panel-subtitle">Who issued the invoices</p></div>
+      </div>
+      {{ bar_list(charts.cashiers.points, 'user') }}
+    </article>
+  </section>
+
+  <section class="an-two">
+    <article class="panel min-w-0">
+      <div class="panel-heading">
+        <div><h2 class="panel-title"><i class="ph ph-arrow-u-up-left" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>{{ charts.refunds.label }}</h2><p class="panel-subtitle">Money returned to guests</p></div>
+      </div>
+      {{ bar_list(charts.refunds.points, 'arrow-u-up-left') }}
+    </article>
+
+    <article class="panel min-w-0">
+      <div class="panel-heading">
+        <div><h2 class="panel-title"><i class="ph ph-tag" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>{{ charts.discounts.label }}</h2><p class="panel-subtitle">Discounts given against invoices</p></div>
+      </div>
+      {{ bar_list(charts.discounts.points, 'tag') }}
+    </article>
+  </section>
+
+  {% set support = ['room_revenue', 'average_invoice', 'collection_ratio', 'discount_ratio', 'refunds', 'average_room_revenue', 'occupancy_rate', 'occupied_end_of_day', 'occupied_across_day'] %}
+  <section class="panel">
+    <div class="panel-heading">
+      <div><h2 class="panel-title"><i class="ph ph-list-numbers" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Supporting metrics</h2><p class="panel-subtitle">Ratios, refunds, and room performance for the selected period</p></div>
+      <span class="badge-slate">Recorded values</span>
+    </div>
+    <div class="an-support">
+      {% for key in support %}
+      {% set metric = metrics[key] %}
+      {% set row = changes.get(key) %}
+      <div class="kpi-row" title="{{ metric.formula }}">
+        <span class="kpi-row-label"><i class="ph ph-{{ icon_by_key[key] }}" style="font-size:.85rem;margin-right:.4rem;vertical-align:-.12em;color:rgba(138,106,20,.75);"></i>{{ metric.label }}</span>
+        <span class="kpi-row-value"><span data-count="{{ metric.value }}" data-unit="{{ metric.unit }}">{{ metric_value(metric) }}</span>{% if row and row.change is not none %}<span class="an-delta-inline {{ 'an-up' if row.change > 0 else 'an-down' if row.change < 0 else 'an-flat' }}">{{ '%+.1f'|format(row.change) }}%</span>{% endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
   </section>
 
   {% if analysis.comparison %}
   <section class="panel !p-0">
-    <div class="border-b border-slate-100 p-5"><h2 class="panel-title">Period comparison</h2><p class="panel-subtitle">{{ analysis.comparison.current_period[0] }}–{{ analysis.comparison.current_period[1] }} vs {{ analysis.comparison.previous_period[0] }}–{{ analysis.comparison.previous_period[1] }}{% if not analysis.comparison.same_length %} · Period lengths differ{% endif %}</p></div>
-    <div class="table-scroll"><table class="data-table soft-table min-w-full"><thead><tr><th>Metric</th><th class="text-right">Current</th><th class="text-right">Previous</th><th class="text-right">Difference</th><th class="text-right">Change</th></tr></thead><tbody>{% for row in analysis.comparison.rows %}<tr><td class="font-semibold text-slate-800">{{ row.label }}</td><td class="text-right">{{ '%.2f'|format(row.current) }}{% if row.unit == 'percent' %}%{% endif %}</td><td class="text-right text-slate-500">{{ '%.2f'|format(row.previous) }}{% if row.unit == 'percent' %}%{% endif %}</td><td class="text-right {{ 'text-teal-700' if row.difference > 0 else 'text-rose-700' if row.difference < 0 else 'text-slate-500' }}">{{ '%.2f'|format(row.difference) }}{% if row.unit == 'percent' %} pp{% endif %}</td><td class="text-right">{% if row.change is not none %}<span class="badge-{{ 'teal' if row.change > 0 else 'rose' if row.change < 0 else 'slate' }}">{{ '%.2f'|format(row.change) }}%</span>{% else %}<span class="text-xs text-slate-500">{{ row.change_status|replace('_', ' ')|title }}</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+    <div class="border-b border-slate-100 p-5"><h2 class="panel-title"><i class="ph ph-swap" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Period comparison</h2><p class="panel-subtitle">{{ analysis.comparison.current_period[0] }}–{{ analysis.comparison.current_period[1] }} vs {{ analysis.comparison.previous_period[0] }}–{{ analysis.comparison.previous_period[1] }}{% if not analysis.comparison.same_length %} · Period lengths differ{% endif %}</p></div>
+    <div class="table-scroll"><table class="data-table soft-table min-w-full"><thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-scales" style="font-size:.85rem;"></i>Metric</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-currency-circle-dollar" style="font-size:.85rem;"></i>Current</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-calendar-blank" style="font-size:.85rem;"></i>Previous</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-swap" style="font-size:.85rem;"></i>Difference</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-trend-up" style="font-size:.85rem;"></i>Change</span></th></tr></thead><tbody>{% for row in analysis.comparison.rows %}<tr><td class="font-semibold text-slate-800">{{ row.label }}</td><td class="text-right tabular-nums">{{ '%.2f'|format(row.current) }}{% if row.unit == 'percent' %}%{% endif %}</td><td class="text-right tabular-nums text-slate-500">{{ '%.2f'|format(row.previous) }}{% if row.unit == 'percent' %}%{% endif %}</td><td class="text-right tabular-nums {{ 'text-[color:var(--color-primary)]' if row.difference > 0 else 'text-rose-700' if row.difference < 0 else 'text-slate-500' }}">{{ '%.2f'|format(row.difference) }}{% if row.unit == 'percent' %} pp{% endif %}</td><td class="text-right">{% if row.change is not none %}<span class="badge-{{ 'teal' if row.change > 0 else 'rose' if row.change < 0 else 'slate' }}">{{ '%.2f'|format(row.change) }}%</span>{% else %}<span class="text-xs text-slate-500">{{ row.change_status|replace('_', ' ')|title }}</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
     <p class="p-4 text-xs text-slate-500">{{ analysis.formula_growth }} A change percentage is omitted when the previous value is zero.</p>
   </section>
   {% endif %}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import json
@@ -17,6 +18,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from markupsafe import escape as html_escape
 from fastapi.responses import (
     FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response,
@@ -26,26 +28,34 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, inspect, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
 from .defaults import DEFAULT_SETTINGS
 from .money import (
     BILL_TYPE_LABELS, Line, compute_totals, discount_from_input, payment_status,
 )
-from .nepali import amount_in_words as amount_in_words_ne, label as source_invoice_label
+from .nepali import amount_in_words as amount_in_words_ne, label as source_invoice_label, to_bs
 
 from . import analytics as web_analytics, auth, daily_closing, excel_analysis, models, reporting, whatsapp
 from .database import Base, SessionLocal, engine, get_db
 from .models import (
     AuditLog, CatalogItem, DailyReport, Guest, HotelSetting, Invoice, InvoiceItem,
-    Order, Payment, Refund, Reservation, Room, RoomCharge, Stay, User,
+    Order, Payment, Refund, Reservation, Room, RoomCharge, Stay, User, UserSession,
     WhatsAppConversation, WhatsAppMessage,
 )
+from .services import guest_service, invoice_service, payment_service, room_service, stay_service
+from zoneinfo import ZoneInfo
+BUSINESS_TZ_LOCAL = ZoneInfo("Asia/Kathmandu")
+
+_log = logging.getLogger("webapp")
 from .orders import (
     FULFILMENT_LABELS, KIND_LABELS, OPEN_STATUSES, ORDER_STATUSES, STATUS_BADGES,
     STATUS_LABELS, can_transition, item_summary, next_status,
 )
 from .services import BUSINESS_TZ, amount_in_words, collect_payment, local_now, money
+from .ui import toast_event, toast_from_request, toast_url
+
 
 ROOT = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
@@ -105,7 +115,7 @@ def _receipt_money(value: object) -> str:
 
 
 def _document_directory(kind: str) -> Path:
-    base = Path(os.getenv("ARATI_WEB_DOCUMENT_DIRECTORY", str(ROOT.parent))).resolve()
+    base = Path(os.getenv("ARATI_WEB_DOCUMENT_DIRECTORY", str(ROOT / "data"))).resolve()
     directory = base / kind
     directory.mkdir(parents=True, exist_ok=True)
     return directory
@@ -232,6 +242,7 @@ def upgrade_database(bind=engine) -> None:
             "source": "VARCHAR(80) NOT NULL DEFAULT 'front desk'",
             "notes": "TEXT NOT NULL DEFAULT ''",
             "cancel_reason": "TEXT NOT NULL DEFAULT ''",
+            "business_date": "VARCHAR(20) NOT NULL DEFAULT ''",
             "created_at": "DATETIME",
             "user_id": "INTEGER REFERENCES users(id)",
         },
@@ -247,6 +258,7 @@ def upgrade_database(bind=engine) -> None:
             "expected_checkout": "DATETIME",
             "nights": "INTEGER NOT NULL DEFAULT 1",
             "nightly_rate": "NUMERIC(12, 2) NOT NULL DEFAULT 0",
+            "business_date": "VARCHAR(20) NOT NULL DEFAULT ''",
             "created_at": "DATETIME",
             "user_id": "INTEGER REFERENCES users(id)",
         },
@@ -300,6 +312,20 @@ def upgrade_database(bind=engine) -> None:
             "created_at": "DATETIME",
             "user_id": "INTEGER REFERENCES users(id)",
         },
+        "orders": {
+            "business_date": "VARCHAR(20) NOT NULL DEFAULT ''",
+        },
+        "user_sessions": {
+            "session_id": "VARCHAR(128) NOT NULL",
+            "user_id": "INTEGER NOT NULL REFERENCES users(id)",
+            "ip_address": "VARCHAR(45) NOT NULL DEFAULT ''",
+            "user_agent": "VARCHAR(512) NOT NULL DEFAULT ''",
+            "created_at": "DATETIME NOT NULL",
+            "last_seen_at": "DATETIME NOT NULL",
+            "revoked_at": "DATETIME",
+            "revoked_by_id": "INTEGER REFERENCES users(id)",
+            "revoked_reason": "TEXT NOT NULL DEFAULT ''",
+        },
     }
     with bind.begin() as connection:
         for table, columns in additions.items():
@@ -307,6 +333,160 @@ def upgrade_database(bind=engine) -> None:
             for name, declaration in columns.items():
                 if name not in present:
                     connection.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {declaration}'))
+
+    try:
+        with Session(bind=bind) as db:
+            db.execute(
+                text(
+                    'CREATE UNIQUE INDEX IF NOT EXISTS ix_user_sessions_sessionid_userid '
+                    'ON "user_sessions" ("session_id", "user_id")'
+                )
+            )
+            db.commit()
+    except Exception:
+        # The index only exists when the schema was created by this app's
+        # migrations; older installs may have conflicts — startup must not
+        # die for a best-effort index, but the reason still needs a trace.
+        _log.warning("user_sessions index creation skipped", exc_info=True)
+
+    # Relaxed constraints repairs pre-1.0 databases; business-day backfill
+    # gives every row a local calendar day for the day-wise calendar.
+    _relax_stale_not_null(bind)
+    _backfill_business_dates(bind)
+    # Day-wise lookups (calendar, reports) run on every refresh; keep them
+    # indexed even on databases upgraded in place, where create_all never
+    # adds the index for ALTER-added columns.
+    with bind.begin() as connection:
+        for _table, _column in (
+            ("reservations", "business_date"), ("stays", "business_date"),
+            ("orders", "business_date"), ("invoices", "bill_date"),
+        ):
+            if _column in {info["name"] for info in inspect(connection).get_columns(_table)}:
+                connection.execute(text(
+                    f'CREATE INDEX IF NOT EXISTS "ix_{_table}_{_column}" '
+                    f'ON "{_table}" ("{_column}")'
+                ))
+
+
+def _relax_stale_not_null(bind=engine) -> None:
+    """Rebuild pre-1.0 tables whose columns are still declared NOT NULL.
+
+    Old installs were created when ``stays.check_out`` (checked-in rooms have
+    no departure yet), ``reservations.room_id`` / ``reservations.guest_id``
+    (a walk-in booking without a room) and ``payments.invoice_id`` (a direct
+    ledger payment) were required. The current models make them nullable, so
+    every new check-in failed with ``NOT NULL constraint failed: stays.check_out``
+    and no room bill could ever be issued. SQLite cannot ALTER a constraint,
+    so the affected table is rebuilt in place, copying every row and index.
+    """
+    targets = {
+        "stays": {"check_out"},
+        "reservations": {"room_id", "guest_id"},
+        "payments": {"invoice_id"},
+    }
+    for table, columns in targets.items():
+        try:
+            rows = []
+            with bind.begin() as connection:
+                rows = connection.execute(
+                    text(f'PRAGMA table_info("{table}")')
+                ).fetchall()
+                names = [row[1] for row in rows]
+                if not names or not set(columns) <= set(names):
+                    continue
+                stale = [row for row in rows if row[1] in columns and row[3]]
+                if not stale:
+                    continue
+                # Column SQL is regenerated from PRAGMA info; unchanged
+                # columns keep type, nullability, default and PK flags.
+                definitions = []
+                for _cid, name, type_, notnull, default, pk in rows:
+                    if name in columns:
+                        notnull = 0
+                    if pk:
+                        definitions.append(f'"{name}" {type_} NOT NULL PRIMARY KEY'.strip())
+                    else:
+                        line = f'"{name}" {type_}'.strip()
+                        if notnull:
+                            line += " NOT NULL"
+                        if default is not None:
+                            line += f" DEFAULT {default}"
+                        definitions.append(line)
+                temp_table = f"{table}_nullable_rebuild"
+                connection.execute(text(f'DROP TABLE IF EXISTS "{temp_table}"'))
+                connection.execute(
+                    text(f'CREATE TABLE "{temp_table}" ({", ".join(definitions)})')
+                )
+                connection.execute(
+                    text(f'INSERT INTO "{temp_table}" SELECT * FROM "{table}"')
+                )
+            # Secondary indexes are tied to the old table; rebuild them after
+            # the swap. The swap needs its own connection so the PRAGMA is
+            # not swallowed by an open transaction.
+            with bind.begin() as connection:
+                indexes = connection.execute(
+                    text(
+                        "SELECT name, sql FROM sqlite_master "
+                        "WHERE type = 'index' AND tbl_name = :table AND sql IS NOT NULL"
+                    ),
+                    {"table": table},
+                ).fetchall()
+                connection.execute(text('PRAGMA foreign_keys=OFF'))
+                connection.execute(text(f'DROP TABLE "{table}"'))
+                connection.execute(text(f'ALTER TABLE "{temp_table}" RENAME TO "{table}"'))
+                for _name, sql in indexes:
+                    connection.execute(text(sql))
+                connection.execute(text('PRAGMA foreign_keys=ON'))
+            _log.info("Relaxed schema constraint on %s.%s", table, columns)
+        except Exception:
+            _log.exception("Could not relax NOT NULL constraint on %s — check-in may keep failing", table)
+
+
+def _backfill_business_dates(bind=engine) -> None:
+    """Give every row a local (Asia/Kathmandu) business day so the day-wise
+    calendar can always find its data. Missing values are derived from the
+    nearest timestamp column each record carries."""
+    with Session(bind=bind) as db:
+        changed = False
+        for reservation in db.scalars(
+            select(Reservation).where(Reservation.business_date == "")
+        ).all():
+            stamp = reservation.created_at or reservation.check_in
+            if stamp is not None:
+                reservation.business_date = _business_date(stamp).isoformat()
+                changed = True
+        for stay in db.scalars(select(Stay).where(Stay.business_date == "")).all():
+            stamp = stay.check_in
+            if stamp is not None:
+                stay.business_date = _business_date(stamp).isoformat()
+                changed = True
+        for order in db.scalars(select(Order).where(Order.business_date == "")).all():
+            stamp = order.created_at or order.closed_at
+            if stamp is not None:
+                order.business_date = _business_date(stamp).isoformat()
+                changed = True
+        for invoice in db.scalars(select(Invoice).where(Invoice.bill_date == "")).all():
+            stamp = invoice.issue_date
+            if stamp is not None:
+                invoice.bill_date = _business_date(stamp).isoformat()
+                changed = True
+        for payment in db.scalars(select(Payment).where(Payment.business_date == "")).all():
+            stamp = payment.created_at or payment.paid_at
+            if stamp is not None:
+                payment.business_date = _business_date(stamp).isoformat()
+                changed = True
+        for refund in db.scalars(select(Refund).where(Refund.business_date == "")).all():
+            stamp = refund.created_at or refund.refunded_at
+            if stamp is not None:
+                refund.business_date = _business_date(stamp).isoformat()
+                changed = True
+        for charge in db.scalars(select(RoomCharge).where(RoomCharge.charge_date == "")).all():
+            stamp = charge.created_at
+            if stamp is not None:
+                charge.charge_date = _business_date(stamp).isoformat()
+                changed = True
+        if changed:
+            db.commit()
 
     with Session(bind=bind) as db:
         for room in db.scalars(select(Room).where(Room.room_type_item_id.is_(None))).all():
@@ -373,9 +553,9 @@ async def security_headers(request: Request, call_next):
         "Content-Security-Policy",
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com; "
-        "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; "
         "img-src 'self' data: blob:; "
-        "font-src 'self' data:; "
+        "font-src 'self' data: https://fonts.gstatic.com; "
         "connect-src 'self'; "
         "object-src 'none'; "
         "base-uri 'self'; "
@@ -394,6 +574,7 @@ app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
 
 
 @app.exception_handler(HTTPException)
+@app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     is_htmx = request.headers.get("HX-Request") == "true"
     accepts_html = "text/html" in request.headers.get("Accept", "")
@@ -409,16 +590,60 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
     if is_htmx:
         html = f"""<div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800 shadow-sm mb-3">
-            <div class="flex items-center gap-2"><span>⚠</span><span>{safe_detail}</span></div>
+            <div class="flex items-center gap-2"><i class="ph ph-warning-circle"></i><span>{safe_detail}</span></div>
         </div>"""
         return HTMLResponse(content=html, status_code=exc.status_code)
 
     if accepts_html:
-        html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Error {exc.status_code}</title><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-slate-50 min-h-screen grid place-items-center p-6"><div class="max-w-md w-full bg-white rounded-2xl p-6 shadow-xl border border-slate-200 text-center"><h1 class="text-3xl font-extrabold text-slate-800 mb-2">{exc.status_code}</h1><p class="text-sm text-slate-600 mb-6">{safe_detail}</p><a href="/dashboard" class="inline-block px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-bold hover:bg-teal-700">Return to Dashboard</a></div></body></html>"""
+        html = _error_page(exc.status_code, safe_detail)
         return HTMLResponse(content=html, status_code=exc.status_code)
 
     from fastapi.responses import JSONResponse
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+def _error_page(status_code: int, safe_detail: str) -> str:
+    """Solo-brand friendly error card, shared by every non-HTMX error path."""
+    glyph = {404: "map-triangle-x", 403: "shield-warning", 422: "list-magnifying-glass"}.get(
+        status_code, "lifebuoy",
+    )
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Error {status_code}</title>
+<script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="/static/phosphor/style.css">
+<style>body{{font-family:Inter,'Noto Sans Devanagari',ui-sans-serif,system-ui,sans-serif}}</style>
+</head><body class="min-h-screen grid place-items-center p-6" style="background:linear-gradient(160deg,#F7F1DE 0%,#EFE7CF 100%);">
+<div class="max-w-md w-full rounded-2xl p-8 text-center" style="background:var(--color-surface);border:1px solid rgba(212,201,168,.6);box-shadow:0 12px 32px rgba(27,58,42,.10);">
+<div class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl" style="background:rgba(125,155,122,.18);color:#1B3A2A;">
+<i class="ph {glyph}" style="font-size:1.75rem;"></i></div>
+<h1 class="text-3xl font-extrabold tracking-tight" style="color:var(--color-primary);">{status_code}</h1>
+<p class="mt-2 text-sm" style="color:var(--color-text-secondary);">{safe_detail}</p>
+<a href="/dashboard" class="mt-6 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold no-underline" style="background:var(--color-primary);color:#fff;">Continue<i class="ph ph-arrow-right"></i></a>
+</div></body></html>"""
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Path/query/type conversion failures (``/invoices/abc/pdf``) answered
+    politely for HTML, HTMX, and API consumers alike instead of a raw 422."""
+    _log.warning("Validation rejected: %s %s — %s", request.method, request.url.path, exc.errors()[:3])
+    return await http_exception_handler(
+        request,
+        HTTPException(422, "That record reference is not valid. Go back and pick it again."),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Last line of defence: nothing from this app ever reaches the guest.
+
+    The full traceback goes to the server log with the request path; the user
+    gets the same calm brand treatment the HTTPException path uses, with a
+    message that never leaks internals.
+    """
+    _log.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return await http_exception_handler(
+        request,
+        HTTPException(500, "Something went wrong on our side. The details were logged; please try again in a moment."),
+    )
 
 
 def csrf(request: Request) -> str:
@@ -442,9 +667,18 @@ def user_or_redirect(request: Request, db: Session) -> User:
     return user
 
 
+def header_dates() -> dict:
+    """English + Bikram Sambat dates for the sticky header banner."""
+    now_local = local_now()
+    english = now_local.strftime("%A, %d %B %Y")
+    bs = to_bs(now_local.date().isoformat())
+    return {"english": english, "nepali": bs[1] if bs else "", "short": bs[0] if bs else ""}
+
+
 def render(request: Request, template: str, db: Session, context: dict | None = None,
            status_code: int = 200, headers: dict | None = None) -> HTMLResponse:
-    values = {"request": request, "current_user": None, "csrf_token": csrf(request)}
+    values = {"request": request, "current_user": None, "csrf_token": csrf(request),
+              "header_dates": header_dates(), "server_toast": toast_from_request(request)}
     if request.session.get("user_id"):
         values["current_user"] = db.get(User, request.session["user_id"])
     if context:
@@ -684,7 +918,7 @@ def required_password_change(
     db.commit()
     # Keep this browser signed in; every other cookie for this account is now stale.
     request.session["sv"] = user.session_version
-    return RedirectResponse("/dashboard", status_code=303)
+    return RedirectResponse(toast_url("/dashboard", "Password updated.", "success"), status_code=303)
 
 
 @app.post("/logout")
@@ -693,6 +927,20 @@ def logout(request: Request, csrf_token: str = Form("")):
         check_csrf(request, csrf_token)
     except HTTPException:
         pass
+    user_id = request.session.get("user_id")
+    record_id = request.session.get("_session_record_id")
+    if record_id and user_id:
+        db = SessionLocal()
+        try:
+            row = db.get(UserSession, record_id)
+            if row is not None and row.user_id == int(user_id) and row.revoked_at is None:
+                row.revoked_at = models.utcnow()
+                row.revoked_reason = "Signed out"
+                db.commit()
+        except Exception:
+            db.rollback()
+        finally:
+            db.close()
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
 
@@ -754,7 +1002,7 @@ def _filter_room_rows(rows: list[dict], filters: str = "attention", q: str = "")
 def rooms_page(request: Request, db: Session = Depends(get_db)):
     user_or_redirect(request, db)
     data = _room_board_data(db)
-    data["room_rows"] = _filter_room_rows(data["room_rows"])
+    data["room_rows"] = _filter_room_rows(data["room_rows"], "all")
     data["view"] = "grid"
     return render(request, "rooms.html", db, data)
 
@@ -813,7 +1061,7 @@ def _room_board_data(db: Session) -> dict:
 
 
 @app.get("/rooms/board", response_class=HTMLResponse)
-def room_board_partial(request: Request, filters: str = "attention", q: str = "",
+def room_board_partial(request: Request, filters: str = "all", q: str = "",
                        view: str = "grid", db: Session = Depends(get_db)):
     user_or_redirect(request, db)
     rows = _filter_room_rows(_room_board_data(db)["room_rows"], filters, q)
@@ -827,9 +1075,12 @@ def room_board_summary(request: Request, db: Session = Depends(get_db)):
     return render(request, "partials/room_summary.html", db, _room_board_data(db))
 
 
-def _room_action_response() -> Response:
+def _room_action_response(message: str | None = None, kind: str = "success") -> Response:
+    triggers = {"room-board-refresh": {}, "room-modal-close": {}}
+    if message:
+        triggers["showToast"] = toast_event(message, kind)
     return Response(status_code=204, headers={
-        "HX-Trigger": json.dumps({"room-board-refresh": {}, "room-modal-close": {}})
+        "HX-Trigger": json.dumps(triggers)
     })
 
 
@@ -986,16 +1237,19 @@ async def room_checkin(request: Request, room_id: int, db: Session = Depends(get
         )
         if not room_row or room_row["status"] not in {"available", "reserved"}:
             raise ValueError("This room cannot be checked in right now (it may need cleaning or already be occupied).")
+
         guest_id = str(form.get("guest_id", "")).strip()
         guest = _guest_from_form(db, guest_id)
         if reservation and guest and reservation.guest_id and guest.id != reservation.guest_id:
             raise ValueError(f"Room {room.number} is reserved for {reservation.guest.name}.")
         if reservation and guest is None:
             guest = reservation.guest
+
         guest_name = str(form.get("guest_name", "")).strip()
         guest_phone = str(form.get("phone", "")).strip()
         guest_email = str(form.get("email", "")).strip()[:180]
         guest_address = str(form.get("address", "")).strip()
+        guest_pan = str(form.get("pan_vat", "")).strip() or str(form.get("guest_pan", "")).strip()
         if not guest_name and reservation:
             guest_name = reservation.guest_name or (guest.name if guest else "")
         if not guest_phone and reservation:
@@ -1004,17 +1258,22 @@ async def room_checkin(request: Request, room_id: int, db: Session = Depends(get
             guest_email = reservation.guest_email or (guest.email if guest else "")
         if not guest_address and reservation:
             guest_address = reservation.guest_address or (guest.address if guest else "")
-        if guest is None:
-            if not guest_name:
-                raise ValueError("Enter a guest name for check-in.")
-            guest = Guest(
-                name=guest_name[:160], phone=guest_phone[:40],
-                email=guest_email[:180], address=guest_address[:240],
-            )
-            db.add(guest)
-            db.flush()
-        elif guest_email:
-            guest.email = guest_email
+        if not guest_pan and reservation:
+            guest_pan = reservation.guest_pan
+
+        if not guest_name and not guest:
+            raise ValueError("Enter a guest name for check-in.")
+
+        guest = guest_service.get_or_create_guest(
+            db,
+            name=guest_name or (guest.full_name if guest else "") or (guest.name if guest else ""),
+            phone=guest_phone or (guest.phone if guest else ""),
+            email=guest_email or (guest.email if guest else ""),
+            address=guest_address or (guest.address if guest else ""),
+            pan_vat=guest_pan or (getattr(guest, "pan_vat_number", "") if guest else ""),
+            customer_type=(guest.customer_type if guest else "individual") or "individual",
+        )
+
         check_in = _parse_local_datetime(str(form.get("check_in", "")), "check-in")
         checkout_raw = str(form.get("check_out", "")).strip()
         check_out = _parse_local_datetime(checkout_raw, "check-out") if checkout_raw else None
@@ -1026,28 +1285,57 @@ async def room_checkin(request: Request, room_id: int, db: Session = Depends(get
             check_out = reservation.check_out
         if reservation:
             reservation.status = "checked_in"
+
+        rate_raw = room.nightly_rate
+        if reservation and reservation.nightly_rate > 0:
+            rate_raw = reservation.nightly_rate
+        try:
+            nightly_rate = Decimal(str(rate_raw or 0))
+        except Exception:
+            nightly_rate = room.nightly_rate or Decimal("0")
+
+        stay = Stay(
+            room_id=room.id,
+            guest_id=guest.id,
+            check_in=check_in,
+            check_out=None,
+            expected_checkout=check_out,
+            nights=(
+                max(1, (_business_date(check_out) - _business_date(check_in)).days)
+                if check_out else 1
+            ),
+            nightly_rate=nightly_rate,
+            rate_per_night=nightly_rate,
+            room_number=room.number,
+            guest_name=guest.full_name or guest.name,
+            guest_phone=guest.phone or "",
+            guest_email=guest.email or "",
+            guest_address=guest.address or "",
+            guest_pan=guest.pan_vat_number or guest_pan or "",
+            business_date=_business_date(check_in).isoformat(),
+            created_at=local_now().astimezone(timezone.utc).replace(tzinfo=None),
+            updated_at=local_now().astimezone(timezone.utc).replace(tzinfo=None),
+            user_id=user.id,
+            status="checked_in",
+        )
+        db.add(stay)
+        db.flush()
+
         room.status = "occupied"
         room.housekeeping_status = "clean"
-        db.add(Stay(room_id=room.id, guest_id=guest.id, check_in=check_in,
-                    check_out=None, expected_checkout=check_out,
-                    nights=(
-                        max(1, (_business_date(check_out) - _business_date(check_in)).days)
-                        if check_out else 1
-                    ),
-                    nightly_rate=(
-                        reservation.nightly_rate
-                        if reservation and reservation.nightly_rate > 0 else room.nightly_rate
-                    ),
-                    room_number=room.number,
-                    guest_name=guest_name or guest.name,
-                    guest_phone=guest_phone or guest.phone,
-                    guest_email=guest_email or guest.email,
-                    guest_address=guest_address or guest.address,
-                    guest_pan=reservation.guest_pan if reservation else guest.pan_vat_number,
-                    created_at=local_now().astimezone(timezone.utc).replace(tzinfo=None),
-                    user_id=user.id, status="checked_in"))
+
+        settings = _billing_settings(db)
+        invoice_service.get_or_create_draft_invoice(
+            db,
+            guest_id=guest.id,
+            stay_id=stay.id,
+            room_id=room.id,
+            user_id=user.id,
+            settings=settings,
+        )
+
         db.commit()
-        return _room_action_response()
+        return _room_action_response(f'Room {room.number} checked in to {(guest.full_name or guest.name)}.')
     except HTTPException as exc:
         db.rollback()
         if exc.status_code != 422:
@@ -1087,8 +1375,14 @@ def room_checkout_modal(request: Request, room_id: int, db: Session = Depends(ge
     if not row or not row["stay"]:
         raise HTTPException(404, "No active stay found for this room.")
     folio = _stay_folio(db, row["stay"])
+    invoiced = None
+    if row["stay"].invoice_number:
+        invoiced = db.scalar(
+            select(Invoice).where(Invoice.invoice_number == row["stay"].invoice_number)
+        )
     return render(request, "partials/room_checkout_modal.html", db, {
         "row": row, "folio": folio, "payment_methods": _payment_methods(db),
+        "invoiced_invoice": invoiced,
     })
 
 
@@ -1099,6 +1393,7 @@ def room_checkout(
     db: Session = Depends(get_db),
 ):
     user = user_or_redirect(request, db)
+    invoiced_invoice = None
     try:
         check_csrf(request, csrf_token)
         room = db.get(Room, room_id)
@@ -1106,7 +1401,14 @@ def room_checkout(
         if not room or not stay:
             raise ValueError("No active stay found for this room.")
         if stay.invoice_number:
-            raise ValueError(f"This stay was already invoiced as {stay.invoice_number}.")
+            invoiced_invoice = db.scalar(
+                select(Invoice).where(Invoice.invoice_number == stay.invoice_number)
+            )
+            if invoiced_invoice is None:
+                raise ValueError(
+                    f"This stay was already invoiced as {stay.invoice_number} "
+                    "but the invoice could not be found."
+                )
         try:
             paid_value = Decimal(amount_paid or "0")
         except InvalidOperation as exc:
@@ -1117,68 +1419,80 @@ def room_checkout(
             raise ValueError("Choose a valid payment method.")
 
         folio = _stay_folio(db, stay)
-        totals = compute_totals(
-            folio["lines"],
-            service_charge_rate=folio["totals"].service_charge_rate,
-            vat_rate=folio["totals"].vat_rate,
-            paid=float(paid_value),
-            bill_type="tax",
-        )
-        if paid_value > Decimal(str(totals.total)):
-            raise ValueError("Amount received cannot exceed the folio total.")
+        if invoiced_invoice is not None:
+            balance = (
+                Decimal(str(invoiced_invoice.balance)) if invoiced_invoice.balance is not None
+                else Decimal("0.00")
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if paid_value > balance:
+                raise ValueError(
+                    f"Amount received cannot exceed the outstanding invoice balance of {balance}."
+                )
+        else:
+            totals = compute_totals(
+                folio["lines"],
+                service_charge_rate=folio["totals"].service_charge_rate,
+                vat_rate=folio["totals"].vat_rate,
+                paid=float(paid_value),
+                bill_type="tax",
+            )
+            if paid_value > Decimal(str(totals.total)):
+                raise ValueError("Amount received cannot exceed the folio total.")
         if stay.guest_id is None or db.get(Guest, stay.guest_id) is None:
             raise ValueError("The active stay has no valid guest record.")
         guest = db.get(Guest, stay.guest_id)
         now = local_now()
         issue_date = now.astimezone(timezone.utc).replace(tzinfo=None)
         settings = _billing_settings(db)
-        invoice = Invoice(
-            invoice_number=_next_billing_number(db), guest_id=guest.id, room_id=room.id,
-            stay_id=stay.id, issue_date=issue_date,
-            subtotal=Decimal(str(totals.subtotal)),
-            item_discount=Decimal(str(totals.item_discount)),
-            discount_amount=Decimal(str(totals.discount)),
-            net_subtotal=Decimal(str(totals.net_subtotal)),
-            taxable_net=Decimal(str(totals.taxable_net)),
-            service_charge_rate=Decimal(str(totals.service_charge_rate)),
-            service_charge=Decimal(str(totals.service_charge)),
-            vat_rate=Decimal(str(totals.vat_rate)),
-            vat_amount=Decimal(str(totals.vat)),
-            total=Decimal(str(totals.total)),
-            paid_amount=Decimal(str(totals.paid)),
-            balance=Decimal(str(totals.balance)),
-            status="paid" if totals.balance == 0 else "issued",
-            invoice_type="Tax Invoice", bill_type="tax",
-            language=settings.get("invoice_language", "en"),
-            copy_type=settings.get("invoice_copy", "Customer Copy"),
-            payment_terms=settings.get("payment_terms", "Payment due on presentation."),
-            notes=f"Room {room.number} folio", payment_method=payment_method,
-            prepared_by=user.username, guest_name=stay.guest_name or guest.name,
-            guest_phone=stay.guest_phone or guest.phone,
-            guest_address=stay.guest_address or guest.address,
-            guest_pan=stay.guest_pan or guest.pan_vat_number,
-            room_number=room.number, bill_date=now.date().isoformat(),
-            nights=folio["nights"], check_in=stay.check_in,
-            check_out=stay.expected_checkout or stay.check_out, user_id=user.id,
-        )
-        invoice.guest = guest
-        for line in folio["lines"]:
-            line_vat = compute_totals(
-                [line], service_charge_rate=0,
-                vat_rate=totals.vat_rate, bill_type="tax",
-            ).vat
-            invoice.items.append(InvoiceItem(
-                description=line.description, quantity=line.qty, rate=line.unit_price,
-                amount=Decimal(str(line.total + line_vat)),
-                vat_amount=Decimal(str(line_vat)), category=line.category,
-                taxable=line.taxable, unit=line.unit,
-            ))
-            db.add(invoice)
-            db.flush()
-            stay.status = "checked_out"
+        if invoiced_invoice is None:
+            invoice = Invoice(
+                is_draft=False,
+                invoice_number=_next_billing_number(db), guest_id=guest.id, room_id=room.id,
+                stay_id=stay.id, issue_date=issue_date,
+                subtotal=Decimal(str(totals.subtotal)),
+                item_discount=Decimal(str(totals.item_discount)),
+                discount_amount=Decimal(str(totals.discount)),
+                net_subtotal=Decimal(str(totals.net_subtotal)),
+                taxable_net=Decimal(str(totals.taxable_net)),
+                service_charge_rate=Decimal(str(totals.service_charge_rate)),
+                service_charge=Decimal(str(totals.service_charge)),
+                vat_rate=Decimal(str(totals.vat_rate)),
+                vat_amount=Decimal(str(totals.vat)),
+                total=Decimal(str(totals.total)),
+                paid_amount=Decimal(str(totals.paid)),
+                balance=Decimal(str(totals.balance)),
+                status="paid" if totals.balance == 0 else "issued",
+                invoice_type="Tax Invoice", bill_type="tax",
+                language=settings.get("invoice_language", "en"),
+                copy_type=settings.get("invoice_copy", "Customer Copy"),
+                payment_terms=settings.get("payment_terms", "Payment due on presentation."),
+                notes=f"Room {room.number} folio", payment_method=payment_method,
+                prepared_by=user.username, guest_name=stay.guest_name or guest.name,
+                guest_phone=stay.guest_phone or guest.phone,
+                guest_address=stay.guest_address or guest.address,
+                guest_pan=stay.guest_pan or guest.pan_vat_number,
+                room_number=room.number, bill_date=now.date().isoformat(),
+                nights=folio["nights"], check_in=stay.check_in,
+                check_out=stay.expected_checkout or stay.check_out, user_id=user.id,
+            )
+            invoice.guest = guest
+            for line in folio["lines"]:
+                line_vat = compute_totals(
+                    [line], service_charge_rate=0,
+                    vat_rate=totals.vat_rate, bill_type="tax",
+                ).vat
+                invoice.items.append(InvoiceItem(
+                    description=line.description, quantity=line.qty, rate=line.unit_price,
+                    amount=Decimal(str(line.total + line_vat)),
+                    vat_amount=Decimal(str(line_vat)), category=line.category,
+                    taxable=line.taxable, unit=line.unit,
+                ))
+                db.add(invoice)
+                db.flush()
+        stay.status = "checked_out"
         stay.check_out = issue_date
         stay.nights = folio["nights"]
-        stay.invoice_number = invoice.invoice_number
+        stay.invoice_number = (invoiced_invoice or invoice).invoice_number
         stay.room_number = room.number
         room.status = "dirty"
         room.housekeeping_status = "dirty"
@@ -1186,19 +1500,44 @@ def room_checkout(
             reservation = db.get(Reservation, stay.reservation_id)
             if reservation and reservation.status == "checked_in":
                 reservation.status = "checked_out"
-        for charge in folio["charges"]:
-            charge.invoice_number = invoice.invoice_number
-        if totals.paid > 0:
-            db.add(Payment(
-                invoice=invoice, amount=Decimal(str(totals.paid)),
-                method=payment_method, received_by=user.username,
-                note=f"Room {room.number} checkout",
-                invoice_number=invoice.invoice_number,
-                business_date=now.date().isoformat(), user_id=user.id,
-            ))
+        if invoiced_invoice is None:
+            for charge in folio["charges"]:
+                charge.invoice_number = invoice.invoice_number
+            if totals.paid > 0:
+                db.add(Payment(
+                    invoice=invoice, amount=Decimal(str(totals.paid)),
+                    method=payment_method, received_by=user.username,
+                    note=f"Room {room.number} checkout",
+                    invoice_number=invoice.invoice_number,
+                    business_date=now.date().isoformat(), user_id=user.id,
+                ))
+        else:
+            # The stay was already invoiced from Billing (e.g. an occupied room
+            # billed mid-stay): only settle the outstanding balance — never
+            # issue a second invoice.
+            if paid_value > 0:
+                invoiced_invoice.paid_amount = (
+                    Decimal(str(invoiced_invoice.paid_amount)) + paid_value
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                invoiced_invoice.balance = (
+                    Decimal(str(invoiced_invoice.total)) - Decimal(str(invoiced_invoice.paid_amount))
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                invoiced_invoice.status = "paid" if invoiced_invoice.balance <= 0 else "issued"
+                db.add(Payment(
+                    invoice=invoiced_invoice, amount=paid_value,
+                    method=payment_method, received_by=user.username,
+                    note=f"Balance settled at Room {room.number} checkout",
+                    invoice_number=invoiced_invoice.invoice_number,
+                    business_date=now.date().isoformat(), user_id=user.id,
+                ))
+            stay.nights = folio["nights"] if folio["nights"] else stay.nights
+            _audit(db, user, "stay.check_out", "stay", str(stay.id),
+                   f"room {room.number} checked out against invoice {invoiced_invoice.invoice_number}")
+            db.commit()
+            return _room_action_response(f'Room {room.number} settled against {invoiced_invoice.invoice_number}.')
         _audit(db, user, "stay.check_out", "stay", str(stay.id), f"room {room.number} invoiced as {invoice.invoice_number}")
         db.commit()
-        return _room_action_response()
+        return _room_action_response(f'Room {room.number} checked out.' if not invoiced_invoice else f'Room {room.number} settled against {invoiced_invoice.invoice_number}.')
     except HTTPException as exc:
         db.rollback()
         if exc.status_code != 422:
@@ -1210,6 +1549,7 @@ def room_checkout(
                 "row": row, "folio": _stay_folio(db, row["stay"]), "error": error_msg,
                 "payment_methods": _payment_methods(db),
                 "payment_method_val": payment_method,
+                "invoiced_invoice": invoiced_invoice,
             }, status_code=200)
         raise
     except ValueError as exc:
@@ -1221,6 +1561,7 @@ def room_checkout(
                 "row": row, "folio": _stay_folio(db, row["stay"]), "error": error_msg,
                 "payment_methods": _payment_methods(db),
                 "payment_method_val": payment_method,
+                "invoiced_invoice": invoiced_invoice,
             }, status_code=200)
         raise HTTPException(404, error_msg) from exc
 
@@ -1264,7 +1605,7 @@ async def room_extend(request: Request, room_id: int, db: Session = Depends(get_
         _audit(db, user, "stay.extend", "stay", str(stay.id),
                f"room {room_id} expected check-out moved to {new_checkout.isoformat()}")
         db.commit()
-        return _room_action_response()
+        return _room_action_response(f'Room {room.number} stay extended.')
     except HTTPException as exc:
         db.rollback()
         if exc.status_code != 422:
@@ -1337,7 +1678,7 @@ async def room_add_charge(request: Request, room_id: int, db: Session = Depends(
         _audit(db, user, "room_charge.create", "stay", str(stay.id),
                f"{description} {amount:.2f}")
         db.commit()
-        return _room_action_response()
+        return _room_action_response(f'Charge added to room {room.number}.')
     except HTTPException as exc:
         db.rollback()
         if exc.status_code != 422:
@@ -1421,7 +1762,7 @@ async def room_set_rate(request: Request, room_id: int, db: Session = Depends(ge
             f"nightly rate set to {room.nightly_rate:.2f} ({rate_source})",
         )
         db.commit()
-        return _room_action_response()
+        return _room_action_response(f'Rate updated for room {room.number}.')
     except HTTPException:
         db.rollback()
         raise
@@ -1465,7 +1806,7 @@ def room_set_maintenance(
     room.status = "maintenance" if state == "maintenance" else "available"
     _audit(db, user, "room.maintenance", "room", room.number, f"state set to {state}")
     db.commit()
-    return _room_action_response()
+    return _room_action_response(f'Room {room.number} marked {state}.')
 
 
 @app.post("/rooms/{room_id}/clean")
@@ -1482,7 +1823,8 @@ def room_mark_clean(request: Request, room_id: int, csrf_token: str = Form(""), 
         room.housekeeping_status = "clean"
         _audit(db, user, "room.housekeeping", "room", room.number, "housekeeping set to clean")
         db.commit()
-    return _room_action_response()
+        return _room_action_response(f'Room {room.number} marked clean.')
+    return _room_action_response("Room already clean.", "info")
 
 
 @app.get("/rooms/inventory", response_class=HTMLResponse)
@@ -1536,7 +1878,7 @@ async def room_inventory_create(request: Request, db: Session = Depends(get_db))
         db.flush()
         _audit(db, user, "room.create", "room", number, f"{room_type.name}, floor {floor}")
         db.commit()
-        return RedirectResponse("/rooms/inventory", status_code=303)
+        return RedirectResponse(toast_url("/rooms/inventory", f"Room {number} added to the inventory.", "success"), status_code=303)
     except (InvalidOperation, ValueError, HTTPException) as exc:
         db.rollback()
         if isinstance(exc, HTTPException):
@@ -1650,7 +1992,7 @@ def room_inventory_archive(
     room.active = False
     _audit(db, user, "room.archive", "room", room.number, "room removed from active inventory")
     db.commit()
-    return RedirectResponse("/rooms/inventory", status_code=303)
+    return RedirectResponse(toast_url("/rooms/inventory", f"Room {room.number} archived.", "warning"), status_code=303)
 
 
 @app.post("/rooms/{room_id}/restore")
@@ -1670,7 +2012,7 @@ def room_inventory_restore(
     room.active = True
     _audit(db, user, "room.restore", "room", room.number, "room returned to active inventory")
     db.commit()
-    return RedirectResponse("/rooms/inventory", status_code=303)
+    return RedirectResponse(toast_url("/rooms/inventory", f"Room {room.number} restored.", "success"), status_code=303)
 
 
 @app.get("/rooms/{room_id}/reserve", response_class=HTMLResponse)
@@ -1726,6 +2068,7 @@ async def room_reserve(request: Request, room_id: int, db: Session = Depends(get
                 raise ValueError("Enter a guest name to reserve this room.")
             guest = Guest(
                 name=name, phone=phone, email=email, address=address,
+                created_at=local_now().astimezone(timezone.utc).replace(tzinfo=None),
             )
             db.add(guest)
             db.flush()
@@ -1782,6 +2125,7 @@ async def room_reserve(request: Request, room_id: int, db: Session = Depends(get
             source="front desk",
             notes=notes,
             status="confirmed",
+            business_date=_business_date(local_now().astimezone(timezone.utc).replace(tzinfo=None)).isoformat(),
             created_at=local_now().astimezone(timezone.utc).replace(tzinfo=None),
             user_id=user.id,
         )
@@ -1792,7 +2136,7 @@ async def room_reserve(request: Request, room_id: int, db: Session = Depends(get
             f"{guest.name} · {check_in.isoformat()} to {check_out.isoformat()}",
         )
         db.commit()
-        return _room_action_response()
+        return _room_action_response(f'Reservation created for room {room.number}.')
     except (HTTPException, ValueError, InvalidOperation) as exc:
         db.rollback()
         error_msg = exc.detail if isinstance(exc, HTTPException) else str(exc)
@@ -1892,7 +2236,7 @@ async def reservation_cancel(
         f"{reason or 'no reason given'}",
     )
     db.commit()
-    return RedirectResponse("/reservations?status=all&cancelled=1", status_code=303)
+    return RedirectResponse(toast_url("/reservations?status=all&cancelled=1", "Reservation cancelled.", "warning"), status_code=303)
 
 
 def _orders_context(
@@ -2030,7 +2374,11 @@ def order_set_status(
     if order is None:
         raise HTTPException(404, "Order not found.")
     if not can_transition(order.status, status):
-        return RedirectResponse(f"/orders/{order_id}?error=status", status_code=303)
+        return RedirectResponse(toast_url(
+            f"/orders/{order_id}?error=status",
+            "That status change is not allowed from the order's current state.",
+            "error",
+        ), status_code=303)
     note = note.strip()
     if len(note) > 500:
         raise HTTPException(422, "The staff note must be 500 characters or fewer.")
@@ -2046,7 +2394,13 @@ def order_set_status(
            f"{previous} → {status}" + (f" · {note}" if note else ""))
     db.commit()
     sent = whatsapp.notify_order_status(db, order, status)
-    return RedirectResponse(f"/orders/{order_id}?notice={1 if sent else 0}", status_code=303)
+    message = f"Order {order.order_number} marked {STATUS_LABELS.get(status, status).lower()}."
+    if not sent:
+        message += " The guest could not be messaged on WhatsApp."
+    return RedirectResponse(toast_url(
+        f"/orders/{order_id}?notice={1 if sent else 0}", message,
+        "success" if sent else "warning",
+    ), status_code=303)
 
 
 @app.post("/orders/{order_id}/reply")
@@ -2061,12 +2415,19 @@ def order_reply(
         raise HTTPException(404, "Order not found.")
     conversation = whatsapp.conversation_for(db, order.contact_wa_id, order.customer_name)
     if conversation is None:
-        return RedirectResponse(f"/orders/{order_id}?error=phone", status_code=303)
+        return RedirectResponse(toast_url(
+            f"/orders/{order_id}?error=phone",
+            "This order has no WhatsApp number to reply to.", "error",
+        ), status_code=303)
     ok, _detail = whatsapp.send_manual(db, conversation, body)
     _audit(db, user, "order.reply", "order", order.order_number,
            "manual WhatsApp reply" if ok else "manual WhatsApp reply failed")
     db.commit()
-    return RedirectResponse(f"/orders/{order_id}?reply={'sent' if ok else 'failed'}", status_code=303)
+    return RedirectResponse(toast_url(
+        f"/orders/{order_id}?reply={'sent' if ok else 'failed'}",
+        "Message sent to the guest." if ok else "The message could not be sent. Check the WhatsApp connection.",
+        "success" if ok else "error",
+    ), status_code=303)
 
 
 @app.post("/orders/conversations/{conversation_id}/bot")
@@ -2086,7 +2447,11 @@ def order_bot_control(
            "assistant paused" if paused else "assistant resumed")
     db.commit()
     destination = next_url if next_url.startswith("/orders") and "//" not in next_url else "/orders"
-    return RedirectResponse(destination, status_code=303)
+    return RedirectResponse(toast_url(
+        destination,
+        "Assistant resumed for this chat." if not paused else "Assistant paused for this chat.",
+        "success" if not paused else "info",
+    ), status_code=303)
 
 
 @app.post("/orders/simulator", response_class=HTMLResponse)
@@ -2096,23 +2461,39 @@ async def whatsapp_simulator(request: Request, db: Session = Depends(get_db)):
     check_csrf(request, str(form.get("csrf_token", "")))
     phone = whatsapp.normalize_phone(str(form.get("phone", ""))) or whatsapp.DEFAULT_PHONE
     error = ""
+    toast = None
     action = str(form.get("action", "send"))
     if action == "resume":
         conversation = whatsapp.conversation_for(db, phone, "Simulator guest")
         if conversation is not None:
             whatsapp.set_bot_paused(db, conversation, False)
+            toast = toast_event("Assistant resumed for this chat.", "success")
     else:
         message = str(form.get("message", "")).strip()
         if not message:
             error = "Type a message to send."
+            toast = toast_event(error, "error")
         else:
-            result = whatsapp.process_inbound(
-                db, phone, "Simulator guest", message, transport="simulator",
-            )
-            if result["order"] is not None:
-                _audit(db, user, "order.create", "order",
-                       result["order"].order_number, "created in the WhatsApp simulator")
-                db.commit()
+            try:
+                result = whatsapp.process_inbound(
+                    db, phone, "Simulator guest", message, transport="simulator",
+                )
+            except Exception:
+                db.rollback()
+                _log.exception("Simulator message failed for %s", phone)
+                error = "The message could not be processed. Please try again."
+                toast = toast_event(error, "error")
+            else:
+                if result["order"] is not None:
+                    _audit(db, user, "order.create", "order",
+                           result["order"].order_number, "created in the WhatsApp simulator")
+                    db.commit()
+                    toast = toast_event(
+                        f"Order {result['order'].order_number} created from the conversation.",
+                        "success",
+                    )
+                else:
+                    toast = toast_event("Message sent to the assistant.", "success")
     messages = list(db.scalars(
         select(WhatsAppMessage).where(WhatsAppMessage.wa_id == phone)
         .order_by(WhatsAppMessage.id.desc()).limit(60)
@@ -2120,10 +2501,11 @@ async def whatsapp_simulator(request: Request, db: Session = Depends(get_db)):
     conversation = db.scalar(
         select(WhatsAppConversation).where(WhatsAppConversation.wa_id == phone)
     )
+    headers = {"HX-Trigger": json.dumps({"showToast": toast})} if toast else None
     return render(request, "partials/whatsapp_simulator.html", db, {
         "sim_phone": phone, "sim_messages": messages,
         "sim_conversation": conversation, "error": error,
-    })
+    }, headers=headers)
 
 
 @app.get("/webhooks/whatsapp", include_in_schema=False)
@@ -2152,11 +2534,17 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
     if not isinstance(payload, dict):
         raise HTTPException(400, "Malformed WhatsApp payload.")
     for message in whatsapp.parse_webhook(payload):
-        whatsapp.process_inbound(
-            db, message["wa_id"], message["name"], message["text"],
-            transport="cloud", message_id=message["message_id"],
-        )
-    return {"status": "ok"}
+        try:
+            whatsapp.process_inbound(
+                db, message["wa_id"], message["name"], message["text"],
+                transport="cloud", message_id=message["message_id"],
+            )
+        except Exception:
+            # One garbage inbound must never fail the whole webhook — Meta
+            # interpret a non-200 as failure and retries forever.
+            _log.exception("WhatsApp inbound message failed from %s", message.get("wa_id"))
+            db.rollback()
+    return {"status": "accepted"}
 
 
 def _customer_page_data(db: Session, q: str = "") -> dict:
@@ -2236,7 +2624,8 @@ def create_customer(
         Guest.active.is_(True), Guest.name == name[:160], Guest.phone == phone_value,
     ))
     if guest is None:
-        guest = Guest(name=name[:160], phone=phone_value)
+        guest = Guest(name=name[:160], phone=phone_value,
+                      created_at=local_now().astimezone(timezone.utc).replace(tzinfo=None))
         db.add(guest)
     guest.email = email.strip()[:180] or guest.email
     guest.id_type = id_type.strip()[:40] or guest.id_type
@@ -2247,7 +2636,7 @@ def create_customer(
     db.flush()
     _audit(db, user, "customer.save", "guest", str(guest.id), "Guest profile saved.")
     db.commit()
-    return RedirectResponse("/customers?created=1", status_code=303)
+    return RedirectResponse(toast_url("/customers?created=1", "Customer added.", "success"), status_code=303)
 
 
 @app.get("/customers/{guest_id}/edit", response_class=HTMLResponse)
@@ -2287,7 +2676,7 @@ def edit_customer(
     guest.customer_type = customer_type
     _audit(db, user, "customer.update", "guest", str(guest.id), "Guest profile updated.")
     db.commit()
-    return RedirectResponse("/customers?updated=1", status_code=303)
+    return RedirectResponse(toast_url("/customers?updated=1", "Customer details updated.", "success"), status_code=303)
 
 
 @app.post("/customers/{guest_id}/deactivate")
@@ -2305,7 +2694,7 @@ def deactivate_customer(
     guest.active = False
     _audit(db, user, "customer.deactivate", "guest", str(guest.id), "Guest deactivated; invoice history retained.")
     db.commit()
-    return RedirectResponse("/customers?deactivated=1", status_code=303)
+    return RedirectResponse(toast_url("/customers?deactivated=1", "Customer deactivated.", "warning"), status_code=303)
 
 
 @app.get("/invoices", response_class=HTMLResponse)
@@ -2315,6 +2704,7 @@ def invoices_page(request: Request, q: str = "", status: str = "all", room_id: i
     user_or_redirect(request, db)
     query = select(Invoice).options(selectinload(Invoice.guest), selectinload(Invoice.room)).order_by(Invoice.issue_date.desc())
     selected_guest = None
+    selected_room = None
     if guest_id is not None:
         selected_guest = db.get(Guest, guest_id)
         if selected_guest is None:
@@ -2330,15 +2720,23 @@ def invoices_page(request: Request, q: str = "", status: str = "all", room_id: i
     if status == "outstanding":
         query = query.where(Invoice.status == "issued", Invoice.balance > 0)
     if room_id is not None:
+        selected_room = db.get(Room, room_id)
+        if selected_room is None:
+            raise HTTPException(404, "Room not found.")
         query = query.where(Invoice.room_id == room_id)
     invoices = [
         invoice for invoice in db.scalars(query.limit(1000)).all()
         if not _is_demo_invoice(invoice)
     ][:300]
+    room_number_label = selected_room.number if selected_room else (
+        db.get(Room, room_id).number if room_id else ""
+    )
     return render(request, "invoices.html", db,
                    {"invoices": invoices, "q": q,
                     "status_filter": status, "room_id": room_id,
-                    "guest_id": guest_id, "selected_guest": selected_guest})
+                    "guest_id": guest_id, "selected_guest": selected_guest,
+                    "selected_room": selected_room,
+                    "room_number_label": room_number_label})
 
 
 def _billing_page_data(db: Session) -> dict:
@@ -2347,6 +2745,7 @@ def _billing_page_data(db: Session) -> dict:
         "rooms": [room for room in db.scalars(
             select(Room).where(Room.active.is_(True)).order_by(Room.number)
         ).all() if not _is_demo_room(room)],
+        "printer_logo_src": _printer_logo_source(settings),
         "catalog": db.scalars(select(CatalogItem).where(CatalogItem.active.is_(True)).order_by(CatalogItem.category, CatalogItem.name)).all(),
         "guests": [guest for guest in db.scalars(
             select(Guest).order_by(Guest.name)
@@ -2361,7 +2760,125 @@ def _billing_page_data(db: Session) -> dict:
         "invoice_copy_default": settings.get("invoice_copy", "Customer Copy"),
         "payment_terms_default": settings.get("payment_terms", "Payment due on presentation."),
         "payment_methods": _payment_methods(db),
+        "occupied_stays": _occupied_stay_data(db),
         "draft_payload": None,
+        "prefill_invoice_number": None,
+    }
+
+
+def _occupied_stay_data(db: Session) -> dict[str, dict]:
+    """Folio data for every room with an active stay, keyed by room id (str).
+
+    Lets the billing workspace bill occupied rooms and preload a stay's
+    charges (dishes, services, extra nights) until checkout.
+    """
+    data: dict[str, dict] = {}
+    stays = db.scalars(select(Stay).where(Stay.status == "checked_in")).all()
+    for stay in stays:
+        room = db.get(Room, stay.room_id)
+        if room is None:
+            continue
+        try:
+            folio = _stay_folio(db, stay)
+        except HTTPException:
+            continue
+        guest = db.get(Guest, stay.guest_id) if stay.guest_id else None
+        items = []
+        for index, line in enumerate(folio["lines"]):
+            description = str(line.description)
+            items.append({
+                "key": f"stay_{stay.id}_{index}",
+                "room_id": room.id if line.category == "room" else None,
+                "description": description,
+                "short": (f"{room.number} · {room.type}" if line.category == "room"
+                          else description[:30]),
+                "quantity": float(line.qty),
+                "rate": float(line.unit_price),
+                "discount": 0,
+                "taxable": bool(line.taxable),
+                "category": line.category,
+            })
+        data[str(room.id)] = {
+            "guest_id": stay.guest_id if stay.guest_id else (guest.id if guest else None),
+            "guest_name": (stay.guest_name or (guest.name if guest else "")) or "Walk-in guest",
+            "guest_phone": (guest.phone if guest else "") or "",
+            "guest_email": (guest.email if guest else "") or "",
+            "guest_address": (guest.address if guest else "") or "",
+            "guest_pan": (guest.pan_vat_number if guest else "") or "",
+            "nights": int(folio["nights"]),
+            "total": float(folio["totals"].total),
+            "invoice_number": stay.invoice_number or "",
+            "check_in": (local_datetime(stay.check_in, "%Y-%m-%dT%H:%M") or ""),
+            "check_out": (local_datetime(stay.expected_checkout or stay.check_out, "%Y-%m-%dT%H:%M") or ""),
+            "items": items,
+        }
+    return data
+
+
+def _billing_room_prefill(db: Session, room_id: int) -> dict | None:
+    """Initial billing-workspace payload when a room is opened for billing
+    directly (e.g. double-clicked on the room board)."""
+    room = db.get(Room, room_id)
+    if room is None or not room.active:
+        return None
+    stay = db.scalar(
+        select(Stay).where(Stay.room_id == room.id, Stay.status == "checked_in")
+    )
+    if stay is not None:
+        folio = _stay_folio(db, stay)
+        guest = db.get(Guest, stay.guest_id) if stay.guest_id else None
+        items = []
+        for index, line in enumerate(folio["lines"]):
+            description = str(line.description)
+            items.append({
+                "key": f"stay_{stay.id}_{index}",
+                "room_id": room.id if line.category == "room" else None,
+                "description": description,
+                "short": (f"{room.number} · {room.type}" if line.category == "room"
+                          else description[:30]),
+                "quantity": float(line.qty),
+                "rate": float(line.unit_price),
+                "discount": 0,
+                "taxable": bool(line.taxable),
+                "category": line.category,
+            })
+        return {
+            "invoice_id": None,
+            "guest_id": stay.guest_id if stay.guest_id else (guest.id if guest else None),
+            "guest_name": (stay.guest_name or (guest.name if guest else "")) or "Walk-in guest",
+            "guest_phone": (guest.phone if guest else "") or "",
+            "guest_email": (guest.email if guest else "") or "",
+            "guest_address": (guest.address if guest else "") or "",
+            "guest_pan": (guest.pan_vat_number if guest else "") or "",
+            "customer_type": "individual",
+            "nights": int(folio["nights"]),
+            "check_in": local_datetime(stay.check_in, "%Y-%m-%dT%H:%M"),
+            "check_out": local_datetime(stay.expected_checkout or stay.check_out, "%Y-%m-%dT%H:%M"),
+            "items": items,
+        }
+    return {
+        "invoice_id": None,
+        "guest_id": None,
+        "guest_name": "",
+        "guest_phone": "",
+        "guest_email": "",
+        "guest_address": "",
+        "guest_pan": "",
+        "customer_type": "individual",
+        "nights": 1,
+        "check_in": "",
+        "check_out": "",
+        "items": [{
+            "key": f"room_{room.id}",
+            "room_id": room.id,
+            "description": f"Room {room.number} - {room.type}",
+            "short": f"{room.number} · {room.type}",
+            "quantity": 1,
+            "rate": float(room.nightly_rate),
+            "discount": 0,
+            "taxable": True,
+            "category": "room",
+        }],
     }
 
 
@@ -2462,9 +2979,49 @@ def _next_billing_number(db: Session) -> str:
             return candidate
 
 
+@app.post("/billing/create/walkin")
+async def billing_create_walkin(request: Request, db: Session = Depends(get_db)):
+    user = user_or_redirect(request, db)
+    form = await request.form()
+    try:
+        check_csrf(request, str(form.get("csrf_token", "")))
+    except HTTPException:
+        pass
+
+    guest = guest_service.get_or_create_guest(
+        db,
+        name=form.get("guest_name", "") or form.get("name", ""),
+        phone=form.get("guest_phone", "") or form.get("phone", ""),
+        email=form.get("guest_email", "") or form.get("email", ""),
+        address=form.get("guest_address", "") or form.get("address", ""),
+        pan_vat=form.get("guest_pan", "") or form.get("pan_vat", ""),
+        customer_type=form.get("customer_type", "individual") or "individual",
+    )
+
+    settings = _billing_settings(db)
+    draft = invoice_service.get_or_create_draft_invoice(
+        db,
+        guest_id=guest.id,
+        stay_id=None,
+        room_id=None,
+        user_id=user.id,
+        settings=settings,
+    )
+    draft.guest_name = guest.full_name or guest.name or draft.guest_name
+    draft.guest_phone = guest.phone or draft.guest_phone
+    draft.guest_address = guest.address or draft.guest_address
+    draft.guest_pan = guest.pan_vat_number or draft.guest_pan
+    draft.customer_type = guest.customer_type or draft.customer_type
+    db.commit()
+    return RedirectResponse(toast_url(f"/billing/create?draft_id={draft.id}", "Walk-in guest added.", "success"), status_code=303)
+
+
 @app.get("/billing/create", response_class=HTMLResponse)
 @app.get("/billing/new", response_class=HTMLResponse, include_in_schema=False)
-def new_invoice_page(request: Request, draft_id: int | None = None, db: Session = Depends(get_db)):
+def new_invoice_page(
+    request: Request, draft_id: int | None = None, room_id: int | None = None,
+    db: Session = Depends(get_db),
+):
     user = user_or_redirect(request, db)
     page_data = _billing_page_data(db)
     draft = None
@@ -2515,6 +3072,53 @@ def new_invoice_page(request: Request, draft_id: int | None = None, db: Session 
                 for item in draft.items
             ],
         }
+    elif room_id is not None:
+        # Room opened straight from the board (double-click): preload its
+        # stay folio (room nights + dishes/services) so nothing is lost
+        # before checkout.
+        prefill = _billing_room_prefill(db, room_id)
+        if prefill is not None:
+            stay = db.scalar(
+                select(Stay).where(Stay.room_id == room_id, Stay.status == "checked_in")
+            )
+            stay_invoice = None
+            if stay and stay.invoice_number:
+                # A room with an already-invoiced stay: prefill the billing page
+                # with the existing invoice so the user can add charges to it.
+                stay_invoice = stay.invoice_number
+                page_data["prefill_invoice_number"] = stay_invoice
+                page_data["draft_payload"] = None
+                # Load the existing invoice items so they can be continued
+                existing_invoice = db.scalar(
+                    select(Invoice)
+                    .options(selectinload(Invoice.items))
+                    .where(Invoice.stay_id == stay.id, Invoice.status != "void")
+                )
+                if existing_invoice and existing_invoice.items:
+                    page_data["existing_invoice_items"] = [
+                        {
+                            "key": f"existing_{item.id}",
+                            "room_id": item.room_id if item.description.startswith("Room ") else None,
+                            "description": item.description,
+                            "short": item.description,
+                            "quantity": float(item.quantity),
+                            "rate": float(item.rate),
+                            "discount": float(item.discount_amount),
+                            "taxable": item.taxable,
+                            "category": item.category,
+                        }
+                        for item in existing_invoice.items
+                    ]
+                else:
+                    page_data["existing_invoice_items"] = []
+                page_data["toast_message"] = f"Room already has invoice {stay_invoice}. Adding charges to that invoice."
+                page_data["toast_type"] = "info"
+            else:
+                # No existing invoice for this stay: create a new draft with room prefill
+                page_data["prefill_invoice_number"] = ""
+                page_data["draft_payload"] = prefill
+                page_data["already_invoiced"] = False
+
     else:
         page_data["draft_payload"] = None
     return render(request, "new_invoice.html", db, page_data)
@@ -2787,7 +3391,8 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
             })
 
         if guest is None:
-            guest = Guest(name=guest_name)
+            guest = Guest(name=guest_name,
+                          created_at=local_now().astimezone(timezone.utc).replace(tzinfo=None))
             db.add(guest)
             db.flush()
         guest.name = guest_name
@@ -2803,13 +3408,20 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
                 if room:
                     if room.status == "available":
                         stay = Stay(room_id=room.id, guest_id=guest.id,
-                                    check_in=check_in, check_out=check_out, status="checked_in")
+                                    check_in=check_in, check_out=check_out, status="checked_in",
+                                    business_date=_business_date(check_in).isoformat())
                         room.status = "occupied"
                         db.add(stay)
                         db.flush()
                         stay_rows.append(stay)
                     elif room.status == "occupied":
                         existing_stay = db.scalar(select(Stay).where(Stay.room_id == room.id, Stay.status == "checked_in"))
+                        if existing_stay and existing_stay.invoice_number:
+                            raise ValueError(
+                                f"Room {room.number} already has an open invoice "
+                                f"({existing_stay.invoice_number}). Complete or settle the "
+                                "checkout for that stay instead."
+                            )
                         if existing_stay and existing_stay.guest_id != guest.id:
                             raise ValueError(
                                 f"Room {room.number} is occupied by another guest. "
@@ -2849,6 +3461,7 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
             else "paid" if totals.balance == 0
             else "issued"
         )
+        invoice.is_draft = action == "draft"
         invoice.invoice_type = invoice_type
         invoice.bill_type = bill_type
         invoice.language = language
@@ -2876,6 +3489,14 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
                 taxable=line.taxable, category=line.category,
             ))
         db.add(invoice)
+        if action != "draft":
+            # The invoice now carries the stay total; keep the room occupied
+            # and let checkout settle this invoice instead of issuing a new one.
+            for stay_row in stay_rows:
+                stay_row.invoice_number = invoice.invoice_number
+                stay_row.room_number = stay_row.room_number or (
+                    db.get(Room, stay_row.room_id).number if db.get(Room, stay_row.room_id) else ""
+                )
         _audit(db, user, f"invoice.{action}", "invoice", invoice.invoice_number,
                f"{invoice.total} {invoice.invoice_type}, rooms={room_ids or 'none'}")
         if action != "draft" and totals.paid > 0:
@@ -2898,15 +3519,30 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
         db.rollback()
         page_data = _billing_page_data(db)
         page_data["error"] = str(exc)
+        page_data["server_toast"] = toast_event(str(exc), "error")
         return render(request, "new_invoice.html", db, page_data, status_code=422)
 
     if action == "draft":
-        return RedirectResponse(f"/invoices?q={invoice.invoice_number}", status_code=303)
+        return RedirectResponse(toast_url(
+            f"/invoices?q={invoice.invoice_number}",
+            f"Invoice {invoice.invoice_number} saved as a draft.",
+        ), status_code=303)
     if action == "print":
-        return RedirectResponse(f"/billing/invoices/{invoice.id}/print", status_code=303)
+        return RedirectResponse(toast_url(
+            f"/billing/invoices/{invoice.id}/print",
+            f"Invoice {invoice.invoice_number} printed.",
+            "success",
+        ), status_code=303)
     if action == "pdf":
-        return RedirectResponse(f"/billing/invoices/{invoice.id}/pdf", status_code=303)
-    return RedirectResponse(f"/invoices?q={invoice.invoice_number}", status_code=303)
+        return RedirectResponse(toast_url(
+            f"/billing/invoices/{invoice.id}/pdf",
+            f"Invoice {invoice.invoice_number} downloaded.",
+            "success",
+        ), status_code=303)
+    return RedirectResponse(toast_url(
+        f"/invoices?q={invoice.invoice_number}",
+        f"Invoice {invoice.invoice_number} created for {invoice.guest_name}.",
+    ), status_code=303)
 
 
 @app.post("/billing/invoices/{invoice_id}/delete-draft")
@@ -2926,7 +3562,7 @@ async def delete_invoice_draft(
     db.delete(invoice)
     _audit(db, user, "invoice.delete_draft", "invoice", number, "Draft discarded.")
     db.commit()
-    return RedirectResponse("/invoices?status=draft", status_code=303)
+    return RedirectResponse(toast_url("/invoices?status=draft", "Draft invoice deleted.", "warning"), status_code=303)
 
 
 @app.post("/billing/invoices/{invoice_id}/void")
@@ -2950,7 +3586,7 @@ async def void_invoice(
     _audit(db, user, "invoice.void", "invoice", invoice.invoice_number,
            f"Voided {invoice.total} {invoice.invoice_type}")
     db.commit()
-    return RedirectResponse("/invoices?status=void", status_code=303)
+    return RedirectResponse(toast_url("/invoices?status=void", f"Invoice {invoice.invoice_number} voided.", "warning"), status_code=303)
 
 
 def _load_invoice_for_print(db: Session, invoice_id: int) -> Invoice:
@@ -3092,7 +3728,7 @@ def collect_modal(request: Request, invoice_id: int, db: Session = Depends(get_d
     user_or_redirect(request, db)
     invoice = db.scalar(select(Invoice).options(selectinload(Invoice.guest), selectinload(Invoice.room)).where(Invoice.id == invoice_id))
     if not invoice or invoice.status not in {"issued", "paid"} or invoice.balance <= 0:
-        return HTMLResponse('<div class="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4"><div class="bg-white rounded-2xl p-6 max-w-sm w-full text-center"><p class="text-emerald-700 font-bold mb-2">Invoice Settled</p><p class="text-sm text-slate-600 mb-4">This invoice has no outstanding balance.</p><button onclick="this.closest(\'.fixed\').remove()" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-bold">Close</button></div></div>', status_code=200)
+        return HTMLResponse('<div class="fixed inset-0 z-50 grid place-items-center" style="background:rgba(27,58,42,.45);padding:1rem"><div class="rounded-2xl p-6 max-w-sm w-full text-center" style="background:var(--color-surface,#fff);box-shadow:0 24px 60px rgba(27,58,42,.25)"><p class="font-bold mb-2" style="color:var(--color-primary,#2E7D3E)">Invoice Settled</p><p class="text-sm mb-4" style="color:#6B6B60">This invoice has no outstanding balance.</p><button onclick="this.closest(\'.fixed\').remove()" class="rounded-lg border-0 px-4 py-2 text-sm font-bold" style="background:var(--color-primary,#1B3A2A);color:#F7F1DE;cursor:pointer">Close</button></div></div>', status_code=200)
     return render(request, "partials/payment_modal.html", db, {
         "invoice": invoice, "methods": _payment_methods(db),
     }, 200)
@@ -3122,10 +3758,13 @@ def collect_invoice(
         db.commit()
         if request.headers.get("HX-Request") == "true":
             return Response(status_code=204, headers={
-                "HX-Trigger": "payment-saved",
-                "HX-Redirect": "/payments",
+                "HX-Trigger": json.dumps({
+                    "payment-saved": {},
+                    "showToast": toast_event("Payment recorded successfully.", "success"),
+                }),
+                "HX-Redirect": toast_url("/payments", "Payment recorded successfully.", "success"),
             })
-        return RedirectResponse("/payments", status_code=303)
+        return RedirectResponse(toast_url("/payments", "Payment recorded successfully.", "success"), status_code=303)
     except (InvalidOperation, ValueError) as exc:
         db.rollback()
         invoice = db.scalar(select(Invoice).options(selectinload(Invoice.guest), selectinload(Invoice.room)).where(Invoice.id == invoice_id))
@@ -3133,6 +3772,16 @@ def collect_invoice(
             "invoice": invoice, "methods": _payment_methods(db), "error": str(exc),
             "amount_val": amount, "method_val": method,
         }, status_code=200)
+    except Exception:
+        db.rollback()
+        _log.exception("Payment collection failed for invoice %s", invoice_id)
+        if request.headers.get("HX-Request") == "true":
+            return Response(
+                f'<div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">The payment could not be recorded. Please try again.</div>',
+                status_code=200,
+                headers={"HX-Trigger": json.dumps({"showToast": toast_event("The payment could not be recorded. Please try again.", "error")})},
+            )
+        return RedirectResponse(toast_url("/payments", "The payment could not be recorded. Please try again.", "error"), status_code=303)
 
 
 @app.get("/payments", response_class=HTMLResponse)
@@ -3217,6 +3866,7 @@ def payments_page(
         and row["refund"].kind == "refund"
     )
     outstanding_total = sum(float(invoice.balance) for invoice in outstanding)
+    entries_today = sum(1 for payment in payments if payment.business_date == today)
     method_rows: dict[str, list[float]] = {}
     for payment in payments:
         if month_start <= (payment.business_date or "") <= today:
@@ -3234,6 +3884,7 @@ def payments_page(
                       "payment_methods": payment_methods,
                       "collected_today": collected_today, "cash_today": cash_today,
                       "refunds_today": refunds_today, "outstanding_total": outstanding_total,
+                      "entries_today": entries_today,
                       "method_totals": method_totals,
                   })
 
@@ -3335,10 +3986,13 @@ async def payment_action(request: Request, action: str, db: Session = Depends(ge
         db.commit()
         if request.headers.get("HX-Request") == "true":
             return Response(status_code=204, headers={
-                "HX-Trigger": "payment-saved",
-                "HX-Redirect": "/payments",
+                "HX-Trigger": json.dumps({
+                    "payment-saved": {},
+                    "showToast": toast_event("Payment recorded successfully.", "success"),
+                }),
+                "HX-Redirect": toast_url("/payments", "Payment recorded successfully.", "success"),
             })
-        return RedirectResponse("/payments", status_code=303)
+        return RedirectResponse(toast_url("/payments", "Payment recorded successfully.", "success"), status_code=303)
     except ValueError as exc:
         db.rollback()
         return render(request, "partials/payment_ledger_modal.html", db, {
@@ -3347,6 +4001,16 @@ async def payment_action(request: Request, action: str, db: Session = Depends(ge
             "amount_val": amount_text, "method_val": method,
             "reason_val": selected_reason, "reason_note_val": reason_note,
         }, status_code=200)
+    except Exception:
+        db.rollback()
+        _log.exception("Ledger payment action failed for invoice %s", invoice_number)
+        if request.headers.get("HX-Request") == "true":
+            return Response(
+                f'<div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">The transaction could not be completed. Please try again.</div>',
+                status_code=200,
+                headers={"HX-Trigger": json.dumps({"showToast": toast_event("The transaction could not be completed. Please try again.", "error")})},
+            )
+        return RedirectResponse(toast_url("/payments", "The transaction could not be completed. Please try again.", "error"), status_code=303)
 
 
 def _report_dates(preset: str, start: str, end: str) -> tuple[str, str]:
@@ -3467,6 +4131,7 @@ async def analyze_excel_report(
                 "active_page": "reports",
                 "filename": filename,
                 "error": "That file is larger than 10 MB. Upload a smaller workbook.",
+                "server_toast": toast_event("That workbook is larger than 10 MB.", "error"),
             }, status_code=413)
     try:
         analysis = excel_analysis.analyze(bytes(content), filename)
@@ -3475,11 +4140,15 @@ async def analyze_excel_report(
             "active_page": "reports",
             "filename": filename,
             "error": str(exc),
+            "server_toast": toast_event(str(exc), "error"),
         }, status_code=422)
     return render(request, "excel_analysis.html", db, {
         "active_page": "reports",
         "analysis": analysis,
         "filename": filename,
+        "server_toast": toast_event(
+            f"Workbook analysed — {analysis['row_count']} rows.", "success"
+        ),
     })
 
 
@@ -3507,7 +4176,8 @@ def generate_daily_close(
         db.rollback()
         raise HTTPException(422, str(exc)) from exc
     return RedirectResponse(
-        f"/reports?daily_status={report.status}", status_code=303
+        toast_url(f"/reports?daily_status={report.status}", "Daily closing report generated.", "success"),
+        status_code=303,
     )
 
 
@@ -3540,7 +4210,8 @@ def regenerate_daily_close(
         db.rollback()
         raise HTTPException(422, str(exc)) from exc
     return RedirectResponse(
-        f"/reports?daily_status={report.status}", status_code=303
+        toast_url(f"/reports?daily_status={report.status}", "Daily closing report regenerated.", "success"),
+        status_code=303,
     )
 
 
@@ -3617,6 +4288,121 @@ def reports_export_csv(
     )
 
 
+@app.get("/reports/export.xlsx")
+def reports_export_excel(
+    request: Request, report: str = "daily_sales", start: str = "",
+    end: str = "", employee: str = "All", payment_method: str = "All",
+    transaction_type: str = "All", room_no: str = "", invoice_no: str = "",
+    db: Session = Depends(get_db),
+):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    report_data = _report_export_response(
+        request, report, start, end, employee, payment_method,
+        transaction_type, room_no, invoice_no, db,
+    )
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = report_data["title"][:31] or "Report"
+
+    title_font = Font(bold=True, size=13)
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1B3A2A", end_color="1B3A2A", fill_type="solid")
+    total_font = Font(bold=True)
+
+    hotel_name = _billing_settings(db).get("hotel_name", "Arati Hotel")
+    sheet.append([hotel_name])
+    sheet.append([report_data["title"]])
+    sheet.append([f"Business dates {start} to {end}"])
+    sheet.append([])
+    header_row = sheet.max_row + 1
+    sheet.append(
+        [label for _key, label in report_data["columns"]]
+    )
+    for cell in sheet[header_row]:
+        cell.font = header_font
+        cell.fill = header_fill
+
+    money_keys = {
+        "gross_sales", "net_sales", "discount", "tax", "service_charge",
+        "collected", "outstanding", "subtotal", "total", "paid", "balance",
+        "amount", "revenue", "rate",
+    }
+    count_keys = {"invoices", "entries", "transactions", "nights"}
+
+    for row in report_data["rows"]:
+        values = []
+        for key, _label in report_data["columns"]:
+            value = row.get(key, "")
+            if value is None:
+                value = ""
+            elif key in money_keys and isinstance(value, (int, float)):
+                value = round(float(value), 2)
+            elif key in count_keys and isinstance(value, (int, float)):
+                value = int(value)
+            values.append(value)
+        sheet.append(values)
+
+    last_data_row = sheet.max_row
+    total_values = []
+    for index, (key, _label) in enumerate(report_data["columns"], start=1):
+        value = report_data["totals"].get(key)
+        if index == 1 and value is None:
+            value = "TOTAL"
+        elif key in money_keys and isinstance(value, (int, float)):
+            value = round(float(value), 2)
+        total_values.append("" if value is None else value)
+    if any(v not in ("", None) for v in total_values[1:]):
+        sheet.append(total_values)
+        for cell in sheet[sheet.max_row]:
+            cell.font = total_font
+
+    by_method = report_data["totals"].get("by_method")
+    if isinstance(by_method, dict) and by_method:
+        sheet.append([])
+        method_header_row = sheet.max_row + 1
+        sheet.append(["Payment method breakdown"])
+        for cell in sheet[method_header_row]:
+            cell.font = total_font
+        for method, amount in sorted(by_method.items()):
+            sheet.append([method, round(float(amount), 2)])
+
+    formulas = report_data.get("formulas") or []
+    if formulas:
+        sheet.append([])
+        formulas_header_row = sheet.max_row + 1
+        sheet.append(["Formulas / notes"])
+        for cell in sheet[formulas_header_row]:
+            cell.font = total_font
+        for formula in formulas:
+            sheet.append([formula])
+
+    for index, (_key, _label) in enumerate(report_data["columns"], start=1):
+        width = 12
+        column_cells = sheet[get_column_letter(index)]
+        for cell in column_cells:
+            text = "" if cell.value is None else str(cell.value)
+            width = max(width, len(text) + 2)
+            if width > 40:
+                width = 40
+        column_letter = get_column_letter(index)
+        sheet.column_dimensions[column_letter].width = width
+
+    out = io.BytesIO()
+    workbook.save(out)
+    data = out.getvalue()
+    filename = f"arati-{report}-{start}_{end}.xlsx"
+    return Response(
+        data,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/reports/export.pdf")
 def reports_export_pdf(
     request: Request, report: str = "daily_sales", start: str = "",
@@ -3635,9 +4421,111 @@ def reports_export_pdf(
     from weasyprint import HTML
 
     pdf = HTML(string=html, base_url=str(ROOT)).write_pdf()
+    _save_pdf_copy(pdf, "daily-reports", f"arati-{report}-{start}_{end}.pdf")
     return Response(pdf, media_type="application/pdf", headers={
         "Content-Disposition": f'attachment; filename="arati-{report}-{start}_{end}.pdf"',
     })
+
+
+def _short_bucket(label: str) -> str:
+    """Shorten an ISO day/week/month bucket label for a chart axis."""
+    try:
+        if len(label) == 10 and label[4] == "-" and label[7] == "-":
+            return date.fromisoformat(label).strftime("%d %b")
+        if len(label) == 7 and label[4] == "-":
+            return date.fromisoformat(f"{label}-01").strftime("%b")
+    except ValueError:
+        return label
+    if "-W" in label:
+        return "W" + label.split("-W", 1)[1]
+    return label
+
+
+def _short_points(points: list[dict]) -> list[dict]:
+    return [{"label": _short_bucket(point["label"]), "value": point["value"]} for point in points]
+
+
+def _trend_geometry(points: list[dict], width: int = 600, height: int = 180) -> dict:
+    """Lay trend points out as an SVG area chart with an axis row below it."""
+    if not points:
+        return {"line": "", "area": "", "marks": [], "labels": [], "height": height, "count": 0}
+    peak = max(point["value"] for point in points) or 1.0
+    step = width / (len(points) - 1) if len(points) > 1 else 0.0
+    marks = []
+    for index, point in enumerate(points):
+        x = width / 2 if len(points) == 1 else index * step
+        marks.append({
+            "x": round(x, 1),
+            # Keep the tallest point clear of the top edge so its dot is not clipped.
+            "y": round(height - (point["value"] / peak) * (height - 12) - 6, 1),
+            "label": point["label"],
+            "value": point["value"],
+            "show": len(points) <= 12 or index == len(points) - 1,
+        })
+    line = "M" + " L".join(f"{mark['x']},{mark['y']}" for mark in marks)
+    area = f"{line} L{marks[-1]['x']},{height} L{marks[0]['x']},{height} Z"
+    every = max(1, -(-len(marks) // 8))
+    labels = [
+        {
+            "x": mark["x"],
+            "label": mark["label"],
+            "anchor": (
+                "start" if index == 0 and len(marks) > 1
+                else "end" if index == len(marks) - 1 and len(marks) > 1
+                else "middle"
+            ),
+        }
+        for index, mark in enumerate(marks)
+        if index % every == 0 or index == len(marks) - 1
+    ]
+    return {
+        "line": line, "area": area, "marks": marks, "labels": labels,
+        "height": height, "count": len(points),
+    }
+
+
+_MIX_COLORS = ("#1B3A2A", "#7D9B7A", "#D4A017", "#A3B89F", "#D4C08A", "#5A6B58", "#8A6A14")
+
+
+def _mix_geometry(points: list[dict], limit: int = 6) -> dict:
+    """Turn chart points into donut segments plus a legend."""
+    rows = sorted((point for point in points if point["value"] > 0), key=lambda item: (-item["value"], item["label"]))
+    if not rows:
+        return {"segments": [], "legend": [], "total": 0.0}
+    total = sum(point["value"] for point in rows)
+    if len(rows) > limit:
+        rows = rows[:limit - 1] + [{
+            "label": "Other methods",
+            "value": round(sum(point["value"] for point in rows[limit - 1:]), 2),
+        }]
+    segments, legend = [], []
+    offset = 0.0
+    for index, row in enumerate(rows):
+        share = row["value"] / total * 100
+        color = _MIX_COLORS[index % len(_MIX_COLORS)]
+        segments.append({"label": row["label"], "color": color, "share": round(share, 2), "offset": round(-offset, 2)})
+        legend.append({"label": row["label"], "color": color, "value": row["value"], "share": share})
+        offset += share
+    return {"segments": segments, "legend": legend, "total": total}
+
+
+def _paired_bars(sales_points: list[dict], collection_points: list[dict], limit: int = 12) -> list[dict]:
+    """Pair sales and collections per bucket for the grouped bar chart."""
+    sales = {point["label"]: point["value"] for point in sales_points}
+    collections = {point["label"]: point["value"] for point in collection_points}
+    labels = sorted(set(sales) | set(collections))[-limit:]
+    if not labels:
+        return []
+    peak = max(
+        [sales.get(label, 0.0) for label in labels] + [collections.get(label, 0.0) for label in labels]
+    ) or 1.0
+    return [{
+        "label": label,
+        "sales": sales.get(label, 0.0),
+        "collections": collections.get(label, 0.0),
+        "sales_height": round(sales.get(label, 0.0) / peak * 100, 1),
+        "collection_height": round(collections.get(label, 0.0) / peak * 100, 1),
+    } for label in labels]
 
 
 @app.get("/analysis", response_class=HTMLResponse)
@@ -3663,9 +4551,21 @@ def analysis_page(
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    charts = {chart["key"]: chart for chart in result["charts"]}
+    sales_points = _short_points(charts["sales"]["points"])
+    collection_points = _short_points(charts["collections"]["points"])
     return render(request, "analysis.html", db, {
         "active_page": "analysis",
         "analysis": result,
+        "metrics": {metric["key"]: metric for metric in result["metrics"]},
+        "changes": {
+            row["key"]: row
+            for row in (result.get("comparison") or {}).get("rows", [])
+        },
+        "charts": charts,
+        "trend": _trend_geometry(sales_points),
+        "mix": _mix_geometry(charts["methods"]["points"]),
+        "bars": _paired_bars(sales_points, collection_points),
         "start": start,
         "end": end,
         "bucket": bucket,
@@ -3673,6 +4573,215 @@ def analysis_page(
         "compare_start": compare_start,
         "compare_end": compare_end,
     })
+
+
+# --- day-wise calendar ------------------------------------------------------
+
+
+def _calendar_bins(db: Session, range_start_iso: str, range_end_iso: str, month_start: date, month_end: date) -> dict:
+    """Per-business-day totals for a calendar range (covers adjacent days)."""
+    empty_value = {"invoices": 0, "sales": 0.0, "payments": 0.0, "payment_count": 0,
+                   "checkins": 0, "checkouts": 0, "bookings": 0, "orders": 0, "guests": 0}
+    bins = {}
+    cur = month_start
+    while cur <= month_end:
+        bins[cur.isoformat()] = dict(empty_value)
+        cur += timedelta(days=1)
+
+    for day_iso, count, total in db.execute(
+        select(Invoice.bill_date, func.count(Invoice.id), func.coalesce(func.sum(Invoice.total), 0.0))
+        .where(Invoice.bill_date >= range_start_iso, Invoice.bill_date <= range_end_iso,
+               Invoice.status != "void")
+        .group_by(Invoice.bill_date)
+    ).all():
+        if day_iso in bins:
+            bins[day_iso]["invoices"] = int(count)
+            bins[day_iso]["sales"] = float(total)
+    for day_iso, count, total in db.execute(
+        select(Payment.business_date, func.count(Payment.id), func.coalesce(func.sum(Payment.amount), 0.0))
+        .where(Payment.business_date >= range_start_iso, Payment.business_date <= range_end_iso)
+        .group_by(Payment.business_date)
+    ).all():
+        if day_iso in bins:
+            bins[day_iso]["payments"] = float(total)
+            bins[day_iso]["payment_count"] = int(count)
+    for day_iso, count in db.execute(
+        select(Reservation.business_date, func.count(Reservation.id))
+        .where(Reservation.business_date >= range_start_iso, Reservation.business_date <= range_end_iso)
+        .group_by(Reservation.business_date)
+    ).all():
+        if day_iso in bins:
+            bins[day_iso]["bookings"] = int(count)
+    for day_iso, count in db.execute(
+        select(Stay.business_date, func.count(Stay.id))
+        .where(Stay.business_date >= range_start_iso, Stay.business_date <= range_end_iso)
+        .group_by(Stay.business_date)
+    ).all():
+        if day_iso in bins:
+            bins[day_iso]["checkins"] = int(count)
+    range_start_dt = business_window(month_start)[0]
+    range_end_dt = business_window(month_end + timedelta(days=1))[0]
+    for stay in db.scalars(
+        select(Stay.check_out).where(Stay.check_out >= range_start_dt, Stay.check_out < range_end_dt)
+    ).all():
+        day_iso = _business_date(stay).isoformat()
+        if day_iso in bins:
+            bins[day_iso]["checkouts"] += 1
+    for day_iso, count in db.execute(
+        select(Order.business_date, func.count(Order.id))
+        .where(Order.business_date >= range_start_iso, Order.business_date <= range_end_iso)
+        .group_by(Order.business_date)
+    ).all():
+        if day_iso in bins:
+            bins[day_iso]["orders"] = int(count)
+    guest_start_dt = range_start_dt
+    guest_end_dt = range_end_dt
+    for created_at in db.scalars(
+        select(Guest.created_at).where(Guest.created_at >= guest_start_dt, Guest.created_at < guest_end_dt)
+    ).all():
+        if created_at is None:
+            continue
+        day_iso = _business_date(created_at).isoformat()
+        if day_iso in bins:
+            bins[day_iso]["guests"] += 1
+    return bins
+
+
+def month_start_utc(day: date) -> datetime:
+    return business_window(day)[0]
+
+
+def month_end_utc(day: date) -> datetime:
+    next_month = _first_of_next(day)
+    return business_window(next_month)[0]
+
+
+def _first_of_next(day: date) -> date:
+    if day.month == 12:
+        return date(day.year + 1, 1, 1)
+    return date(day.year, day.month + 1, 1)
+
+
+@app.get("/calendar", response_class=HTMLResponse)
+def calendar_page(
+    request: Request, month: str = Query(""), day: str = Query("", alias="date"),
+    db: Session = Depends(get_db),
+):
+    """The hotel's day book: a month grid where every day carries its own
+    sales, collections, arrivals, departures, bookings, orders and new
+    customers. Clicking any day opens every record stored on that date."""
+    user_or_redirect(request, db)
+    today = local_now().date()
+    if month:
+        try:
+            month_date = datetime.fromisoformat(month + "-01").date()
+        except ValueError as exc:
+            raise HTTPException(422, "Choose a valid month (YYYY-MM).") from exc
+    else:
+        month_date = today.replace(day=1)
+    day_param = day
+    selected = None
+    if day_param:
+        try:
+            candidate = datetime.fromisoformat(day_param).date()
+        except ValueError as exc:
+            raise HTTPException(422, "Choose a valid day (YYYY-MM-DD).") from exc
+        if candidate.year == month_date.year and candidate.month == month_date.month:
+            selected = candidate
+        else:
+            selected = None
+    if selected is None:
+        selected = today if (today.year == month_date.year and today.month == month_date.month) else month_date
+
+    import calendar as _cal
+    _cal.setfirstweekday(_cal.MONDAY)
+    last_day = _cal.monthrange(month_date.year, month_date.month)[1]
+    month_first = month_date.replace(day=1)
+    month_last = month_date.replace(day=last_day)
+    grid_start = month_first - timedelta(days=(month_first.weekday()))
+    grid_end = month_last + timedelta(days=(6 - month_last.weekday()))
+    bins = _calendar_bins(db, grid_start.strftime("%Y-%m-%d"), grid_end.strftime("%Y-%m-%d"), grid_start, grid_end)
+
+    day_iso = selected.isoformat()
+    day_invoices = db.scalars(
+        select(Invoice).options(selectinload(Invoice.guest), selectinload(Invoice.room))
+        .where(Invoice.bill_date == day_iso, Invoice.status != "void")
+        .order_by(Invoice.issue_date, Invoice.id)
+    ).all()
+    day_payments = db.scalars(
+        select(Payment).where(Payment.business_date == day_iso).order_by(Payment.paid_at, Payment.id)
+    ).all()
+    day_refunds = db.scalars(
+        select(Refund).where(Refund.business_date == day_iso).order_by(Refund.refunded_at)
+    ).all()
+    day_checkins = db.scalars(
+        select(Stay).options(selectinload(Stay.guest), selectinload(Stay.room))
+        .where(Stay.business_date == day_iso).order_by(Stay.check_in, Stay.id)
+    ).all()
+    checked_out_this_month = db.scalars(
+        select(Stay).options(selectinload(Stay.guest), selectinload(Stay.room))
+        .where(Stay.check_out >= month_start_utc(month_date), Stay.check_out < month_end_utc(month_date))
+    ).all()
+    day_checkouts = [s for s in checked_out_this_month if _business_date(s.check_out) == selected]
+    day_reservations = db.scalars(
+        select(Reservation).options(selectinload(Reservation.room), selectinload(Reservation.guest))
+        .where(Reservation.business_date == day_iso)
+        .order_by(Reservation.check_in, Reservation.id)
+    ).all()
+    day_orders = db.scalars(
+        select(Order).options(selectinload(Order.items))
+        .where(Order.business_date == day_iso).order_by(Order.created_at, Order.id)
+    ).all()
+    start_d, end_d = business_window(selected)
+    day_guests = db.scalars(
+        select(Guest).where(Guest.created_at >= start_d, Guest.created_at < end_d)
+    ).all()
+    day_charges = db.execute(
+        select(func.count(RoomCharge.id), func.coalesce(func.sum(RoomCharge.amount), 0.0))
+        .where(RoomCharge.charge_date == day_iso)
+    ).one()
+
+    prev_month = (month_date - timedelta(days=1)).replace(day=1)
+    today_iso = local_now().date().isoformat()
+    return render(request, "calendar.html", db, {
+        "month": month_date, "grid": bins_to_grid(month_date, bins),
+        "selected": selected, "selected_iso": day_iso,
+        "prev_month": prev_month.strftime("%Y-%m"),
+        "next_month": _first_of_next(month_date).strftime("%Y-%m"),
+        "today_iso": today_iso,
+        "day_invoices": day_invoices, "day_payments": day_payments,
+        "day_refunds": day_refunds, "day_checkins": day_checkins,
+        "day_checkouts": day_checkouts, "day_reservations": day_reservations,
+        "day_orders": day_orders, "day_guests": day_guests,
+        "day_charges_count": int(day_charges[0]), "day_charges_total": float(day_charges[1]),
+        "day_sales": sum(float(inv.total) for inv in day_invoices),
+        "day_collected": sum(float(p.amount) for p in day_payments),
+    })
+
+
+def bins_to_grid(month_date: date, bins: dict) -> list[list[dict]]:
+    """Weeks of the month as cells carrying that day's aggregated figures (Mon start)."""
+    import calendar as _calendar
+    _calendar.setfirstweekday(_calendar.MONDAY)
+    last_day = _calendar.monthrange(month_date.year, month_date.month)[1]
+    month_first = month_date.replace(day=1)
+    month_last = month_date.replace(day=last_day)
+    grid_start = month_first - timedelta(days=month_first.weekday())
+    grid_end = month_last + timedelta(days=6 - month_last.weekday())
+    rows = []
+    cur = grid_start
+    empty = {"invoices": 0, "sales": 0.0, "payments": 0.0, "payment_count": 0,
+             "checkins": 0, "checkouts": 0, "bookings": 0, "orders": 0, "guests": 0}
+    while cur <= grid_end:
+        week_row = []
+        for _ in range(7):
+            cell_date = cur
+            week_row.append({"date": cell_date, "iso": cell_date.isoformat(),
+                             "other_month": cell_date.month != month_date.month,
+                             **bins.get(cell_date.isoformat(), dict(empty))})
+            cur += timedelta(days=1)
+        rows.append(week_row)
+    return rows
 
 
 @app.get("/catalog", response_class=HTMLResponse)
@@ -3780,7 +4889,7 @@ async def catalog_item_save(request: Request, db: Session = Depends(get_db)):
             f"{item.name} · {item.category} · {item.rate:.2f}",
         )
         db.commit()
-        return RedirectResponse("/catalog?saved=1", status_code=303)
+        return RedirectResponse(toast_url("/catalog?saved=1", "Catalog item saved.", "success"), status_code=303)
     except HTTPException:
         db.rollback()
         raise
@@ -3794,6 +4903,7 @@ async def catalog_item_save(request: Request, db: Session = Depends(get_db)):
             "items": items, "editing": None, "q": "", "category_filter": "all",
             "status_filter": "all", "saved": False,
             "error": str(exc),
+            "server_toast": toast_event(str(exc), "error"),
             "form_values": {
                 "item_id": item_id, "name": name, "category": category,
                 "rate": str(form.get("rate", "")), "unit": unit, "item_code": item_code,
@@ -3823,7 +4933,7 @@ def catalog_item_set_active(
     _audit(db, user, "catalog.activate" if active else "catalog.deactivate",
            "catalog_item", str(item.id), item.name)
     db.commit()
-    return RedirectResponse("/catalog", status_code=303)
+    return RedirectResponse(toast_url("/catalog", "Catalog item reactivated." if active else "Catalog item deactivated.", "success" if active else "info"), status_code=303)
 
 
 @app.get("/printer", response_class=HTMLResponse)
@@ -3878,7 +4988,7 @@ async def printer_settings_save(request: Request, db: Session = Depends(get_db))
         _audit(db, user, "settings.printer.update", "printer", "configuration",
                "Printer layout and output settings updated")
         db.commit()
-        return RedirectResponse("/printer?saved=1", status_code=303)
+        return RedirectResponse(toast_url("/printer?saved=1", "Printer settings saved.", "success"), status_code=303)
     except ValueError as exc:
         db.rollback()
         values.update({key: str(form.get(key, "")) for key in keys})
@@ -3950,7 +5060,108 @@ def staff_page(
         "saved": saved,
         "editing": editing,
         "form_values": {},
+        "active_sessions_count": _active_sessions_by_user(db),
     })
+
+
+def _active_sessions_by_user(db: Session) -> dict[str, int]:
+    rows = db.execute(
+        select(User.id, func.count(UserSession.id))
+        .outerjoin(
+            UserSession,
+            (UserSession.user_id == User.id) & (UserSession.revoked_at.is_(None)),
+        )
+        .where(User.active.is_(True))
+        .group_by(User.id)
+    ).all()
+    return {str(user_id): int(count) for user_id, count in rows}
+
+
+@app.get("/staff/sessions", response_class=HTMLResponse)
+def staff_sessions_page(
+    request: Request, user_id: int | None = None, db: Session = Depends(get_db),
+):
+    user = user_or_redirect(request, db)
+    if user.role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    if user_id is None:
+        users = db.scalars(
+            select(User).where(User.active.is_(True)).order_by(User.role, User.full_name, User.username)
+        ).all()
+    else:
+        target = db.get(User, user_id)
+        if target is None or not target.active:
+            raise HTTPException(404, "Staff account not found.")
+        users = [target]
+    sessions_by_user: dict[int, list[dict]] = {}
+    for u in users:
+        rows = db.execute(
+            select(UserSession).where(
+                UserSession.user_id == u.id,
+            ).order_by(UserSession.last_seen_at.desc())
+        ).scalars().all()
+        sessions_by_user[u.id] = [
+            {
+                "id": row.id,
+                "session_id": row.session_id,
+                "ip_address": row.ip_address,
+                "user_agent": row.user_agent,
+                "created_at": row.created_at,
+                "last_seen_at": row.last_seen_at,
+                "revoked_at": row.revoked_at,
+                "revoked_by": row.revoked_by,
+                "revoked_reason": row.revoked_reason,
+                "active": row.revoked_at is None,
+            }
+            for row in rows
+        ]
+    return render(request, "partials/staff_sessions.html", db, {
+        "users": users,
+        "sessions_by_user": sessions_by_user,
+        "current_user_id": user.id,
+    })
+
+
+@app.post("/staff/sessions/{user_id:int}/{session_id}/revoke")
+def revoke_staff_session(
+    request: Request,
+    user_id: int,
+    session_id: str,
+    csrf_token: str = Form(""),
+    reason: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    actor = user_or_redirect(request, db)
+    if actor.role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    check_csrf(request, csrf_token)
+    target = db.get(User, user_id)
+    if target is None or not target.active:
+        raise HTTPException(404, "Staff account not found.")
+    session_record = db.scalar(
+        select(UserSession).where(
+            UserSession.id == session_id if session_id.isdigit()
+            else UserSession.session_id == session_id,
+            UserSession.user_id == user_id,
+        )
+    )
+    if session_record is None:
+        raise HTTPException(404, "Session not found.")
+    if session_record.revoked_at is not None:
+        raise HTTPException(409, "That session has already been revoked.")
+    now = models.utcnow()
+    session_record.revoked_at = now
+    session_record.revoked_by_id = actor.id
+    session_record.revoked_reason = reason.strip() or "Revoked by administrator"
+    db.commit()
+    _audit(
+        db, actor, "session.revoke", "user", str(user_id),
+        f"Revoked session for {target.username}: {session_record.session_id[:24]}... ({session_record.ip_address or 'unknown'}, {session_record.last_seen_at:%Y-%m-%d %H:%M}) — {session_record.revoked_reason}",
+    )
+    return RedirectResponse(
+        toast_url(f"/staff/sessions?user_id={user_id}&revoked=1", "Session revoked.", "warning"),
+        status_code=303,
+    )
 
 
 @app.post("/staff")
@@ -4066,7 +5277,9 @@ def create_staff_account(
             "created": False, "saved": "",
         }, status_code=409)
     return RedirectResponse(
-        "/staff?created=1" if target is None else "/staff?saved=updated",
+        toast_url("/staff?created=1", "Staff account created.", "success")
+        if target is None
+        else toast_url("/staff?saved=updated", "Staff account updated.", "success"),
         status_code=303,
     )
 
@@ -4110,7 +5323,7 @@ def delete_staff_account(
     db.delete(target)
     _audit(db, user, "staff.delete", "user", str(staff_id), f"Deleted {username}")
     db.commit()
-    return RedirectResponse("/staff?saved=deleted", status_code=303)
+    return RedirectResponse(toast_url("/staff?saved=deleted", "Staff account removed.", "warning"), status_code=303)
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -4202,7 +5415,7 @@ async def settings_save(request: Request, db: Session = Depends(get_db)):
         _audit(db, user, "settings.hotel.update", "hotel", "profile",
                "Hotel billing, invoice, and daily-close settings updated")
         db.commit()
-        return RedirectResponse("/settings?saved=1", status_code=303)
+        return RedirectResponse(toast_url("/settings?saved=1", "Hotel settings saved.", "success"), status_code=303)
     except ValueError as exc:
         db.rollback()
         values.update({

@@ -3,53 +3,125 @@
 {% block title %}Payments{% endblock %}
 {% block header_title %}Payments &amp; cash ledger{% endblock %}
 {% block content %}
-<div class="space-y-4">
+{% macro method_icon(name) -%}{% set n = name|lower %}{% if 'cash' in n %}ph-money{% elif 'esewa' in n or 'khalti' in n %}ph-device-mobile{% elif 'fonepay' in n or 'qr' in n %}ph-qr-code{% elif 'bank' in n %}ph-bank{% elif 'card' in n or 'credit' in n %}ph-credit-card{% elif 'wallet' in n %}ph-wallet{% else %}ph-coins{% endif %}{%- endmacro %}
+{% macro method_badge(name) -%}{% set n = name|lower %}{% if 'cash' in n %}{% set bg='#E7F0E4' %}{% set fg='#3E6B4F' %}{% elif 'esewa' in n or 'khalti' in n %}{% set bg='#E4F0E1' %}{% set fg='#2E7D32' %}{% elif 'fonepay' in n or 'qr' in n %}{% set bg='#EFE9FB' %}{% set fg='#6A4FBF' %}{% elif 'bank' in n %}{% set bg='#E5EEF8' %}{% set fg='#255FA8' %}{% elif 'card' in n or 'credit' in n %}{% set bg='#F3EEE1' %}{% set fg='#8A6A14' %}{% else %}{% set bg='#EFEEE9' %}{% set fg='#4A5551' %}{% endif %}<span class="inline-flex items-center gap-1" style="background:{{ bg }};color:{{ fg }};border-radius:999px;padding:.26rem .58rem;font-size:.66rem;font-weight:800;"><i class="{{ method_icon(name) }}" style="font-size:.8rem;"></i>{{ name }}</span>{%- endmacro %}
+<div class="space-y-5">
   <div class="page-heading">
-    <div><p class="eyebrow">Finance · Cash ledger</p><h1 class="page-title">Payments</h1><p class="page-subtitle">Cash received, refunds, adjustments, and outstanding invoices</p></div>
-    {% if current_user.role == 'admin' %}<div class="flex flex-wrap gap-2"><button hx-get="/payments/actions/adjustment" hx-target="#modal-root" hx-swap="innerHTML" class="btn-secondary">Post adjustment</button><button hx-get="/payments/actions/refund" hx-target="#modal-root" hx-swap="innerHTML" class="btn-secondary">Record refund</button></div>{% endif %}
+    <div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.75rem;height:2.75rem;font-size:1.35rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-credit-card"></i></span><div><p class="eyebrow">Finance</p><h1 class="page-title">Payments</h1></div><p class="page-subtitle">Cash received, refunds, adjustments, and outstanding invoices</p></div>
+    {% if current_user.role == 'admin' %}<div class="flex flex-wrap gap-2"><button hx-get="/payments/actions/adjustment" hx-target="#modal-root" hx-swap="innerHTML" class="btn-primary"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-arrows-left-right"></i></span>Post adjustment</button><button hx-get="/payments/actions/refund" hx-target="#modal-root" hx-swap="innerHTML" class="btn-secondary"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-arrow-counter-clockwise"></i></span>Record refund</button></div>{% endif %}
   </div>
 
-  <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Today's payment summary">
-    <article class="metric-card-hero"><span class="section-label">Collected today</span><p class="mt-2 text-2xl font-extrabold text-teal-700">{{ money(collected_today) }}</p><p class="mt-1 text-xs text-slate-500">All payment methods</p></article>
-    <article class="metric-card"><span class="section-label">Cash today</span><p class="mt-2 text-xl font-extrabold text-slate-900">{{ money(cash_today) }}</p><p class="mt-1 text-xs text-slate-500">Physical cash drawer</p></article>
-    <article class="metric-card"><span class="section-label">Outstanding</span><p class="mt-2 text-xl font-extrabold soft-amber-text">{{ money(outstanding_total) }}</p><p class="mt-1 text-xs text-slate-500">Across {{ outstanding|length }} invoice{{ '' if outstanding|length == 1 else 's' }}</p></article>
-    <article class="metric-card"><span class="section-label">Refunded today</span><p class="mt-2 text-xl font-extrabold {{ 'text-rose-700' if refunds_today else 'text-slate-900' }}">{{ money(refunds_today) }}</p><p class="mt-1 text-xs text-slate-500">Approved refunds only</p></article>
+  {% set cash_pct = ((cash_today / collected_today * 100) | round | int) if collected_today and collected_today > 0 else 0 %}
+  {% set other_today = collected_today - cash_today %}
+  <section class="grid gap-4 xl:grid-cols-[1.62fr_1fr]" aria-label="Payment summary">
+    <article class="relative overflow-hidden rounded-2xl p-6 sm:p-7" style="background:linear-gradient(150deg,#152E22 0%,#1B3A2A 55%,#274A34 100%);color:var(--color-text-on-dark);box-shadow:0 18px 44px rgba(27,58,42,.35);">
+      <div aria-hidden="true" class="pointer-events-none absolute inset-0" style="background:radial-gradient(520px 240px at 88% -12%, rgba(232,213,163,.15), transparent 65%), radial-gradient(420px 260px at -6% 112%, rgba(143,174,144,.16), transparent 60%);"></div>
+      <div class="relative">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-[.62rem] font-extrabold uppercase tracking-[.14em]" style="color:rgba(232,213,163,.88);">Collected today</p>
+            <p class="mt-2 leading-none" style="font-size:clamp(2.2rem,4vw,2.9rem);font-weight:800;letter-spacing:-.04em;">{{ money(collected_today) }}</p>
+            <p class="mt-2.5 text-xs" style="color:rgba(247,241,222,.72);">
+              {% if entries_today %}{{ entries_today }} payment{{ '' if entries_today == 1 else 's' }} posted across all methods{% else %}No collections posted yet today — the next guest settles the story.{% endif %}
+            </p>
+          </div>
+          <span class="room-icon-chip" style="width:2.5rem;height:2.5rem;font-size:1.15rem;background:rgba(232,213,163,.16);color:#E9C25B;"><i class="ph ph-hand-coins"></i></span>
+        </div>
+        {% if collected_today %}
+        <div class="mt-5">
+          <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[.68rem] font-bold">
+            <span class="inline-flex items-center gap-1.5"><span class="inline-block h-2 w-2 rounded-full" style="background:#E9C25B;"></span>Cash drawer {{ money(cash_today) }}</span>
+            <span class="inline-flex items-center gap-1.5" style="color:rgba(247,241,222,.78);"><span class="inline-block h-2 w-2 rounded-full" style="background:#8FAE90;"></span>Digital &amp; other {{ money(other_today) }}</span>
+          </div>
+          <div class="mt-2 h-2.5 overflow-hidden rounded-full" style="background:rgba(247,241,222,.14);" role="progressbar" aria-label="Cash share of collections" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ cash_pct }}">
+            <div class="h-full rounded-full" style="width: {{ cash_pct }}%; background:linear-gradient(90deg,#E9C25B,#D9AF3F);"></div>
+          </div>
+        </div>
+        {% endif %}
+        <div class="mt-4 flex flex-wrap gap-2">
+          {% if refunds_today %}
+          <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[.66rem] font-extrabold" style="background:rgba(190,34,26,.22);color:#F6C8C3;"><i class="ph ph-arrow-counter-clockwise" style="font-size:.85rem;"></i>{{ money(refunds_today) }} refunded today</span>
+          {% else %}
+          <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[.66rem] font-extrabold" style="background:rgba(247,241,222,.10);color:rgba(247,241,222,.78);"><i class="ph ph-check-circle" style="font-size:.85rem;"></i>No refunds today</span>
+          {% endif %}
+          {% if collected_today %}
+          <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[.66rem] font-extrabold" style="background:rgba(247,241,222,.10);color:rgba(247,241,222,.78);"><i class="ph ph-percent" style="font-size:.85rem;"></i>{{ cash_pct }}% paid in cash</span>
+          {% else %}
+          <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[.66rem] font-extrabold" style="background:rgba(247,241,222,.10);color:rgba(247,241,222,.78);"><i class="ph ph-sun-horizon" style="font-size:.85rem;"></i>Collections start arriving with the first settled bill</span>
+          {% endif %}
+        </div>
+      </div>
+    </article>
+
+    <article class="panel flex flex-col" style="border-color:rgba(212,192,138,.55);background:linear-gradient(165deg,#FFFCF4 0%,#FAF3DF 100%);">
+      <div class="flex items-center gap-2.5">
+        <span class="room-icon-chip" style="width:2.5rem;height:2.5rem;font-size:1.15rem;background:rgba(212,192,138,.35);color:#8A6A14;"><i class="ph ph-coins"></i></span>
+        <p class="section-label">Outstanding balances</p>
+      </div>
+      {% if outstanding %}
+      <p class="mt-3 leading-none" style="font-size:clamp(1.7rem,3vw,2.2rem);font-weight:800;letter-spacing:-.03em;color:var(--color-primary);">{{ money(outstanding_total) }}</p>
+      <p class="mt-2 text-xs text-slate-500">Across {{ outstanding|length }} invoice{{ '' if outstanding|length == 1 else 's' }} · largest {{ money(outstanding[0].balance) }}</p>
+      <div class="mt-auto pt-4">
+        <a href="#outstanding-ledger" class="btn-primary w-full justify-center"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-hand-coins"></i></span>Collect now</a>
+      </div>
+      {% else %}
+      <div class="mt-3 flex items-center gap-2.5">
+        <span class="grid h-10 w-10 place-items-center rounded-full" style="background:#E7F0E4;color:#3E6B4F;"><i class="ph ph-seal-check" style="font-size:1.2rem;"></i></span>
+        <p class="text-sm font-semibold text-emerald-700">Every invoice is settled</p>
+      </div>
+      <p class="mt-2 text-xs text-slate-500">New billing creates outstanding balances only if left unpaid at checkout.</p>
+      <div class="mt-auto pt-4">
+        <a href="/invoices" class="btn-secondary w-full justify-center"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-file-text"></i></span>Browse invoices</a>
+      </div>
+      {% endif %}
+    </article>
   </section>
 
   <section class="panel">
-    <form method="get" action="/payments" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6 xl:items-end">
-      <label><span class="field-label">From date</span><input type="date" name="start" value="{{ start }}" class="form-input"></label>
-      <label><span class="field-label">To date</span><input type="date" name="end" value="{{ end }}" class="form-input"></label>
-      <label><span class="field-label">Method</span><select name="method" class="form-input"><option value="All">All methods</option>{% for option in payment_methods %}<option value="{{ option }}" {% if method == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-      <label class="xl:col-span-2"><span class="field-label">Ledger search</span><input name="invoice" value="{{ invoice_filter }}" class="form-input" placeholder="Invoice, guest, or room"></label>
-      <div class="flex gap-2"><button class="btn-primary grow">Apply</button><a href="/payments" class="btn-secondary">Clear</a></div>
+    <form method="get" action="/payments" class="grid gap-x-4 gap-y-5 sm:grid-cols-2 xl:grid-cols-6 xl:items-end">
+      <label><span class="field-label"><i class="ph ph-calendar-blank"></i>From date</span><input type="date" name="start" value="{{ start }}" class="form-input"></label>
+      <label><span class="field-label"><i class="ph ph-calendar-blank"></i>To date</span><input type="date" name="end" value="{{ end }}" class="form-input"></label>
+      <label><span class="field-label"><i class="ph ph-credit-card"></i>Method</span><select name="method" class="form-input"><option value="All">All methods</option>{% for option in payment_methods %}<option value="{{ option }}" {% if method == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+      <label class="xl:col-span-2"><span class="field-label"><i class="ph ph-magnifying-glass"></i>Ledger search</span><input name="invoice" value="{{ invoice_filter }}" class="form-input" placeholder="Invoice, guest, or room"></label>
+      <div class="flex gap-2"><button class="btn-primary grow"><span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-funnel"></i></span>Apply</button><a href="/payments" class="btn-secondary"><span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-x"></i></span>Clear</a></div>
     </form>
   </section>
 
-  <section class="panel !p-0">
-    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4"><div><h2 class="panel-title">Collect an outstanding invoice</h2><p class="panel-subtitle">Highest balance first</p></div><a href="/invoices?status=outstanding" class="text-xs font-semibold text-teal-700 hover:underline">View all outstanding →</a></div>
-    <div class="table-scroll"><table class="data-table soft-table min-w-[680px]"><thead><tr><th>Invoice</th><th>Guest</th><th>Room</th><th class="text-right">Balance</th><th></th></tr></thead><tbody>
-      {% for invoice in outstanding[:10] %}<tr class="tr-outstanding"><td class="font-semibold">{{ invoice.invoice_number }}</td><td>{{ invoice.guest.name if invoice.guest else invoice.guest_name or '—' }}</td><td>{{ invoice.room.number if invoice.room else invoice.room_number or '—' }}</td><td class="text-right font-bold soft-amber-text">{{ money(invoice.balance) }}</td><td class="text-right"><button class="btn-amber" hx-get="/invoices/{{ invoice.id }}/collect" hx-target="#modal-root" hx-swap="innerHTML">Collect</button></td></tr>
+  <section id="outstanding-ledger" class="panel scroll-mt-24 !p-0">
+    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
+      <div class="flex items-center gap-2.5"><span class="room-icon-chip" style="width:2.25rem;height:2.25rem;font-size:1.05rem;background:#E9C25B;color:#fff;"><i class="ph ph-hand-coins"></i></span><div><h2 class="panel-title">Collect an outstanding invoice</h2><p class="panel-subtitle">Highest balance first</p></div></div>
+      <a href="/invoices?status=outstanding" class="text-xs font-semibold text-[color:var(--color-primary)] hover:underline">View all outstanding →</a>
+    </div>
+    <div class="table-scroll"><table class="data-table soft-table min-w-[680px]"><thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-file-text" style="font-size:.85rem;"></i>Invoice</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user" style="font-size:.85rem;"></i>Guest</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-bed" style="font-size:.85rem;"></i>Room</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-coins" style="font-size:.85rem;"></i>Balance</span></th><th></th></tr></thead><tbody>
+      {% for invoice in outstanding[:10] %}<tr class="tr-outstanding"><td class="font-semibold">{{ invoice.invoice_number }}</td><td>{{ invoice.guest.name if invoice.guest else invoice.guest_name or '—' }}</td><td>{{ invoice.room.number if invoice.room else invoice.room_number or '—' }}</td><td class="text-right font-bold soft-amber-text">{{ money(invoice.balance) }}</td><td class="text-right"><button class="btn-amber" hx-get="/invoices/{{ invoice.id }}/collect" hx-target="#modal-root" hx-swap="innerHTML"><span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-hand-coins"></i></span>Collect</button></td></tr>
       {% else %}<tr><td colspan="5" class="py-10 text-center"><p class="text-sm font-semibold text-emerald-700">All invoices are settled</p><p class="mt-1 text-xs text-slate-500">No outstanding balances right now.</p></td></tr>{% endfor %}
     </tbody></table></div>
   </section>
 
   <section class="panel !p-0">
-    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4"><div><h2 class="panel-title">Payment entries</h2><p class="panel-subtitle">Latest 300 ledger movements</p></div><span class="badge-slate">{{ payments|length }} entries</span></div>
-    <div class="table-scroll"><table class="data-table soft-table min-w-[760px]"><thead><tr><th>Date &amp; time</th><th>Invoice</th><th>Guest</th><th>Room</th><th>Method</th><th>Received by</th><th class="text-right">Amount</th></tr></thead><tbody>
-      {% for payment in payments %}<tr><td class="whitespace-nowrap text-slate-600">{{ local_datetime(payment.paid_at, '%d %b %Y · %H:%M') }}</td><td class="font-semibold text-slate-800">{{ payment.invoice_number or (payment.invoice.invoice_number if payment.invoice else '—') }}</td><td>{{ payment.invoice.guest.name if payment.invoice and payment.invoice.guest else payment.invoice.guest_name if payment.invoice else '—' }}</td><td>{{ payment.invoice.room.number if payment.invoice and payment.invoice.room else payment.invoice.room_number if payment.invoice else '—' }}</td><td><span class="badge-slate">{{ payment.method }}</span></td><td class="text-slate-600">{{ payment.received_by or '—' }}</td><td class="text-right font-semibold text-teal-700">{{ money(payment.amount) }}</td></tr>
+    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
+      <div class="flex items-center gap-2.5"><span class="room-icon-chip" style="width:2.25rem;height:2.25rem;font-size:1.05rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-list-checks"></i></span><div><h2 class="panel-title">Payment entries</h2><p class="panel-subtitle">Latest 300 ledger movements</p></div></div>
+      <span class="badge-slate">{{ payments|length }} entries</span>
+    </div>
+    <div class="table-scroll"><table class="data-table soft-table min-w-[760px]"><thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-calendar-blank" style="font-size:.85rem;"></i>Date &amp; time</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-file-text" style="font-size:.85rem;"></i>Invoice</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user" style="font-size:.85rem;"></i>Guest</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-bed" style="font-size:.85rem;"></i>Room</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-credit-card" style="font-size:.85rem;"></i>Method</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user" style="font-size:.85rem;"></i>Received by</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-money" style="font-size:.85rem;"></i>Amount</span></th></tr></thead><tbody>
+      {% for payment in payments %}<tr><td class="whitespace-nowrap text-slate-600">{{ local_datetime(payment.paid_at, '%d %b %Y · %H:%M') }}</td><td class="font-semibold text-slate-800">{{ payment.invoice_number or (payment.invoice.invoice_number if payment.invoice else '—') }}</td><td>{{ payment.invoice.guest.name if payment.invoice and payment.invoice.guest else payment.invoice.guest_name if payment.invoice else '—' }}</td><td>{{ payment.invoice.room.number if payment.invoice and payment.invoice.room else payment.invoice.room_number if payment.invoice else '—' }}</td><td>{{ method_badge(payment.method or (payment.invoice.method if payment.invoice else '—')) }}</td><td class="text-slate-600">{{ payment.received_by or '—' }}</td><td class="text-right font-semibold text-[color:var(--color-primary)]">{{ money(payment.amount) }}</td></tr>
       {% else %}<tr><td colspan="7" class="py-10 text-center text-sm text-slate-500">No payments match these filters.</td></tr>{% endfor %}
     </tbody></table></div>
   </section>
 
   <section class="panel !p-0">
-    <div class="border-b border-slate-100 px-5 py-4"><h2 class="panel-title">Refunds &amp; adjustments</h2><p class="panel-subtitle">Corrections stay in the ledger — original entries are never deleted</p></div>
-    <div class="table-scroll"><table class="data-table soft-table min-w-[760px]"><thead><tr><th>Date &amp; time</th><th>Invoice</th><th>Guest</th><th>Entry</th><th>Method</th><th>Reason</th><th class="text-right">Amount</th></tr></thead><tbody>
-      {% for row in refunds %}{% set entry = row.refund %}{% set inv = row.invoice %}<tr><td class="whitespace-nowrap text-slate-600">{{ local_datetime(entry.refunded_at, '%d %b %Y · %H:%M') }}</td><td class="font-semibold text-slate-800">{{ entry.invoice_number or (inv.invoice_number if inv else '—') }}</td><td>{{ inv.guest.name if inv and inv.guest else inv.guest_name if inv else '—' }}</td><td><span class="badge-{{ 'rose' if entry.kind == 'refund' else 'slate' }}">{{ entry.kind|title }}</span></td><td>{{ entry.method }}</td><td class="max-w-xs whitespace-normal text-slate-600">{{ entry.reason }}</td><td class="text-right font-semibold {{ 'text-rose-700' if entry.kind == 'refund' else 'text-slate-700' }}">{{ money(entry.amount) }}</td></tr>
+    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
+      <div class="flex items-center gap-2.5"><span class="room-icon-chip" style="width:2.25rem;height:2.25rem;font-size:1.05rem;background:#F9E1DF;color:#A02319;"><i class="ph ph-arrow-counter-clockwise"></i></span><div><h2 class="panel-title">Refunds &amp; adjustments</h2><p class="panel-subtitle">Corrections stay in the ledger — original entries are never deleted</p></div></div>
+    </div>
+    <div class="table-scroll"><table class="data-table soft-table min-w-[760px]"><thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-calendar-blank" style="font-size:.85rem;"></i>Date &amp; time</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-file-text" style="font-size:.85rem;"></i>Invoice</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user" style="font-size:.85rem;"></i>Guest</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-arrow-counter-clockwise" style="font-size:.85rem;"></i>Entry</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-credit-card" style="font-size:.85rem;"></i>Method</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-chat-circle-text" style="font-size:.85rem;"></i>Reason</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-money" style="font-size:.85rem;"></i>Amount</span></th></tr></thead><tbody>
+      {% for row in refunds %}{% set entry = row.refund %}{% set inv = row.invoice %}<tr><td class="whitespace-nowrap text-slate-600">{{ local_datetime(entry.refunded_at, '%d %b %Y · %H:%M') }}</td><td class="font-semibold text-slate-800">{{ entry.invoice_number or (inv.invoice_number if inv else '—') }}</td><td>{{ inv.guest.name if inv and inv.guest else inv.guest_name if inv else '—' }}</td><td><span class="badge-{{ 'rose' if entry.kind == 'refund' else 'slate' }}">{{ entry.kind|title }}</span></td><td>{{ method_badge(entry.method) }}</td><td class="max-w-xs whitespace-normal text-slate-600">{{ entry.reason }}</td><td class="text-right font-semibold {{ 'text-rose-700' if entry.kind == 'refund' else 'text-slate-700' }}">{{ money(entry.amount) }}</td></tr>
       {% else %}<tr><td colspan="7" class="py-10 text-center text-sm text-slate-500">No refunds or adjustments match these filters.</td></tr>{% endfor %}
     </tbody></table></div>
   </section>
 
-  {% if method_totals %}<section class="panel"><h2 class="panel-title">Collections by method</h2><p class="panel-subtitle">Last 30 days</p><div class="mt-3 flex flex-wrap gap-2">{% for row in method_totals %}<div class="stat-pill min-w-[150px]"><p class="text-xs font-semibold text-slate-500">{{ row[0] }} · {{ row[1] }} entries</p><p class="mt-1 text-sm font-bold text-slate-900">{{ money(row[2]) }}</p></div>{% endfor %}</div></section>{% endif %}
+  {% if method_totals %}<section class="panel">
+    <div class="flex items-center gap-2.5"><span class="room-icon-chip" style="width:2.25rem;height:2.25rem;font-size:1.05rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-chart-donut"></i></span><div><h2 class="panel-title">Collections by method</h2><p class="panel-subtitle">Last 30 days</p></div></div>
+    <div class="mt-3 flex flex-wrap gap-2">{% for row in method_totals %}<div class="stat-pill min-w-[150px]"><p class="text-xs font-semibold text-slate-500">{{ method_badge(row[0]) }} · {{ row[1] }} entries</p><p class="mt-1 text-sm font-bold text-slate-900">{{ money(row[2]) }}</p></div>{% endfor %}</div>
+  </section>{% endif %}
 </div>
 {% endblock %}

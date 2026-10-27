@@ -3,80 +3,94 @@
 {% block title %}Reports{% endblock %}
 {% block header_title %}Reports{% endblock %}
 {% block content %}
-<div class="space-y-4">
-  <div class="page-heading"><div><p class="eyebrow">Insights · Reporting</p><h1 class="page-title">Reports</h1><p class="page-subtitle">Sales, collections, occupancy and hotel operations · {{ cards.business_date }} · NPR</p></div></div>
+<div class="space-y-5">
+  <div class="page-heading"><div><p class="eyebrow">Insights · Reporting</p><h1 class="page-title"><span class="room-icon-chip" style="display:inline-flex;justify-content:center;width:2.1rem;height:2.1rem;font-size:1.1rem;margin-right:.55rem;vertical-align:-.55em;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-chart-bar"></i></span>Reports</h1><p class="page-subtitle">Sales, collections, occupancy and hotel operations · {{ cards.business_date }} · NPR</p></div></div>
   {% if daily_status == 'generated' %}<div role="status" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">Daily-close PDF generated successfully.</div>{% elif daily_status == 'failed' %}<div role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">Daily-close PDF generation failed. Review the report history for details.</div>{% endif %}
 
-  <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-    <article class="metric-card-hero"><p class="section-label">Gross sales today</p><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ money(cards.gross_sales) }}</p><p class="mt-1 text-xs text-slate-500">Before discounts</p></article>
-    <article class="metric-card"><p class="section-label">Collected today</p><p class="mt-2 text-xl font-extrabold text-teal-700">{{ money(cards.collected) }}</p><p class="mt-1 text-xs text-slate-500">Payments received</p></article>
-    <article class="metric-card"><p class="section-label">Outstanding receivables</p><p class="mt-2 text-xl font-extrabold soft-amber-text">{{ money(cards.outstanding) }}</p><p class="mt-1 text-xs text-slate-500">Unpaid balances</p></article>
-    <article class="metric-card"><p class="section-label">Room revenue today</p><p class="mt-2 text-xl font-extrabold text-slate-900">{{ money(cards.room_revenue) }}</p><p class="mt-1 text-xs text-slate-500">Room charges only</p></article>
+  <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <article class="metric-card-hero"><p class="section-label"><i class="ph ph-chart-bar" style="font-size:.9rem;"></i> Gross sales today</p><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ money(cards.gross_sales) }}</p><p class="mt-1 text-xs text-slate-500">Before discounts</p></article>
+    <article class="metric-card"><p class="section-label"><i class="ph ph-hand-coins" style="font-size:.9rem;"></i> Collected today</p><p class="mt-2 text-xl font-extrabold text-[color:var(--color-primary)]">{{ money(cards.collected) }}</p><p class="mt-1 text-xs text-slate-500">Payments received</p></article>
+    <article class="metric-card"><p class="section-label"><i class="ph ph-coins" style="font-size:.9rem;"></i> Outstanding receivables</p><p class="mt-2 text-xl font-extrabold soft-amber-text">{{ money(cards.outstanding) }}</p><p class="mt-1 text-xs text-slate-500">Unpaid balances</p></article>
+    <article class="metric-card"><p class="section-label"><i class="ph ph-bed" style="font-size:.9rem;"></i> Room revenue today</p><p class="mt-2 text-xl font-extrabold text-slate-900">{{ money(cards.room_revenue) }}</p><p class="mt-1 text-xs text-slate-500">Room charges only</p></article>
   </section>
 
   <section class="panel">
     <div class="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 class="panel-title">Excel import</h2><p class="panel-subtitle">Upload a workbook to analyse totals, trends, category breakdowns, and data quality</p></div>
+      <div><h2 class="panel-title"><i class="ph ph-microsoft-excel-logo" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;"></i>Excel import</h2><p class="panel-subtitle">Upload a workbook to analyse totals, trends, category breakdowns, and data quality</p></div>
       <span class="badge-slate">.xlsx / .xlsm</span>
     </div>
     <form method="post" action="/reports/excel" enctype="multipart/form-data" class="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label class="min-w-[240px] flex-1"><span class="field-label">Excel file</span><input required type="file" name="file" accept=".xlsx,.xlsm" class="form-input !py-2"></label>
-      <button class="btn-primary">Import &amp; analyse</button>
+      <label class="min-w-[240px] flex-1"><span class="field-label"><i class="ph ph-microsoft-excel-logo" style="font-size:.95rem;margin-right:.4rem;vertical-align:-.15em;"></i>Excel file</span><input required type="file" name="file" accept=".xlsx,.xlsm" class="form-input !py-2"></label>
+      <button class="btn-primary"><span class="nav-icon" style="width:0.95rem;height:0.95rem;font-size:0.95rem;color:inherit;"><i class="ph ph-upload-simple"></i></span>Import &amp; analyse</button>
     </form>
     <p class="mt-2 text-xs text-slate-500">Up to 10 MB. The first non-empty sheet is analysed in memory; files are not stored.</p>
   </section>
 
   <details class="panel group" {% if not report.rows %}open{% endif %}>
-    <summary class="flex cursor-pointer list-none items-center justify-between gap-3"><span><span class="panel-title">Report filters</span><span class="mt-0.5 block text-xs text-slate-500">Periods use business dates in Asia/Kathmandu</span></span><span class="text-xs font-semibold text-teal-700 group-open:hidden">Change filters</span><span class="hidden text-xs font-semibold text-slate-500 group-open:inline">Hide</span></summary>
+    <summary class="flex cursor-pointer list-none items-center justify-between gap-3"><span><span class="panel-title"><i class="ph ph-funnel" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;"></i>Report filters</span><span class="mt-0.5 block text-xs text-slate-500">Periods use business dates in Asia/Kathmandu</span></span><span class="text-xs font-semibold text-[color:var(--color-primary)] group-open:hidden">Change filters</span><span class="hidden text-xs font-semibold text-slate-500 group-open:inline">Hide</span></summary>
     <form method="get" action="/reports" class="mt-4 space-y-4 border-t border-slate-100 pt-4">
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <label><span class="field-label">Report</span><select name="report" class="form-input">{% for key, title in report_options.items() %}<option value="{{ key }}" {% if report_key == key %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></label>
-        <label><span class="field-label">Period preset</span><select name="preset" class="form-input"><option value="custom" {% if preset == 'custom' %}selected{% endif %}>Custom range</option><option value="today" {% if preset == 'today' %}selected{% endif %}>Today</option><option value="yesterday" {% if preset == 'yesterday' %}selected{% endif %}>Yesterday</option><option value="week" {% if preset == 'week' %}selected{% endif %}>This week</option><option value="month" {% if preset == 'month' %}selected{% endif %}>This month</option><option value="last30" {% if preset == 'last30' %}selected{% endif %}>Last 30 days</option></select></label>
-        <label><span class="field-label">From</span><input required type="date" name="start" value="{{ start }}" class="form-input"></label>
-        <label><span class="field-label">To</span><input required type="date" name="end" value="{{ end }}" class="form-input"></label>
-        <label><span class="field-label">Employee / cashier</span><select name="employee" class="form-input"><option value="All">All employees</option>{% for name in options.employees %}<option value="{{ name }}" {% if filters.employee == name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
-        <label><span class="field-label">Payment method</span><select name="payment_method" class="form-input"><option value="All">All methods</option>{% for method in options.methods %}<option value="{{ method }}" {% if filters.payment_method == method %}selected{% endif %}>{{ method }}</option>{% endfor %}</select></label>
-        <label><span class="field-label">Transaction type</span><select name="transaction_type" class="form-input"><option value="All" {% if filters.transaction_type == 'All' %}selected{% endif %}>All types</option>{% for kind in ('Room', 'Non-room', 'Refund', 'Adjustment') %}<option value="{{ kind }}" {% if filters.transaction_type == kind %}selected{% endif %}>{{ kind }}</option>{% endfor %}</select></label>
-        <label><span class="field-label">Room number</span><select name="room_no" class="form-input"><option value="">All rooms</option>{% for room in options.rooms %}<option value="{{ room }}" {% if filters.room_no == room %}selected{% endif %}>{{ room }}</option>{% endfor %}</select></label>
-        <label class="sm:col-span-2 xl:col-span-4"><span class="field-label">Invoice number contains</span><input name="invoice_no" value="{{ filters.invoice_no }}" class="form-input" placeholder="Search invoice number"></label>
+      <div class="grid gap-x-4 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
+        <label><span class="field-label"><i class="ph ph-chart-bar"></i>Report</span><select name="report" class="form-input">{% for key, title in report_options.items() %}<option value="{{ key }}" {% if report_key == key %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></label>
+        <label><span class="field-label"><i class="ph ph-calendar-dots"></i>Period preset</span><select name="preset" class="form-input"><option value="custom" {% if preset == 'custom' %}selected{% endif %}>Custom range</option><option value="today" {% if preset == 'today' %}selected{% endif %}>Today</option><option value="yesterday" {% if preset == 'yesterday' %}selected{% endif %}>Yesterday</option><option value="week" {% if preset == 'week' %}selected{% endif %}>This week</option><option value="month" {% if preset == 'month' %}selected{% endif %}>This month</option><option value="last30" {% if preset == 'last30' %}selected{% endif %}>Last 30 days</option></select></label>
+        <label><span class="field-label"><i class="ph ph-calendar-blank"></i>From</span><input required type="date" name="start" value="{{ start }}" class="form-input"></label>
+        <label><span class="field-label"><i class="ph ph-calendar-blank"></i>To</span><input required type="date" name="end" value="{{ end }}" class="form-input"></label>
+        <label><span class="field-label"><i class="ph ph-user-circle"></i>Employee</span><select name="employee" class="form-input"><option value="All">All employees</option>{% for name in options.employees %}<option value="{{ name }}" {% if filters.employee == name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
+        <label><span class="field-label"><i class="ph ph-credit-card"></i>Payment method</span><select name="payment_method" class="form-input"><option value="All">All methods</option>{% for method in options.methods %}<option value="{{ method }}" {% if filters.payment_method == method %}selected{% endif %}>{{ method }}</option>{% endfor %}</select></label>
+        <label><span class="field-label"><i class="ph ph-swap"></i>Transaction type</span><select name="transaction_type" class="form-input"><option value="All" {% if filters.transaction_type == 'All' %}selected{% endif %}>All types</option>{% for kind in ('Room', 'Non-room', 'Refund', 'Adjustment') %}<option value="{{ kind }}" {% if filters.transaction_type == kind %}selected{% endif %}>{{ kind }}</option>{% endfor %}</select></label>
+        <label><span class="field-label"><i class="ph ph-bed"></i>Room number</span><select name="room_no" class="form-input"><option value="">All rooms</option>{% for room in options.rooms %}<option value="{{ room }}" {% if filters.room_no == room %}selected{% endif %}>{{ room }}</option>{% endfor %}</select></label>
+        <label class="sm:col-span-2 xl:col-span-4"><span class="field-label"><i class="ph ph-file-text"></i>Invoice number contains</span><input name="invoice_no" value="{{ filters.invoice_no }}" class="form-input" placeholder="Search invoice number"></label>
       </div>
-      <div class="flex flex-wrap gap-2"><button class="btn-primary">Run report</button><a href="/reports" class="btn-secondary">Clear filters</a></div>
+      <div class="flex flex-wrap gap-2"><button class="btn-primary"><span class="nav-icon" style="width:0.95rem;height:0.95rem;font-size:0.95rem;color:inherit;"><i class="ph ph-chart-bar"></i></span>Run report</button><a href="/reports" class="btn-secondary"><span class="nav-icon" style="width:0.9rem;height:0.9rem;font-size:0.9rem;color:inherit;"><i class="ph ph-x"></i></span>Clear filters</a></div>
     </form>
   </details>
 
   <section class="panel !p-0">
     <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 p-5">
-      <div><h2 class="panel-title">{{ report.title }}</h2><p class="panel-subtitle">{{ report.subtitle }} · Generated {{ report.generated_at }}</p></div>
+      <div><h2 class="panel-title"><i class="ph ph-file-text" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>{{ report.title }}</h2><p class="panel-subtitle">{{ report.subtitle }} · Generated {{ report.generated_at }}</p></div>
       <div class="flex flex-wrap gap-2">
-        <form action="/reports/export.csv" method="get"><input type="hidden" name="report" value="{{ report_key }}"><input type="hidden" name="start" value="{{ start }}"><input type="hidden" name="end" value="{{ end }}">{% for key, value in filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}<button class="btn-secondary">Export CSV</button></form>
-        <form action="/reports/export.pdf" method="get" target="_blank"><input type="hidden" name="report" value="{{ report_key }}"><input type="hidden" name="start" value="{{ start }}"><input type="hidden" name="end" value="{{ end }}">{% for key, value in filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}<button class="btn-secondary">Export PDF</button></form>
-        <button onclick="window.print()" class="btn-secondary">Print</button>
+        <form action="/reports/export.csv" method="get" data-download><input type="hidden" name="report" value="{{ report_key }}"><input type="hidden" name="start" value="{{ start }}"><input type="hidden" name="end" value="{{ end }}">{% for key, value in filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}<button class="btn-amber !px-4 !py-2 !text-xs"><span class="nav-icon" style="width:0.9rem;height:0.9rem;font-size:0.9rem;color:inherit;"><i class="ph ph-download-simple"></i></span>Export CSV</button></form>
+        <form action="/reports/export.xlsx" method="get" data-download><input type="hidden" name="report" value="{{ report_key }}"><input type="hidden" name="start" value="{{ start }}"><input type="hidden" name="end" value="{{ end }}">{% for key, value in filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}<button class="btn-amber !px-4 !py-2 !text-xs"><span class="nav-icon" style="width:0.9rem;height:0.9rem;font-size:0.9rem;color:inherit;"><i class="ph ph-microsoft-excel-logo"></i></span>Export Excel</button></form>
+        <form action="/reports/export.pdf" method="get" data-download target="_blank"><input type="hidden" name="report" value="{{ report_key }}"><input type="hidden" name="start" value="{{ start }}"><input type="hidden" name="end" value="{{ end }}">{% for key, value in filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}<button class="btn-amber !px-4 !py-2 !text-xs"><span class="nav-icon" style="width:0.9rem;height:0.9rem;font-size:0.9rem;color:inherit;"><i class="ph ph-file-pdf"></i></span>Export PDF</button></form>
+        <button onclick="window.print()" class="btn-amber !px-4 !py-2 !text-xs"><span class="nav-icon" style="width:0.9rem;height:0.9rem;font-size:0.9rem;color:inherit;"><i class="ph ph-printer"></i></span>Print</button>
       </div>
     </div>
     <div class="table-scroll"><table class="data-table soft-table min-w-full">
-      <thead><tr>{% for key, label in report.columns %}<th class="whitespace-nowrap">{{ label }}</th>{% endfor %}</tr></thead>
+      {% set _col_icons = {
+    'date':'calendar-blank','month':'calendar-blank','time':'clock',
+    'invoice_number':'file-text','guest':'user','phone':'phone','cashier':'user',
+    'invoices':'receipt','gross_sales':'chart-bar','discount':'percent','tax':'calculator',
+    'service_charge':'coins','net_sales':'currency-circle-dollar','collected':'wallet',
+    'outstanding':'clock-countdown','paid':'wallet','balance':'warning-circle',
+    'subtotal':'currency-circle-dollar',
+    'total':'currency-circle-dollar','method':'credit-card','amount':'currency-circle-dollar',
+    'note':'chat-circle-text',
+    'kind':'tag','age_days':'clock','sellable':'squares-four','room':'bed',
+    'occupied_end':'bed','occupied_across':'bed','available':'door-open','nights':'moon',
+    'rate':'percent','revenue':'currency-circle-dollar','metric':'funnel','value':'currency-circle-dollar',
+} %}
+    <thead><tr>{% for key, label in report.columns %}<th class="whitespace-nowrap"><span class="inline-flex items-center gap-1.5">{% set _ic = _col_icons.get(key) %}{% if _ic %}<i class="ph ph-{{ _ic }}" style="font-size:.85rem;"></i>{% endif %}{{ label }}</span></th>{% endfor %}</tr></thead>
       <tbody>
         {% for row in report.rows %}<tr>{% for key, label in report.columns %}{% set value = row.get(key) %}<td class="whitespace-nowrap text-slate-700">{% if value is number %}{% if key in ('invoices','entries','age_days','sellable','occupied_end','occupied_across','available','nights') %}{{ value|int }}{% elif key in ('rate','occupancy_rate') %}{{ '%.2f'|format(value) }}%{% else %}{{ money(value) }}{% endif %}{% else %}{{ value if value is not none else '' }}{% endif %}</td>{% endfor %}</tr>
         {% else %}<tr><td colspan="{{ report.columns|length }}" class="py-12 text-center"><p class="text-sm font-semibold text-slate-700">No rows for this report</p><p class="mt-1 text-xs text-slate-500">{{ report.empty_message }}</p></td></tr>{% endfor %}
       </tbody>
       {% if report.totals %}<tfoot><tr>{% for key, label in report.columns %}{% set value = report.totals.get(key) %}<td class="whitespace-nowrap">{% if loop.first and not value %}TOTAL{% elif value is number %}{% if key in ('invoices','entries','age_days','sellable','occupied_end','occupied_across','available','nights') %}{{ value|int }}{% elif key in ('rate','occupancy_rate') %}{{ '%.2f'|format(value) }}%{% else %}{{ money(value) }}{% endif %}{% else %}{{ value if value is not none else '' }}{% endif %}</td>{% endfor %}</tr></tfoot>{% endif %}
     </table></div>
-    {% if report.formulas %}<details class="m-4 rounded-lg bg-slate-50 px-3 py-2"><summary class="cursor-pointer text-xs font-bold text-slate-600">How these figures are measured</summary><ul class="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 text-slate-600">{% for formula in report.formulas %}<li>{{ formula }}</li>{% endfor %}</ul></details>{% endif %}
+    {% if report.formulas %}<details class="m-4 rounded-lg bg-slate-50 px-3 py-2"><summary class="cursor-pointer text-xs font-bold text-slate-600 inline-flex items-center gap-1.5"><i class="ph ph-book-open" style="font-size:.85rem;"></i>How these figures are measured</summary><ul class="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 text-slate-600">{% for formula in report.formulas %}<li>{{ formula }}</li>{% endfor %}</ul></details>{% endif %}
   </section>
 
   <section class="panel">
     <div class="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 class="panel-title">Daily closing reports</h2><p class="panel-subtitle">Versioned PDF snapshots are kept for audit and can be downloaded after regeneration. Yesterday is selected by default; pick today to include today's invoices.</p></div>
+      <div><h2 class="panel-title"><i class="ph ph-file-pdf" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;"></i>Daily closing reports</h2><p class="panel-subtitle">Versioned PDF snapshots are kept for audit and can be downloaded after regeneration. Yesterday is selected by default; pick today to include today's invoices.</p></div>
       {% if current_user.role == 'admin' %}
-      <form method="post" action="/reports/daily/generate" class="flex flex-wrap items-end gap-2"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label><span class="field-label">Business date</span><input type="date" name="business_date" required value="{{ daily_report_date }}" class="form-input"></label><button class="btn-primary">Generate PDF</button></form>
+      <form method="post" action="/reports/daily/generate" class="flex flex-wrap items-end gap-2"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label><span class="field-label"><i class="ph ph-calendar-blank" style="font-size:.95rem;margin-right:.4rem;vertical-align:-.15em;"></i>Business date</span><input type="date" name="business_date" required value="{{ daily_report_date }}" class="form-input"></label><button class="btn-primary"><span class="nav-icon" style="width:0.95rem;height:0.95rem;font-size:0.95rem;color:inherit;"><i class="ph ph-file-pdf"></i></span>Generate PDF</button></form>
       {% endif %}
     </div>
     {% if current_user.role == 'admin' %}
     <p class="mt-2 text-xs text-slate-500">Sales by business date: {% for item in daily_preview %}{{ item.label|lower }} ({{ item.date }}) <strong>{{ money(item.sales) }}</strong>{% if not loop.last %} · {% endif %}{% endfor %}. Pick the date you want to close, then generate.</p>
     {% endif %}
     <div class="table-scroll mt-4"><table class="data-table soft-table min-w-full">
-      <thead><tr><th>Business date</th><th>Version</th><th>Status</th><th class="text-right">Sales</th><th class="text-right">Collected</th><th>Generated</th><th>By</th><th>Details / actions</th></tr></thead>
+      <thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-calendar-blank" style="font-size:.85rem;"></i>Business date</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-tag" style="font-size:.85rem;"></i>Version</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-check-circle" style="font-size:.85rem;"></i>Status</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-money" style="font-size:.85rem;"></i>Sales</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-hand-coins" style="font-size:.85rem;"></i>Collected</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-clock" style="font-size:.85rem;"></i>Generated</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user" style="font-size:.85rem;"></i>By</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-gear" style="font-size:.85rem;"></i>Details / actions</span></th></tr></thead>
       <tbody>
         {% for daily in daily_reports %}<tr>
           <td class="whitespace-nowrap font-medium">{{ daily.business_date }}</td><td>v{{ daily.version }}</td>
@@ -84,16 +98,16 @@
           <td class="text-right font-semibold tabular-nums">{{ money(daily.totals.get('gross_sales', 0)) }}</td>
           <td class="text-right tabular-nums">{{ money(daily.totals.get('collected', 0)) }}</td>
           <td class="whitespace-nowrap text-slate-600">{{ daily.generated_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ daily.generated_by }}</td>
-          <td>{% if daily.error %}<p class="mb-2 max-w-md text-xs text-rose-700">{{ daily.error }}</p>{% endif %}<div class="flex flex-wrap gap-2">{% if daily.status in ('generated', 'superseded') %}<a class="btn-secondary !px-2.5 !py-1 !text-xs" href="/reports/daily/{{ daily.id }}/download">Download PDF</a>{% endif %}{% if current_user.role == 'admin' %}<form method="post" action="/reports/daily/{{ daily.id }}/regenerate"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn-secondary !px-2.5 !py-1 !text-xs">Regenerate</button></form>{% endif %}</div></td>
+          <td>{% if daily.error %}<p class="mb-2 max-w-md text-xs text-rose-700">{{ daily.error }}</p>{% endif %}<div class="flex flex-wrap gap-2">{% if daily.status in ('generated', 'superseded') %}<a class="btn-amber !px-2.5 !py-1 !text-xs" href="/reports/daily/{{ daily.id }}/download"><span class="nav-icon" style="width:0.85rem;height:0.85rem;font-size:0.85rem;color:inherit;"><i class="ph ph-download-simple"></i></span>Download PDF</a>{% endif %}{% if current_user.role == 'admin' %}<form method="post" action="/reports/daily/{{ daily.id }}/regenerate"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn-amber !px-2.5 !py-1 !text-xs"><span class="nav-icon" style="width:0.85rem;height:0.85rem;font-size:0.85rem;color:inherit;"><i class="ph ph-arrows-clockwise"></i></span>Regenerate</button></form>{% endif %}</div></td>
         </tr>{% else %}<tr><td colspan="8" class="py-10 text-center text-sm text-slate-500">No daily-close reports yet.</td></tr>{% endfor %}
       </tbody>
     </table></div>
   </section>
 
   <section class="panel">
-    <div><h2 class="panel-title">Scheduler history</h2><p class="panel-subtitle">Automatic close attempts, catch-up runs, and skipped duplicate closes</p></div>
+    <div><h2 class="panel-title"><i class="ph ph-cpu" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;"></i>Scheduler history</h2><p class="panel-subtitle">Automatic close attempts, catch-up runs, and skipped duplicate closes</p></div>
     <div class="table-scroll mt-4"><table class="data-table soft-table min-w-full">
-      <thead><tr><th>Job</th><th>Business date</th><th>Started</th><th>Finished</th><th>Status</th><th>Message</th></tr></thead>
+      <thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-cpu" style="font-size:.85rem;"></i>Job</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-calendar-blank" style="font-size:.85rem;"></i>Business date</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-clock" style="font-size:.85rem;"></i>Started</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-clock" style="font-size:.85rem;"></i>Finished</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-check-circle" style="font-size:.85rem;"></i>Status</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-chat-circle-text" style="font-size:.85rem;"></i>Message</span></th></tr></thead>
       <tbody>
         {% for run in scheduler_runs %}<tr><td class="font-medium">{{ run.job_name }}</td><td>{{ run.business_date or '—' }}</td><td class="whitespace-nowrap text-slate-600">{{ run.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td><td class="whitespace-nowrap text-slate-600">{{ run.finished_at.strftime('%Y-%m-%d %H:%M:%S') if run.finished_at else '—' }}</td><td><span class="badge-{{ 'teal' if run.status in ('success','completed') else 'amber' if run.status in ('skipped','running') else 'slate' }}">{{ run.status|title }}</span></td><td class="text-slate-600">{{ run.message }}</td></tr>
         {% else %}<tr><td colspan="6" class="py-10 text-center text-sm text-slate-500">No scheduler activity recorded yet.</td></tr>{% endfor %}

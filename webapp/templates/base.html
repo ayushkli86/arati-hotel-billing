@@ -3,40 +3,54 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Arati Hotel{% endblock %} · Khandbari</title>
+  <title>{% block title %}BilledIn{% endblock %} · BilledIn</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    tailwind.config = { theme: { extend: { colors: { teal: { 700: '#0D9488' } }, fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] } } } };
+    tailwind.config = { theme: { extend: {
+      fontFamily: {
+        sans: ['Inter', 'Noto Sans Devanagari', 'ui-sans-serif', 'system-ui'],
+        display: ['Playfair Display', 'Georgia', 'serif'],
+      }
+    } } };
   </script>
   <script defer src="https://unpkg.com/htmx.org@2.0.4"></script>
   <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
-  <link rel="icon" type="image/webp" href="/static/aratilogo.webp">
+  <link rel="icon" type="image/svg+xml" href="/static/billedin-logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/phosphor/style.css">
+  <link rel="stylesheet" href="/static/phosphor/weights.css">
   <link rel="stylesheet" href="/static/app.css">
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+<body class="min-h-screen text-slate-900 antialiased" style="background:var(--color-background);color:var(--color-text-primary);">
+<div id="nav-progress" class="nav-progress" aria-hidden="true"><span></span></div>
 {% from "partials/nav_icon.html" import nav_icon %}
 {% if current_user %}
 <div class="min-h-screen lg:flex">
-  <aside class="sidebar fixed inset-y-0 left-0 z-30 hidden w-64 flex-col text-slate-900 lg:flex">
-    <a href="/dashboard" class="flex h-20 flex-col justify-center border-b border-slate-200/80 px-6">
-      <span class="text-[18px] font-semibold leading-none tracking-[-0.03em] text-slate-900">Billedin</span>
-      <span class="mt-1.5 block text-[10px] font-medium tracking-[.16em] text-slate-400">ARATI HOTEL · KHANDBARI</span>
+  <aside class="sidebar fixed inset-y-0 left-0 z-30 hidden w-64 flex-col overflow-hidden lg:flex" style="background:radial-gradient(900px 480px at -30% -10%, rgba(125,155,122,.14), transparent 60%), radial-gradient(700px 520px at 130% 105%, rgba(232,213,163,.08), transparent 60%), var(--color-primary);color:var(--color-text-on-dark);">
+    <a href="/dashboard" class="flex h-20 flex-col justify-center border-b px-6" style="border-color:rgba(247,241,222,.14);" aria-label="BilledIn">
+      <span class="flex items-center gap-2" aria-hidden="true">
+        <span class="flex items-end gap-[3px]"><span class="block h-4 w-[3px] rounded-sm bg-gradient-to-b from-[#f0c75e] via-[#d4a017] to-[#b8860b]"></span><span class="block h-5 w-[3px] rounded-sm bg-gradient-to-b from-[#f0c75e] via-[#d4a017] to-[#b8860b]"></span><span class="block h-4 w-[3px] rounded-sm bg-gradient-to-b from-[#f0c75e] via-[#d4a017] to-[#b8860b]"></span></span>
+        <span class="font-display bg-gradient-to-r from-[#f0c75e] via-[#d4a017] to-[#c9a227] bg-clip-text text-[20px] font-bold leading-none tracking-tight text-transparent">BilledIn</span>
+      </span>
+      <span class="mt-2 block text-[10px] font-medium tracking-[.16em]" style="color:rgba(247,241,222,.55);">ARATI HOTEL · KHANDBARI</span>
     </a>
-    <nav class="flex-1 space-y-5 overflow-y-auto px-3 py-5">
+    <nav class="flex-1 space-y-6 overflow-y-auto px-3 py-5">
       {% if current_user.must_change_password %}
-      <section><h2 class="px-3 pb-2 text-[10px] font-medium tracking-[.18em] text-slate-400">ACCOUNT</h2><a href="/password/change" class="nav-link nav-active"><span class="nav-icon">{{ nav_icon('password') }}</span><span>Update password</span></a></section>
+      <section><h2 class="sidebar-heading">ACCOUNT</h2><a href="/password/change" class="nav-link nav-active"><span class="nav-icon">{{ nav_icon('password') }}</span><span>Update password</span></a></section>
       {% else %}
       {% set groups = [
-        ('OPERATIONS', [('dashboard','▦','Dashboard'),('orders','◫','Order Bookings'),('billing','＋','Billing'),('rooms','▤','Rooms'),('customers','◎','Customers')]),
-        ('FINANCE', [('invoices','▧','Invoices'),('payments','↗','Payments')]),
-        ('INSIGHTS', [('reports','◷','Reports'),('analysis','⌁','Sales Analysis')]),
-        ('SYSTEM', [('catalog','▥','Catalog'),('printer','▣','Printer Settings'),('staff','♙','Staff'),('settings','⚙','Hotel Settings')])
+        ('OPERATIONS', [('dashboard','Dashboard'),('orders','Order Bookings'),('billing','Billing'),('rooms','Rooms'),('customers','Customers')]),
+        ('FINANCE', [('invoices','Invoices'),('payments','Payments')]),
+        ('INSIGHTS', [('reports','Reports'),('calendar','Day Book'),('analysis','Sales Analysis')]),
+        ('SYSTEM', [('catalog','Catalog'),('printer','Printer Settings'),('staff','Staff'),('settings','Hotel Settings')])
       ] %}
       {% for heading, items in groups %}
       <section>
-        <h2 class="px-3 pb-2 text-[10px] font-medium tracking-[.18em] text-slate-400">{{ heading }}</h2>
-        <div class="space-y-1">
-          {% for key, icon, label in items %}
+        <h2 class="sidebar-heading">{{ heading }}</h2>
+        <div class="space-y-1.5">
+          {% for key, label in items %}
           {% if key not in ('staff', 'settings', 'analysis') or current_user.role == 'admin' %}
           <a href="{{ {'billing': '/billing/create', 'orders': '/orders'}.get(key, '/' + key) }}" class="nav-link {% if active_page == key %}nav-active{% endif %}">
             <span class="nav-icon">{{ nav_icon(key) }}</span><span>{{ label }}</span>
@@ -48,38 +62,387 @@
       {% endfor %}
       {% endif %}
     </nav>
-    <div class="border-t border-slate-200/80 p-3">
-      <div class="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+    <div class="border-t p-3" style="border-color:rgba(232,213,163,.16);">
+      <div class="rounded-2xl p-3" style="background:rgba(247,241,222,.05);border:1px solid rgba(232,213,163,.2);">
         <div class="flex items-center gap-3">
-          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-900 text-xs font-semibold text-white">{{ current_user.full_name[:1] or current_user.username[:1] }}</span>
-          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold text-slate-800">{{ current_user.full_name or current_user.username }}</span><span class="block truncate text-[11px] capitalize text-slate-500">{{ current_user.role }}</span></span>
-          <a href="/settings" class="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-white hover:text-slate-700" title="Hotel settings" aria-label="Hotel settings"><span class="nav-icon">{{ nav_icon('settings') }}</span></a>
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold" style="background:var(--color-accent);color:var(--color-text-on-accent);box-shadow:0 0 0 1.5px rgba(232,213,163,.5);">{{ current_user.full_name[:1] or current_user.username[:1] }}</span>
+          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold" style="color:var(--color-text-on-dark);">{{ current_user.full_name or current_user.username }}</span><span class="mt-0.5 block truncate text-[10px] font-medium uppercase tracking-[.14em]" style="color:rgba(232,213,163,.6);">{{ current_user.role }}</span></span>
+          <a href="/settings" class="sidebar-icon-btn h-8 w-8" title="Hotel settings" aria-label="Hotel settings"><span class="nav-icon">{{ nav_icon('settings') }}</span></a>
         </div>
-        <form method="post" action="/logout" class="mt-3"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-100"><span class="nav-icon">{{ nav_icon('signout') }}</span>Sign out</button></form>
+        <form method="post" action="/logout" class="mt-3"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn-signout"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;">{{ nav_icon('signout') }}</span>Sign out</button></form>
       </div>
     </div>
   </aside>
   <main class="min-h-screen min-w-0 flex-1 lg:ml-64">
-    <header class="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-slate-200 bg-white/95 px-5 backdrop-blur sm:px-8">
-      <div class="flex items-center gap-3"><span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white p-1 ring-1 ring-slate-200"><img src="/static/aratilogo.webp" alt="Arati Hotel" class="h-full w-full object-contain"></span><div><p class="text-xs font-medium text-slate-500">ARATI HOTEL <span class="mx-1 text-slate-300">·</span> KHANDBARI</p><p class="mt-0.5 text-sm font-semibold">{% block header_title %}Front Office{% endblock %}</p></div></div>
-      <div class="flex items-center gap-3">{% if business_date is defined %}<span class="hidden text-xs text-slate-500 sm:inline">Business Date · {{ business_date }}</span>{% else %}<span class="hidden text-xs text-slate-500 sm:inline">Asia/Kathmandu</span>{% endif %}<details class="relative"><summary class="cursor-pointer list-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800">{{ current_user.role|title }} <span class="text-slate-400">▾</span></summary><div class="absolute right-0 top-11 z-40 w-52 rounded-xl border border-slate-200 bg-white p-3 shadow-xl"><p class="truncate text-sm font-bold text-slate-800">{{ current_user.full_name or current_user.username }}</p><p class="mt-0.5 text-xs capitalize text-slate-500">{{ current_user.role }}</p><form method="post" action="/logout" class="mt-3 border-t border-slate-100 pt-2"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="text-xs font-semibold text-slate-600 hover:text-slate-900">Sign out</button></form></div></details></div>
+    <header class="sticky top-0 z-20 flex h-14 items-center justify-between border-b px-5 backdrop-blur sm:px-8" style="background:var(--color-primary);border-color:rgba(247,241,222,.14);color:var(--color-text-on-dark);">
+      <div class="flex items-center gap-3"><span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg p-1 ring-1" style="background:rgba(247,241,222,.14);border:0;"><img src="/static/aratilogo.webp" alt="Arati Hotel" class="h-full w-full object-contain"></span><div><p class="text-xs font-medium" style="color:rgba(247,241,222,.6);">ARATI HOTEL <span class="mx-1" style="color:rgba(247,241,222,.3);">·</span> KHANDBARI</p><p class="mt-0.5 text-sm font-semibold">{% block header_title %}Front Office{% endblock %}</p></div></div>
+      <div class="hidden min-w-0 flex-1 items-center justify-center gap-3 md:flex"><i class="ph ph-clock shrink-0" style="font-size:1.15rem;color:#E8D5A3;"></i><span id="header-clock" class="text-[1.62rem] font-semibold leading-none tracking-wide" style="color:#E8D5A3;font-variant-numeric:tabular-nums;">--:--:--</span><span class="h-6 w-px shrink-0" style="background:rgba(247,241,222,.25);"></span><span class="min-w-0 leading-tight"><span id="header-bs-date" class="block truncate text-[0.83rem]" style="color:rgba(247,241,222,.85);">{{ header_dates.nepali or '' }}</span><span id="header-ad-date" class="block truncate text-[0.76rem]" style="color:rgba(247,241,222,.6);">{{ header_dates.english }}</span></span></div>
+      <div class="flex items-center gap-3"><details class="relative"><summary class="cursor-pointer list-none rounded-lg border px-3 py-2 text-xs font-semibold" style="border-color:rgba(247,241,222,.25);background:rgba(247,241,222,.08);color:var(--color-text-on-dark);">{{ current_user.role|title }} <span style="color:rgba(247,241,222,.55);">▾</span></summary><div class="absolute right-0 top-11 z-40 w-52 rounded-xl border border-slate-200 bg-white p-3 shadow-xl"><p class="truncate text-sm font-bold text-slate-800">{{ current_user.full_name or current_user.username }}</p><p class="mt-0.5 text-xs capitalize text-slate-500">{{ current_user.role }}</p><form method="post" action="/logout" class="mt-3 border-t border-slate-100 pt-2"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="text-xs font-semibold text-slate-600 hover:text-slate-900">Sign out</button></form></div></details></div>
     </header>
     {% if not current_user.must_change_password %}<nav class="mobile-nav lg:hidden" aria-label="Main navigation">
       {% for key, label, path in [('dashboard','Dashboard','/dashboard'),('orders','Orders','/orders'),('billing','Billing','/billing/create'),('rooms','Rooms','/rooms'),('invoices','Invoices','/invoices'),('payments','Payments','/payments'),('customers','Guests','/customers')] %}
       <a href="{{ path }}" class="mobile-nav-link {% if active_page == key %}mobile-nav-active{% endif %}">{{ label }}</a>
       {% endfor %}
     </nav>{% endif %}
-    <div class="mx-auto max-w-[1680px] px-4 py-6 pb-24 sm:px-7 lg:pb-8">
+    <div class="page-enter mx-auto max-w-[1680px] px-4 py-6 pb-24 sm:px-7 lg:pb-8">
       {% block content %}{% endblock %}
     </div>
     <div id="modal-root"></div>
+    <div id="modal-skeleton" class="modal-skeleton" aria-hidden="true">
+      <div class="skeleton-card">
+        <div class="skeleton skeleton-line" style="width:38%"></div>
+        <div class="skeleton skeleton-line" style="width:62%;margin-top:.7rem"></div>
+        <div class="skeleton" style="height:2.4rem;margin-top:1.1rem"></div>
+        <div class="skeleton" style="height:2.4rem;margin-top:.6rem"></div>
+        <div class="skeleton" style="height:2.4rem;margin-top:.6rem"></div>
+        <div class="flex justify-end"><div class="skeleton skeleton-line" style="width:34%;height:1.9rem;margin-top:1.1rem"></div></div>
+      </div>
+    </div>
     {% if not current_user.must_change_password %}<div id="quick-action-bar" class="fixed inset-x-0 bottom-0 z-20 flex gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur sm:justify-end sm:px-8 lg:static lg:border-0 lg:bg-transparent lg:px-7 lg:py-0 lg:shadow-none">
-      <a href="/billing/create" class="btn-primary grow sm:grow-0">＋ New Invoice</a>
-      <a href="/rooms" class="btn-secondary grow sm:grow-0">Room Board</a>
-      <a href="/payments" class="btn-secondary grow sm:grow-0">Take a Payment</a>
+      <a href="/billing/create" class="btn-primary grow sm:grow-0"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;font-size:.95rem;">{{ nav_icon('plus') }}</span>New Invoice</a>
+      <a href="/rooms" class="btn-primary grow sm:grow-0"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-bed"></i></span>Room Board</a>
+      <a href="/payments" class="btn-primary grow sm:grow-0"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-credit-card"></i></span>Take a Payment</a>
     </div>{% endif %}
   </main>
 </div>
 {% else %}{% block unauthenticated %}{% endblock %}{% endif %}
+<div id="toast-stack" class="toast-stack" aria-label="Notifications" aria-live="polite" aria-atomic="false"></div>
+<script>
+(function () {
+  var stack = document.getElementById('toast-stack');
+  if (!stack) return;
+  var icons = { success: 'ph-check-circle', error: 'ph-warning-octagon', warning: 'ph-warning', info: 'ph-info' };
+  var lastToast = { key: '', at: 0 };
+  function dismiss(el) {
+    if (!el || el.classList.contains('toast-out')) return;
+    el.classList.add('toast-out');
+    setTimeout(function () { el.remove(); }, 220);
+  }
+  window.showToast = function (message, type, title) {
+    if (!message) return;
+    var kind = ['success', 'error', 'warning', 'info'].indexOf(type) >= 0 ? type : 'success';
+    var key = kind + '|' + message;
+    var now = Date.now();
+    // Identical messages within 3 s are one action, not two.
+    if (key === lastToast.key && now - lastToast.at < 3000) return;
+    lastToast = { key: key, at: now };
+    var el = document.createElement('div');
+    el.className = 'toast toast-' + kind;
+    el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    el.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
+    var icon = document.createElement('i');
+    icon.className = 'ph ' + (icons[kind] || icons.info);
+    icon.setAttribute('aria-hidden', 'true');
+    var body = document.createElement('div');
+    body.className = 'toast-body';
+    if (title) {
+      var heading = document.createElement('p');
+      heading.className = 'toast-title';
+      heading.textContent = title;
+      body.appendChild(heading);
+    }
+    var text = document.createElement('p');
+    text.className = 'toast-message';
+    text.textContent = message;
+    body.appendChild(text);
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'toast-close';
+    close.setAttribute('aria-label', 'Dismiss notification');
+    close.innerHTML = '&times;';
+    close.addEventListener('click', function () { dismiss(el); });
+    el.appendChild(icon);
+    el.appendChild(body);
+    el.appendChild(close);
+    stack.appendChild(el);
+    setTimeout(function () { dismiss(el); }, kind === 'error' ? 8000 : 5000);
+  };
+  document.body.addEventListener('showToast', function (event) {
+    var detail = event.detail || {};
+    window.showToast(detail.message || detail.value || '', detail.type || detail.level || 'success', detail.title);
+  });
+  document.addEventListener('htmx:responseError', function (event) {
+    var xhr = (event.detail || {}).xhr;
+    var message = 'The request could not be completed. Please try again.';
+    if (xhr && xhr.status === 403) message = 'Your form expired. Refresh the page and try again.';
+    else if (xhr && xhr.status === 422) message = 'Please check the highlighted fields and try again.';
+    else if (xhr && xhr.status === 404) message = 'That record could not be found.';
+    window.showToast(message, 'error', 'Action failed');
+  });
+  document.addEventListener('htmx:sendError', function () {
+    window.showToast('Network error — the server could not be reached.', 'error', 'Action failed');
+  });
+  {% if server_toast %}
+  window.showToast({{ server_toast.message|tojson }}, {{ server_toast.type|tojson }});
+  {% endif %}
+  try {
+    var params = new URLSearchParams(window.location.search);
+    if (params.has('toast')) {
+      params.delete('toast');
+      params.delete('toast_type');
+      var query = params.toString();
+      history.replaceState(null, '', window.location.pathname + (query ? '?' + query : '') + window.location.hash);
+    }
+  } catch (error) { /* history API is unavailable in a few embedded browsers */ }
+})();
+</script>
+<script>
+(function () {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  // Values count up from zero, and bars/donuts grow into place — the same
+  // motion language on every page. Text is restored exactly once finished.
+  var VALUE_SELECTOR = [
+    '[data-count]', '.metric-value', '.kpi-hero-value', '.stat-card-value',
+    '.room-summary-number', '.metric-card p', '.metric-card-hero p',
+    '.mini-metric strong', '.stat-pill strong', '.kpi-row-value', '.an-kpi-value',
+    '.an-trend-head b', '.an-donut-mid b'
+  ].join(',');
+  var VALUE_PATTERN = /^(-?)\s*(NPR|Rs\.?)?\s*([\d,]+(?:\.\d+)?)\s*(%|pp)?$/;
+
+  function readValue(text) {
+    var match = VALUE_PATTERN.exec(text.trim());
+    if (!match) return null;
+    var digits = match[3];
+    var value = parseFloat(digits.replace(/,/g, ''));
+    if (!isFinite(value)) return null;
+    return {
+      value: match[1] === '-' ? -value : value,
+      prefix: match[2] ? match[2] + ' ' : '',
+      suffix: match[4] || '',
+      decimals: (digits.split('.')[1] || '').length
+    };
+  }
+
+  function renderValue(number, spec) {
+    var parts = number.toFixed(spec.decimals).split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return spec.prefix + parts.join('.') + spec.suffix;
+  }
+
+  function countUp(el) {
+    if (el.children.length || el.dataset.counted === '1') return;
+    var spec = readValue(el.textContent);
+    if (!spec || spec.value === 0) return;
+    el.dataset.counted = '1';
+    var finalText = el.textContent;
+    var start = null;
+    el.textContent = renderValue(0, spec);
+    requestAnimationFrame(function frame(now) {
+      if (start === null) start = now;
+      var progress = Math.min(1, (now - start) / 900);
+      if (progress < 1) {
+        el.textContent = renderValue(spec.value * (1 - Math.pow(1 - progress, 3)), spec);
+        requestAnimationFrame(frame);
+      } else {
+        el.textContent = finalText;
+      }
+    });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll(VALUE_SELECTOR), countUp);
+
+  var steps = [];
+  function grow(elements, axis) {
+    Array.prototype.forEach.call(elements, function (el) {
+      var target = el.style[axis];
+      if (!target) return;
+      el.style[axis] = '0%';
+      steps.push(function () { el.style[axis] = target; });
+    });
+  }
+  grow(document.querySelectorAll('[data-grow="width"], .an-list-fill'), 'width');
+  grow(document.querySelectorAll('[data-grow="height"], .an-bar'), 'height');
+  Array.prototype.forEach.call(document.querySelectorAll('.an-sweep'), function (segment) {
+    var target = segment.getAttribute('stroke-dasharray');
+    if (!target) return;
+    segment.setAttribute('stroke-dasharray', '0 100');
+    steps.push(function () { segment.setAttribute('stroke-dasharray', target); });
+  });
+  if (steps.length) {
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        steps.forEach(function (step) { step(); });
+      });
+    });
+  }
+})();
+</script>
+<script>
+(function () {
+  var clockEl = document.getElementById('header-clock');
+  var adEl = document.getElementById('header-ad-date');
+  if (!clockEl && !adEl) return;
+  var tz = 'Asia/Kathmandu';
+  function engParts() {
+    var fmt = new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    return fmt.format(new Date());
+  }
+  function tick() {
+    if (clockEl) clockEl.textContent = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).format(new Date());
+    if (adEl) adEl.textContent = engParts();
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+<script>
+(function () {
+  var BUSY_DELAY = 150;
+  var PROGRESS_DELAY = 120;
+
+  function isInteractive(el) {
+    return el && el.nodeType === 1 && /^(BUTTON|A|SUMMARY)$/.test(el.tagName);
+  }
+
+  function defaultVisual(el) {
+    if (!el || el.nodeType !== 1) return null;
+    if (el.tagName === 'FORM') return el.querySelector('button[type="submit"], button:not([type])');
+    return isInteractive(el) ? el : null;
+  }
+
+  function startBusy(lockEl, visualEl) {
+    if (!lockEl) return true;
+    if (lockEl.dataset.busyLock === '1') return false;
+    lockEl.dataset.busyLock = '1';
+    var visual = visualEl || defaultVisual(lockEl);
+    if (visual) visual.dataset.busyVisual = '1';
+    var timer = setTimeout(function () {
+      [lockEl, visual].forEach(function (el) {
+        if (!el) return;
+        el.classList.add('is-busy');
+        el.setAttribute('aria-busy', 'true');
+      });
+    }, BUSY_DELAY);
+    lockEl.dataset.busyTimer = String(timer);
+    return true;
+  }
+
+  function clearBusy(lockEl) {
+    if (!lockEl) return;
+    clearTimeout(Number(lockEl.dataset.busyTimer || 0));
+    var visuals = lockEl.querySelectorAll ? Array.prototype.slice.call(lockEl.querySelectorAll('[data-busy-visual="1"]')) : [];
+    [lockEl].concat(visuals).forEach(function (el) {
+      if (!el) return;
+      delete el.dataset.busyLock;
+      delete el.dataset.busyTimer;
+      delete el.dataset.busyVisual;
+      el.classList.remove('is-busy');
+      el.removeAttribute('aria-busy');
+    });
+  }
+
+  function veilFor(element) {
+    var region = element && element.closest ? element.closest('[data-loading-region]') : null;
+    return region ? region.querySelector('.loading-veil') : null;
+  }
+  function setVeil(veil, active) {
+    if (veil) veil.classList.toggle('is-active', !!active);
+  }
+
+  var modalSkeleton = document.getElementById('modal-skeleton');
+
+  window.clearAllFeedback = function () {
+    document.querySelectorAll('[data-busy-lock]').forEach(clearBusy);
+    document.querySelectorAll('.loading-veil.is-active').forEach(function (veil) { setVeil(veil, false); });
+    if (modalSkeleton) modalSkeleton.classList.remove('is-active');
+  };
+
+  document.body.addEventListener('htmx:beforeRequest', function (event) {
+    var detail = event.detail || {};
+    var elt = detail.elt;
+    var target = detail.target;
+    if (elt && (isInteractive(elt) || elt.tagName === 'FORM')) {
+      if (!startBusy(elt)) { event.preventDefault(); return; }
+    }
+    setVeil(veilFor(target) || veilFor(elt), true);
+    if (modalSkeleton && target && target.id === 'modal-root') modalSkeleton.classList.add('is-active');
+  });
+
+  document.body.addEventListener('htmx:afterRequest', function (event) {
+    var detail = event.detail || {};
+    clearBusy(detail.elt);
+    setVeil(veilFor(detail.target) || veilFor(detail.elt), false);
+    if (modalSkeleton && detail.target && detail.target.id === 'modal-root') modalSkeleton.classList.remove('is-active');
+  });
+
+  /* Top progress bar for full document navigations. */
+  var progress = document.getElementById('nav-progress');
+  var progressTimer = null;
+  var progressWatchdog = null;
+  function startProgress() {
+    if (!progress) return;
+    clearTimeout(progressTimer);
+    clearTimeout(progressWatchdog);
+    // File responses (invoice PDF, report exports) never unload the page, so the
+    // bar has to give up on its own when no navigation commits.
+    progressWatchdog = setTimeout(finishProgress, 4000);
+    progressTimer = setTimeout(function () {
+      progress.classList.remove('is-done');
+      progress.querySelector('span').style.width = '72%';
+      progress.classList.add('is-active');
+    }, PROGRESS_DELAY);
+  }
+  function finishProgress() {
+    if (!progress) return;
+    clearTimeout(progressTimer);
+    clearTimeout(progressWatchdog);
+    var bar = progress.querySelector('span');
+    if (!progress.classList.contains('is-active')) { bar.style.width = '0'; return; }
+    bar.style.width = '100%';
+    progress.classList.add('is-done');
+    setTimeout(function () {
+      progress.classList.remove('is-active', 'is-done');
+      bar.style.width = '0';
+    }, 260);
+  }
+
+  document.addEventListener('click', function (event) {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    var link = event.target.closest('a[href]');
+    if (!link || link.target === '_blank' || link.hasAttribute('download') || link.hasAttribute('data-no-progress')) return;
+    var url;
+    try { url = new URL(link.getAttribute('href'), location.href); } catch (error) { return; }
+    if (url.origin !== location.origin) return;
+    if (url.pathname === location.pathname && url.search === location.search) return;
+    startProgress();
+  });
+
+  document.addEventListener('submit', function (event) {
+    if (event.defaultPrevented) return;
+    var form = event.target;
+    if (!form || form.tagName !== 'FORM') return;
+    if (form.hasAttribute('hx-post') || form.hasAttribute('hx-get') || form.hasAttribute('hx-put') || form.hasAttribute('hx-delete')) return;
+    // requestSubmit() from script leaves event.submitter empty; the focused button
+    // is the one the person actually pressed.
+    var submitter = event.submitter;
+    if (!submitter) {
+      var active = document.activeElement;
+      submitter = active && form.contains(active) && /^(BUTTON|INPUT)$/.test(active.tagName)
+        ? active
+        : form.querySelector('button[type="submit"], button:not([type])');
+    }
+    if (startBusy(form, submitter) === false) { event.preventDefault(); return; }
+    if (form.hasAttribute('data-download')) {
+      // The document stays loaded, so clear the spinner on a timer instead.
+      setTimeout(function () { clearBusy(form); }, 2500);
+      return;
+    }
+    if (!form.target || form.target === '_self') startProgress();
+    // Downloads keep the page alive and never fire pageshow; clear the state anyway.
+    setTimeout(function () { clearBusy(form); finishProgress(); }, 10000);
+  });
+
+  window.addEventListener('pageshow', function () {
+    window.clearAllFeedback();
+    finishProgress();
+  });
+  window.addEventListener('focus', function () {
+    setTimeout(window.clearAllFeedback, 800);
+  });
+})();
+</script>
 </body>
 </html>

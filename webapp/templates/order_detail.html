@@ -4,14 +4,17 @@
 {% block title %}{{ order.order_number }}{% endblock %}
 {% block header_title %}Order {{ order.order_number }}{% endblock %}
 {% block content %}
-<div class="space-y-4">
+<div class="space-y-5">
   <div class="page-heading">
-    <div>
-      <p class="eyebrow">FRONT DESK · ORDER REQUEST</p>
-      <h1 class="page-title flex flex-wrap items-center gap-3">{{ order.order_number }} <span class="badge-{{ status_badges.get(order.status, 'slate') }}">{{ status_labels.get(order.status, order.status) }}</span></h1>
-      <p class="page-subtitle">{{ kind_labels.get(order.kind, order.kind) }} · received {{ local_datetime(order.created_at, '%d %b %Y · %H:%M') }}{% if order.channel == 'whatsapp' %} · WhatsApp{% endif %}</p>
+    <div class="flex items-center gap-3">
+      <span class="room-icon-chip" style="background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-clipboard-text"></i></span>
+      <div>
+        <p class="eyebrow">FRONT DESK · ORDER REQUEST</p>
+        <h1 class="page-title flex flex-wrap items-center gap-3">{{ order.order_number }} <span class="badge-{{ status_badges.get(order.status, 'slate') }}">{{ status_labels.get(order.status, order.status) }}</span></h1>
+        <p class="page-subtitle">{{ kind_labels.get(order.kind, order.kind) }} · received {{ local_datetime(order.created_at, '%d %b %Y · %H:%M') }}{% if order.channel == 'whatsapp' %} · WhatsApp{% endif %}</p>
+      </div>
     </div>
-    <div class="flex flex-wrap gap-2"><a href="/orders" class="btn-secondary">← All orders</a></div>
+    <div class="flex flex-wrap gap-2"><a href="/orders" class="btn-secondary"><i class="ph ph-arrow-left"></i>All orders</a></div>
   </div>
 
   {% if notice == 'sent' %}<div role="status" class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{{ 'Status updated. The guest was messaged on WhatsApp.' if wa_connected else 'Status updated. Simulator mode — no real WhatsApp message was sent.' }}</div>{% elif notice == 'failed' %}<div role="alert" class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">Status updated, but the WhatsApp update could not be sent. Check the connection.</div>{% endif %}
@@ -23,12 +26,12 @@
     <div class="space-y-4">
       <section class="panel">
         <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3">
-          <div><h2 class="panel-title">Request details</h2><p class="panel-subtitle">Guest information and how the request should be handled</p></div>
+          <div><h2 class="panel-title"><i class="ph ph-info" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Request details</h2><p class="panel-subtitle">Guest information and handling</p></div>
           <span class="badge-slate">{{ kind_labels.get(order.kind, order.kind) }}</span>
         </div>
         <dl class="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
           <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Guest</dt><dd class="mt-0.5 font-semibold text-slate-800">{{ order.customer_name or 'WhatsApp guest' }}</dd></div>
-          <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">WhatsApp</dt><dd class="mt-0.5 font-medium text-slate-700">{% if order.customer_phone %}<a href="https://wa.me/{{ order.customer_phone }}" rel="noopener" target="_blank" class="text-teal-700 hover:underline">+{{ order.customer_phone }}</a>{% else %}—{% endif %}</dd></div>
+          <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">WhatsApp</dt><dd class="mt-0.5 font-medium text-slate-700">{% if order.customer_phone %}<a href="https://wa.me/{{ order.customer_phone }}" rel="noopener" target="_blank" class="text-[color:var(--color-primary)] hover:underline">+{{ order.customer_phone }}</a>{% else %}—{% endif %}</dd></div>
           {% if order.kind == 'food' %}
           <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Fulfilment</dt><dd class="mt-0.5 font-medium text-slate-700">{{ fulfilment_labels.get(order.fulfilment, 'Pickup') }}</dd></div>
           <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-400">Needed</dt><dd class="mt-0.5 font-medium text-slate-700">{{ order.requested_for or 'As soon as possible' }}</dd></div>
@@ -48,10 +51,10 @@
       </section>
 
       <section class="panel !p-0">
-        <div class="border-b border-slate-100 px-5 py-4"><h2 class="panel-title">Requested items</h2><p class="panel-subtitle">Prices are captured when the guest confirms</p></div>
+        <div class="border-b border-slate-100 px-5 py-4"><h2 class="panel-title"><i class="ph ph-bag" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Requested items</h2><p class="panel-subtitle">Prices captured at confirmation</p></div>
         <div class="table-scroll">
           <table class="data-table soft-table min-w-[560px]">
-            <thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Rate</th><th class="text-right">Amount</th></tr></thead>
+            <thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-package"></i>Item</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-hash"></i>Qty</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-tag"></i>Rate</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-currency-inr"></i>Amount</span></th></tr></thead>
             <tbody>
               {% for item in order.items %}
               <tr><td class="font-semibold text-slate-800">{{ item.description }}<span class="mt-1 block text-xs font-normal text-slate-500">{{ item.category|title }}</span></td><td class="text-right">{{ (item.quantity|int) if item.quantity == (item.quantity|int) else item.quantity }}</td><td class="text-right">{{ money(item.unit_price) }}</td><td class="text-right font-semibold">{{ money(item.amount) }}</td></tr>
@@ -59,7 +62,7 @@
               <tr><td colspan="4" class="py-8 text-center text-sm text-slate-500">No items — this request was taken as a note.</td></tr>
               {% endfor %}
             </tbody>
-            <tfoot><tr><td colspan="3" class="text-right font-bold">{{ 'Estimated total' if order.kind == 'room' else 'Items total' }}</td><td class="text-right text-base font-extrabold text-teal-700">{{ money(order.total) }}</td></tr></tfoot>
+            <tfoot><tr><td colspan="3" class="text-right font-bold">{{ 'Estimated total' if order.kind == 'room' else 'Items total' }}</td><td class="text-right text-base font-extrabold text-[color:var(--color-primary)]">{{ money(order.total) }}</td></tr></tfoot>
           </table>
         </div>
         <p class="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">No VAT or service charge is included on this request. Those are applied when the order is billed.</p>
@@ -68,12 +71,12 @@
 
     <div class="space-y-4">
       <section class="panel">
-        <h2 class="panel-title">Move this request</h2>
+        <h2 class="panel-title"><i class="ph ph-arrows-left-right" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Move this request</h2>
         <p class="panel-subtitle">Each change is audited; with a connected number the guest is notified on WhatsApp.</p>
         {% if available_statuses %}
-        <form method="post" action="/orders/{{ order.id }}/status" class="mt-4 space-y-3">
+        <form method="post" action="/orders/{{ order.id }}/status" class="mt-5 space-y-4">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <label class="block"><span class="field-label">Staff note (optional)</span><textarea name="note" rows="2" maxlength="500" class="form-input" placeholder="e.g. Called the guest to confirm"></textarea></label>
+          <label class="block"><span class="field-label"><i class="ph ph-note-pencil"></i>Staff note (optional)</span><textarea name="note" rows="2" maxlength="500" class="form-input" placeholder="e.g. Called the guest to confirm"></textarea></label>
           <div class="flex flex-wrap gap-2">
             {% if primary_status %}<button name="status" value="{{ primary_status }}" class="btn-primary">{{ action_labels.get(primary_status, status_labels.get(primary_status)) }}</button>{% endif %}
             {% for value in available_statuses if value != primary_status %}
@@ -88,7 +91,7 @@
 
       <section class="panel">
         <div class="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-3">
-          <div><h2 class="panel-title">WhatsApp conversation</h2><p class="panel-subtitle">The guest sees these messages in the same chat.</p></div>
+          <div><h2 class="panel-title"><i class="ph ph-whatsapp-logo" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#2E7D3E;"></i>WhatsApp conversation</h2><p class="panel-subtitle">The guest sees these messages in the same chat.</p></div>
           {% if conversation %}
           <form method="post" action="/orders/conversations/{{ conversation.id }}/bot">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -107,9 +110,9 @@
         <div class="mt-3 max-h-80 space-y-2 overflow-y-auto rounded-xl bg-slate-50 p-3">
           {% for message in messages %}
           <div class="flex {{ 'justify-end' if message.direction == 'out' else 'justify-start' }}">
-            <div class="max-w-[88%] rounded-2xl px-3 py-2 text-xs leading-relaxed shadow-sm {{ 'bg-teal-600 text-white' if message.direction == 'out' else 'border border-slate-200 bg-white text-slate-700' }}">
+            <div class="max-w-[88%] rounded-2xl px-3 py-2 text-xs leading-relaxed shadow-sm {{ 'bg-[color:var(--color-primary)] text-white' if message.direction == 'out' else 'border border-slate-200 bg-white text-slate-700' }}">
               <p class="whitespace-pre-line">{{ message.body }}</p>
-              <p class="mt-1 text-[10px] {{ 'text-teal-100' if message.direction == 'out' else 'text-slate-400' }}">{{ local_datetime(message.created_at, '%d %b · %H:%M') }}{% if message.direction == 'out' and message.status == 'failed' %} · not delivered{% endif %}</p>
+              <p class="mt-1 text-[10px] {{ 'text-[rgba(247,241,222,0.75)]' if message.direction == 'out' else 'text-slate-400' }}">{{ local_datetime(message.created_at, '%d %b · %H:%M') }}{% if message.direction == 'out' and message.status == 'failed' %} · not delivered{% endif %}</p>
             </div>
           </div>
           {% else %}
@@ -118,7 +121,7 @@
         </div>
         <form method="post" action="/orders/{{ order.id }}/reply" class="mt-3 space-y-2">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <label class="block"><span class="field-label">Reply to the guest</span><textarea name="body" rows="3" maxlength="1000" class="form-input" placeholder="e.g. Your table is ready at 7 pm." required></textarea></label>
+          <label class="block"><span class="field-label"><i class="ph ph-chat-text"></i>Reply to the guest</span><textarea name="body" rows="3" maxlength="1000" class="form-input" placeholder="e.g. Your table is ready at 7 pm." required></textarea></label>
           <button class="btn-primary w-full">Send on WhatsApp</button>
           <p class="text-[11px] leading-4 text-slate-400">{{ 'Messages are sent from the connected hotel number.' if wa_connected else 'Simulator mode: the message is recorded here but not sent to WhatsApp.' }}</p>
         </form>

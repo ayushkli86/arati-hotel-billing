@@ -1,6 +1,6 @@
-{% for row in rooms %}{% set room = row.room %}<tr>
-  <td class="font-bold text-slate-900">{{ room.number }}</td>
-  <td class="text-slate-600">{{ room.type }}</td>
+{% for row in rooms %}{% set room = row.room %}{% set _t = room.type|lower %}{% set tchip = 'superdelux' if 'super' in _t else('delux' if 'delux' in _t else 'standard') %}{% set ticon = 'ph-fill2' if tchip == 'superdelux' else('ph-bold2' if tchip == 'delux' else 'ph-thin') %}<tr>
+  <td><div class="flex items-center gap-2.5">{% set dchip = 'broom' if room.housekeeping_status == 'dirty' else {'occupied':'bed','reserved':'calendar-check','maintenance':'wrench'}.get(room.status, 'key') %}<span class="room-icon-chip room-chip-{{ 'dirty' if room.housekeeping_status == 'dirty' else room.status }} room-ring-{{ tchip }}"><i class="ph ph-{{ dchip }}"></i></span><span class="font-bold text-slate-900">{{ room.number }}</span></div></td>
+  <td><span class="room-type-pill room-type-{{ tchip }}"><i class="ph ph-bed {{ ticon }}"></i>{{ room.type }}</span></td>
   <td><span class="status-badge status-{{ room.status }}">{{ room.status|replace('_',' ')|title }}{% if room.housekeeping_status == 'dirty' and room.status == 'occupied' %} · Dirty{% endif %}</span></td>
   <td>{{ row.guest or '—' }}</td>
   <td class="font-medium text-slate-700">{% if row.checkout %}{{ local_datetime(row.checkout) }}{% else %}<span class="text-slate-400">—</span>{% endif %}</td>

@@ -7,3 +7,4 @@ itsdangerous>=2.2,<3.0
 httpx>=0.27,<1.0
 weasyprint>=62,<70
 openpyxl>=3.1,<4.0
+nepali-datetime>=1.0,<2.0

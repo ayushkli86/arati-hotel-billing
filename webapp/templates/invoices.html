@@ -1,24 +1,25 @@
+{% from "partials/nav_icon.html" import nav_icon %}
 {% extends "base.html" %}{% set active_page='invoices' %}{% block title %}Invoices{% endblock %}
 {% block header_title %}Invoices{% endblock %}
 {% block content %}
 {% set open_invoices = invoices|selectattr('status','equalto','issued')|list %}
 {% set paid_invoices = invoices|selectattr('status','equalto','paid')|list %}
 <div class="page-heading">
-  <div><p class="eyebrow">Finance</p><h1 class="page-title">{% if selected_guest %}Invoices for {{ selected_guest.name }}{% else %}Invoices{% endif %}</h1><p class="page-subtitle">Search, review, print, and collect guest bills</p></div>
-  <div class="flex flex-wrap gap-2"><a class="btn-secondary" href="/payments">Payments</a><a class="btn-primary" href="/billing/create">＋ Create invoice</a></div>
+  <div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.75rem;height:2.75rem;font-size:1.35rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-receipt"></i></span><div><p class="eyebrow">Finance</p><h1 class="page-title">{% if selected_guest %}Invoices for {{ selected_guest.name }}{% else %}Invoices{% endif %}</h1></div><p class="page-subtitle">Search, review, print, and collect guest bills</p></div>
+  <div class="flex flex-wrap gap-2"><a class="btn-secondary" href="/payments"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-credit-card"></i></span>Payments</a><a class="btn-primary" href="/billing/create"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;font-size:.95rem;">{{ nav_icon('plus') }}</span>Create invoice</a></div>
 </div>
-{% if room_id %}<div class="mb-4 inline-flex items-center gap-2 rounded-lg border border-teal-100 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-900"><span>Showing invoices for room filter</span><a href="/invoices{% if q %}?q={{ q }}{% endif %}" class="ml-1 text-teal-700 hover:underline">✕ Clear</a></div>{% endif %}
-{% if selected_guest %}<div class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-xs text-teal-900"><span>Guest history · {{ selected_guest.phone or 'No phone recorded' }} · {{ selected_guest.address or 'No address recorded' }}</span><a href="/customers" class="font-semibold hover:underline">Back to guest directory</a></div>{% endif %}
-<div class="mb-4 grid gap-3 sm:grid-cols-3">
-  <div class="metric-card"><span class="section-label">Invoices shown</span><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ invoices|length }}</p><p class="mt-1 text-xs text-slate-500">Up to 300 most recent</p></div>
-  <div class="metric-card"><span class="section-label">Open invoices</span><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ open_invoices|length }}</p><p class="mt-1 text-xs text-slate-500">Issued and awaiting payment</p></div>
-  <div class="metric-card"><span class="section-label">Outstanding balance</span><p class="mt-2 text-2xl font-extrabold soft-amber-text">{{ money(open_invoices|sum(attribute='balance')) }}</p><p class="mt-1 text-xs text-slate-500">{{ paid_invoices|length }} paid invoice{{ '' if paid_invoices|length == 1 else 's' }} listed</p></div>
+{% if selected_room %}<div class="mb-4 inline-flex items-center gap-2 rounded-lg border border-[rgba(163,184,159,0.5)] bg-[rgba(125,155,122,0.14)] px-3 py-2 text-xs font-semibold text-[color:var(--color-primary)]"><span>Showing invoices for Room {{ selected_room.number }}</span><a href="/invoices{% if q %}?q={{ q }}{% endif %}" class="ml-1 text-[color:var(--color-primary)] hover:underline">✕ Clear</a></div>{% elif room_id %}<div class="mb-4 inline-flex items-center gap-2 rounded-lg border border-[rgba(163,184,159,0.5)] bg-[rgba(125,155,122,0.14)] px-3 py-2 text-xs font-semibold text-[color:var(--color-primary)]"><span>Showing invoices for Room {{ room_number_label }}</span><a href="/invoices{% if q %}?q={{ q }}{% endif %}" class="ml-1 text-[color:var(--color-primary)] hover:underline">✕ Clear</a></div>{% endif %}
+{% if selected_guest %}<div class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[rgba(163,184,159,0.5)] bg-[rgba(125,155,122,0.14)] px-4 py-3 text-xs text-[color:var(--color-primary)]"><span>Guest history · {{ selected_guest.phone or 'No phone recorded' }} · {{ selected_guest.address or 'No address recorded' }}</span><a href="/customers" class="font-semibold hover:underline">Back to guest directory</a></div>{% endif %}
+<div class="mb-4 grid gap-4 sm:grid-cols-3">
+  <div class="metric-card"><span class="section-label"><i class="ph ph-file-text" style="font-size:.9rem;"></i> Invoices shown</span><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ invoices|length }}</p><p class="mt-1 text-xs text-slate-500">Up to 300 most recent</p></div>
+  <div class="metric-card"><span class="section-label"><i class="ph ph-warning" style="font-size:.9rem;"></i> Open invoices</span><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ open_invoices|length }}</p><p class="mt-1 text-xs text-slate-500">Issued and awaiting payment</p></div>
+  <div class="metric-card"><span class="section-label"><i class="ph ph-money" style="font-size:.9rem;"></i> Outstanding balance</span><p class="mt-2 text-2xl font-extrabold soft-amber-text">{{ money(open_invoices|sum(attribute='balance')) }}</p><p class="mt-1 text-xs text-slate-500">Across {{ invoices|length }} invoice{{ '' if invoices|length == 1 else 's' }} listed</p></div>
 </div>
 <section class="panel !p-0">
   <div class="border-b border-slate-100 p-4">
     <form class="flex flex-wrap items-center gap-2" method="get">
       <input type="hidden" name="room_id" value="{{ room_id or '' }}"><input type="hidden" name="guest_id" value="{{ guest_id or '' }}">
-      <label class="relative min-w-[240px] flex-1"><span class="sr-only">Search invoices</span><span class="search-icon">⌕</span><input class="form-input !py-2 !pl-9" name="q" value="{{ q }}" placeholder="Invoice number, guest, or room"></label>
+      <label class="relative min-w-[240px] flex-1"><span class="sr-only">Search invoices</span><span class="search-icon"><i class="ph ph-magnifying-glass"></i></span><input class="form-input !py-2 !pl-9" name="q" value="{{ q }}" placeholder="Invoice number, guest, or room"></label>
       <select class="form-input w-44 !py-2" name="status" aria-label="Filter by status">
         <option value="all" {% if status_filter=='all' %}selected{% endif %}>All statuses</option>
         <option value="outstanding" {% if status_filter=='outstanding' %}selected{% endif %}>Outstanding balance</option>
@@ -27,17 +28,17 @@
         <option value="draft" {% if status_filter=='draft' %}selected{% endif %}>Draft</option>
         <option value="void" {% if status_filter=='void' %}selected{% endif %}>Void</option>
       </select>
-      <button class="btn-secondary">Filter</button>
+      <button class="btn-amber"><span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-funnel"></i></span>Filter</button>
       {% if room_id or q or status_filter != 'all' %}<a href="/invoices{% if guest_id %}?guest_id={{ guest_id }}{% endif %}" class="px-2 text-xs font-semibold text-slate-500 hover:text-slate-800">Clear filters</a>{% endif %}
     </form>
   </div>
   <div class="table-scroll">
     <table class="data-table soft-table min-w-[860px]">
-      <thead><tr><th>Invoice</th><th>Issued</th><th>Guest</th><th>Room</th><th>Status</th><th class="text-right">Total</th><th class="text-right">Balance</th><th class="text-right">Actions</th></tr></thead>
+      <thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-file-text" style="font-size:.85rem;"></i>Invoice</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-calendar-blank" style="font-size:.85rem;"></i>Issued</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user" style="font-size:.85rem;"></i>Guest</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-bed" style="font-size:.85rem;"></i>Room</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-tag" style="font-size:.85rem;"></i>Status</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-money" style="font-size:.85rem;"></i>Total</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-coins" style="font-size:.85rem;"></i>Balance</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-gear" style="font-size:.85rem;"></i>Actions</span></th></tr></thead>
       <tbody>
         {% for invoice in invoices %}
         <tr class="{% if invoice.status == 'issued' and invoice.balance > 0 %}tr-outstanding{% endif %}">
-          <td><a href="/billing/invoices/{{ invoice.id }}/print" class="font-semibold text-teal-800 hover:underline" title="View / print invoice">{{ invoice.invoice_number }}</a></td>
+          <td><a href="/billing/invoices/{{ invoice.id }}/print" class="font-semibold text-[color:var(--accent-on-light)] hover:underline" title="View / print invoice">{{ invoice.invoice_number }}</a></td>
           <td class="whitespace-nowrap text-slate-600">{{ local_datetime(invoice.issue_date, '%d %b %Y') }}</td>
           <td class="font-medium text-slate-800">{{ invoice.guest_name or invoice.guest.name }}</td>
           <td>{{ invoice.room_number or (invoice.room.number if invoice.room else '—') }}</td>
@@ -46,24 +47,24 @@
           <td class="text-right font-semibold {% if invoice.status == 'issued' and invoice.balance > 0 %}soft-amber-text{% else %}text-slate-500{% endif %}">{{ money(invoice.balance) }}</td>
           <td class="text-right whitespace-nowrap">
             {% if invoice.status in ('issued', 'paid') and invoice.balance > 0 %}
-            <button class="btn-amber" hx-get="/invoices/{{ invoice.id }}/collect" hx-target="#modal-root">Collect</button>
+            <button class="btn-amber" hx-get="/invoices/{{ invoice.id }}/collect" hx-target="#modal-root"><span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-hand-coins"></i></span>Collect</button>
             {% elif invoice.status == 'draft' %}
             <a href="/billing/create?draft_id={{ invoice.id }}" class="btn-primary !px-3 !py-1.5 !text-xs">Edit draft</a>
             {% else %}
-            <a href="/billing/invoices/{{ invoice.id }}/print" class="btn-secondary !px-3 !py-1.5 !text-xs">View</a>
+            <a href="/billing/invoices/{{ invoice.id }}/print" class="btn-amber !px-3 !py-1.5 !text-xs"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-eye"></i></span>View</a>
             {% endif %}
             <details class="row-menu ml-1 inline-block align-middle"><summary aria-label="More invoice actions">⋯</summary><div class="row-menu-panel">
-              {% if invoice.status != 'draft' %}<a href="/billing/invoices/{{ invoice.id }}/print" title="Print invoice">Print invoice</a><a href="/billing/invoices/{{ invoice.id }}/pdf" title="Download invoice PDF">Download PDF</a>{% endif %}
-              <a href="/billing/invoices/{{ invoice.id }}/receipt" title="Print thermal receipt">Print receipt</a>
-              <a href="/billing/invoices/{{ invoice.id }}/receipt.pdf" title="Download receipt PDF">Receipt PDF</a>
-              <a href="/invoices?guest_id={{ invoice.guest_id }}">Guest history</a>
+              {% if invoice.status != 'draft' %}<a href="/billing/invoices/{{ invoice.id }}/print" title="Print invoice"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-printer"></i></span> Print invoice</a><a href="/billing/invoices/{{ invoice.id }}/pdf" title="Download invoice PDF"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-download-simple"></i></span> Download PDF</a>{% endif %}
+              <a href="/billing/invoices/{{ invoice.id }}/receipt" title="Print thermal receipt"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-printer"></i></span> Print receipt</a>
+              <a href="/billing/invoices/{{ invoice.id }}/receipt.pdf" title="Download receipt PDF"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-download-simple"></i></span> Receipt PDF</a>
+              <a href="/invoices?guest_id={{ invoice.guest_id }}"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-clock-counter-clockwise"></i></span> Guest history</a>
               {% if invoice.status == 'draft' and current_user and current_user.role == 'admin' %}<form method="post" action="/billing/invoices/{{ invoice.id }}/delete-draft" onsubmit="return confirm('Delete this draft invoice?')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="menu-danger">Delete draft</button></form>
               {% elif invoice.status != 'void' and invoice.status != 'draft' and current_user and current_user.role == 'admin' %}<form method="post" action="/billing/invoices/{{ invoice.id }}/void" onsubmit="return confirm('Void this invoice? This action cannot be undone.')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="menu-danger">Void invoice</button></form>{% endif %}
             </div></details>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="8" class="py-12 text-center"><p class="text-sm font-semibold text-slate-700">No invoices match your search</p><p class="mt-1 text-xs text-slate-500">Try clearing filters or create a new invoice.</p><a href="/billing/create" class="btn-primary mt-3 !px-3 !py-1.5 !text-xs">＋ Create invoice</a></td></tr>
+        <tr><td colspan="8" class="py-12 text-center"><p class="text-sm font-semibold text-slate-700">No invoices match your search</p><p class="mt-1 text-xs text-slate-500">Try clearing filters or create a new invoice.</p><a href="/billing/create" class="btn-primary mt-3 !px-3 !py-1.5 !text-xs"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;font-size:.95rem;">{{ nav_icon('plus') }}</span>Create invoice</a></td></tr>
         {% endfor %}
       </tbody>
     </table>

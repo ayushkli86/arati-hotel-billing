@@ -6,16 +6,19 @@
 {% set date_format = '%d/%m/%Y' if hotel_settings.get('date_format', 'DD/MM/YYYY') == 'DD/MM/YYYY' else '%Y-%m-%d' %}
 {% set printer_config = printer_config|default({'paper': 'A4', 'margin_mm': 12, 'copies': 1, 'show_logo': true, 'show_header': true, 'show_footer': true, 'show_contact': true, 'show_tax': true}) %}
 {% set thermal = printer_config.paper in ('80', '58') %}
-<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{{ invoice.invoice_number }} · {{ hotel_name }}</title><style>
-@page{size:{% if thermal %}{{ printer_config.paper }}mm auto{% else %}A4 portrait{% endif %};margin:{{ printer_config.margin_mm }}mm}*{box-sizing:border-box}body{font:12px Inter,Arial,sans-serif;color:#172033;margin:0}.sheet{max-width:800px;margin:24px auto;padding:35px;border:1px solid #e2e8f0;border-radius:12px}.header{display:flex;align-items:center;border-bottom:3px solid #0d9488;padding-bottom:15px}.mark{font-size:29px;color:#0d9488;margin-right:12px}.hotel{flex:1}.hotel h1{margin:0;font-size:22px}.hotel p,.contact{margin:4px 0;color:#64748b;font-size:10px}.contact{text-align:right;line-height:1.7}.title{display:flex;justify-content:space-between;align-items:start;margin:20px 0}.title h2{margin:0;color:#0f766e;font-size:18px}.billto{margin-top:14px;line-height:1.7}.muted{color:#64748b}.table{width:100%;border-collapse:collapse;margin-top:24px}.table th{background:#f1f5f9;color:#475569;font-size:10px;text-transform:uppercase}.table th,.table td{padding:10px 8px;border-bottom:1px solid #e2e8f0;text-align:right}.table th:first-child,.table td:first-child{text-align:left}.totals{width:300px;margin:18px 0 0 auto}.totals div{display:flex;justify-content:space-between;padding:5px 0}.grand{border:1px solid #0d9488;border-radius:6px;padding:10px!important;font-size:15px;font-weight:bold;color:#0f766e}.notes{margin-top:20px;background:#f8fafc;padding:12px;border-radius:8px}.thanks{text-align:center;margin-top:40px;font-weight:600}.sign{text-align:right;margin-top:30px;color:#0f766e;font-style:italic}.copy{margin-top:18px;padding:9px;background:#e6f5f3;text-align:center;color:#0f766e;border-radius:8px;font-weight:bold}.toolbar{max-width:800px;margin:18px auto;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.share-actions,.invoice-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.toolbar a,.toolbar button{border:0;border-radius:7px;padding:10px 14px;background:#0d9488;color:white;text-decoration:none;cursor:pointer}.toolbar button:disabled{opacity:.6;cursor:wait}.receipt-items{margin-top:18px;border-top:1px dashed #94a3b8}.receipt-item{padding:8px 0;border-bottom:1px dashed #cbd5e1}.receipt-description{font-weight:700}.receipt-row{display:flex;justify-content:space-between;margin-top:3px;font-size:11px}.thermal-sheet{width:calc({{ printer_config.paper }}mm - {{ printer_config.margin_mm * 2 }}mm);max-width:none;padding:5mm;margin:12px auto;border:0;border-bottom:1px dashed #94a3b8;border-radius:0;font-size:10px}.thermal-sheet .header{display:block;text-align:center;padding-bottom:8px}.thermal-sheet .mark{display:block;margin:0}.thermal-sheet .hotel h1{font-size:16px}.thermal-sheet .contact{text-align:center}.thermal-sheet .title{display:block;margin:12px 0}.thermal-sheet .title h2{font-size:14px}.thermal-sheet .billto{margin-top:8px}.thermal-sheet .table{margin-top:10px}.thermal-sheet .totals{width:100%;margin:10px 0 0}.thermal-sheet .totals div{padding:3px 0}.thermal-sheet .grand{font-size:13px}.thermal-sheet .notes{margin-top:10px;padding:8px}.thermal-sheet .thanks{margin-top:16px}.thermal-sheet .sign{margin-top:12px}.thermal-sheet .copy{margin-top:10px;padding:6px}.page-copy{break-after:page}.page-copy.thermal-sheet{break-after:page}@media screen{.page-copy~.sheet{display:none}}@media print{body{background:#fff}.sheet{margin:0 auto;padding:0;border:0}.thermal-sheet{width:100%;padding:0}.toolbar,.saved-message{display:none}}
+<!doctype html><html lang="en"><head>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta charset="utf-8"><title>{{ invoice.invoice_number }} · {{ hotel_name }}</title><style>
+@page{size:{% if thermal %}{{ printer_config.paper }}mm auto{% else %}A4 portrait{% endif %};margin:{{ printer_config.margin_mm }}mm}*{box-sizing:border-box}body{font:12px Inter,Arial,sans-serif;color:#1b3a2a;margin:0}.sheet{max-width:800px;margin:24px auto;padding:35px;border:1px solid #ddd2b8;border-radius:12px}.header{display:flex;align-items:center;border-bottom:3px solid #1b3a2a;padding-bottom:15px}.mark{font-size:29px;color:#1b3a2a;margin-right:12px}.hotel{flex:1}.hotel h1{margin:0;font-size:22px}.hotel p,.contact{margin:4px 0;color:#6b6553;font-size:10px}.contact{text-align:right;line-height:1.7}.title{display:flex;justify-content:space-between;align-items:start;margin:20px 0}.title h2{margin:0;color:#1b3a2a;font-size:18px}.billto{margin-top:14px;line-height:1.7}.muted{color:#6b6553}.table{width:100%;border-collapse:collapse;margin-top:24px}.table th{background:#f3eddc;color:#5f5843;font-size:10px;text-transform:uppercase}.table th,.table td{padding:10px 8px;border-bottom:1px solid #ddd2b8;text-align:right}.table th:first-child,.table td:first-child{text-align:left}.totals{width:300px;margin:18px 0 0 auto}.totals div{display:flex;justify-content:space-between;padding:5px 0}.grand{border:1px solid #1b3a2a;border-radius:6px;padding:10px!important;font-size:15px;font-weight:bold;color:#1b3a2a}.notes{margin-top:20px;background:#f7f1de;padding:12px;border-radius:8px}.thanks{text-align:center;margin-top:40px;font-weight:600}.sign{text-align:right;margin-top:30px;color:#1b3a2a;font-style:italic}.copy{margin-top:18px;padding:9px;background:#efe3c2;text-align:center;color:#1b3a2a;border-radius:8px;font-weight:bold}.toolbar{max-width:800px;margin:18px auto;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.share-actions,.invoice-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.toolbar a,.toolbar button{border:0;border-radius:7px;padding:10px 14px;background:#1b3a2a;color:white;text-decoration:none;cursor:pointer}.toolbar button:disabled{opacity:.6;cursor:wait}.receipt-items{margin-top:18px;border-top:1px dashed #a99e7e}.receipt-item{padding:8px 0;border-bottom:1px dashed #c7bda0}.receipt-description{font-weight:700}.receipt-row{display:flex;justify-content:space-between;margin-top:3px;font-size:11px}.thermal-sheet{width:calc({{ printer_config.paper }}mm - {{ printer_config.margin_mm * 2 }}mm);max-width:none;padding:5mm;margin:12px auto;border:0;border-bottom:1px dashed #a99e7e;border-radius:0;font-size:10px}.thermal-sheet .header{display:block;text-align:center;padding-bottom:8px}.thermal-sheet .mark{display:block;margin:0}.thermal-sheet .hotel h1{font-size:16px}.thermal-sheet .contact{text-align:center}.thermal-sheet .title{display:block;margin:12px 0}.thermal-sheet .title h2{font-size:14px}.thermal-sheet .billto{margin-top:8px}.thermal-sheet .table{margin-top:10px}.thermal-sheet .totals{width:100%;margin:10px 0 0}.thermal-sheet .totals div{padding:3px 0}.thermal-sheet .grand{font-size:13px}.thermal-sheet .notes{margin-top:10px;padding:8px}.thermal-sheet .thanks{margin-top:16px}.thermal-sheet .sign{margin-top:12px}.thermal-sheet .copy{margin-top:10px;padding:6px}.page-copy{break-after:page}.page-copy.thermal-sheet{break-after:page}@media screen{.page-copy~.sheet{display:none}}@media screen{body{background:#efe7d2}.sheet{box-shadow:0 24px 60px -30px rgba(27,58,42,.22);border-color:#d8c48e}.toolbar a,.toolbar button{background:linear-gradient(135deg,#f0c75e,#d4a017);color:#1b3a2a;font-weight:600;box-shadow:0 10px 24px -12px rgba(169,129,47,.55)}}
+@media print{body{background:#fff}.sheet{margin:0 auto;padding:0;border:0}.thermal-sheet{width:100%;padding:0}.toolbar,.saved-message{display:none}}.busy{opacity:.85;padding-left:26px;position:relative}.busy::before{content:"";position:absolute;left:8px;top:50%;width:12px;height:12px;margin-top:-6px;border-radius:999px;border:2px solid currentColor;border-right-color:transparent;animation:share-spin .7s linear infinite}@keyframes share-spin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.busy::before{animation:none}}
 </style></head><body>
 <div class="toolbar">
   {% if is_test_print %}
-  <span style="display:inline-flex;align-items:center;padding:0 12px;background:#fef3c7;color:#92400e;border-radius:6px;font-size:12px;font-weight:bold">Sample Only · Not Saved</span>
+  <span style="display:inline-flex;align-items:center;padding:0 12px;background:#f2e7c9;color:#7a5c0d;border-radius:6px;font-size:12px;font-weight:bold">Sample Only · Not Saved</span>
   <button onclick="window.print()">Print Test</button>
   {% elif is_preview %}
-  <button onclick="if(history.length>1){history.back()}else{window.close()}" style="background:#475569">← Back to Edit</button>
-  <span style="display:inline-flex;align-items:center;padding:0 12px;background:#fef3c7;color:#92400e;border-radius:6px;font-size:12px;font-weight:bold">Preview Only · Not Saved</span>
+  <button onclick="if(history.length>1){history.back()}else{window.close()}" style="background:#5f5843">← Back to Edit</button>
+  <span style="display:inline-flex;align-items:center;padding:0 12px;background:#f2e7c9;color:#7a5c0d;border-radius:6px;font-size:12px;font-weight:bold">Preview Only · Not Saved</span>
   <button onclick="window.print()">Print Preview</button>
   {% else %}
   <div class="share-actions">
@@ -34,10 +37,10 @@
   {% endif %}
 </div>
 {% if not is_preview and not is_test_print and not receipt_mode %}
-<p class="saved-message" style="max-width:800px;margin:0 auto 16px;padding:12px 16px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;border-radius:8px;font-size:13px">
+<p class="saved-message" style="max-width:800px;margin:0 auto 16px;padding:12px 16px;background:#f7f1de;color:#5f4c10;border:1px solid #d8c48e;border-radius:8px;font-size:13px">
   <strong>Invoice saved.</strong> {{ invoice.invoice_number }} is recorded as {{ invoice.status }}. Use Download PDF to save a copy, or Print to open your printer dialog.
 </p>
-<p id="share-status" role="status" aria-live="polite" style="max-width:800px;margin:0 auto 12px;color:#475569;font-size:12px"></p>
+<p id="share-status" role="status" aria-live="polite" style="max-width:800px;margin:0 auto 12px;color:#5f5843;font-size:12px"></p>
 <script>
 async function shareInvoice(button, channel) {
   const {pdfUrl, invoiceNumber, guestName, recipient, items, total, paid, balance} = button.dataset;
@@ -73,6 +76,7 @@ async function shareInvoice(button, channel) {
   }
 
   button.disabled = true;
+  button.classList.add('busy');
   status.textContent = 'Preparing invoice PDF…';
   try {
     const response = await fetch(pdfUrl, {credentials: 'same-origin'});
@@ -98,12 +102,13 @@ async function shareInvoice(button, channel) {
     }
   } finally {
     button.disabled = false;
+    button.classList.remove('busy');
   }
 }
 </script>
 {% endif %}
 {% if request.query_params.get('fallback') %}
-<div style="max-width:800px;margin:10px auto;padding:12px 16px;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:8px;font-size:12px">
+<div style="max-width:800px;margin:10px auto;padding:12px 16px;background:#f7f1de;color:#1b3a2a;border:1px solid #d8c48e;border-radius:8px;font-size:12px">
   <strong>Print View:</strong> Use the Print button above (or Ctrl+P) and choose "Save as PDF" to save this invoice.
 </div>
 {% endif %}
@@ -111,7 +116,7 @@ async function shareInvoice(button, channel) {
 <main class="sheet{% if thermal %} thermal-sheet{% endif %}{% if not loop.last %} page-copy{% endif %}">
 {% if printer_config.show_header %}
 <header class="header">
-  {% if printer_config.show_logo %}{% if printer_logo_src %}<img src="{{ printer_logo_src }}" alt="{{ hotel_name }} logo" style="max-width:56px;max-height:56px;margin-right:12px;object-fit:contain">{% else %}<span class="mark">✿</span>{% endif %}{% endif %}
+  {% if printer_config.show_logo %}{% if printer_logo_src %}<img src="{{ printer_logo_src }}" alt="{{ hotel_name }} logo" style="max-width:56px;max-height:56px;margin-right:12px;object-fit:contain">{% else %}<span class="mark"><i class="ph ph-flower-lotus"></i></span>{% endif %}{% endif %}
   <div class="hotel"><h1>{{ print_hotel_name }}</h1><p>{{ hotel_address1 }}{% if hotel_address2 %} · {{ hotel_address2 }}{% endif %}</p></div>
   <div class="contact">{% if printer_config.show_contact %}{% if hotel_settings.get('hotel_phone') %}Phone: {{ hotel_settings.get('hotel_phone') }}<br>{% endif %}{% if hotel_settings.get('hotel_email') %}Email: {{ hotel_settings.get('hotel_email') }}<br>{% endif %}{% if hotel_settings.get('hotel_website') %}{{ hotel_settings.get('hotel_website') }}{% endif %}{% endif %}{% if printer_config.show_tax %}{% if hotel_settings.get('hotel_pan') %}<br>PAN: {{ hotel_settings.get('hotel_pan') }}{% endif %}{% if hotel_settings.get('hotel_vat') %}<br>VAT: {{ hotel_settings.get('hotel_vat') }}{% endif %}{% endif %}</div>
 </header>

@@ -3,46 +3,49 @@
 {% block title %}Order Bookings{% endblock %}
 {% block header_title %}Order Bookings{% endblock %}
 {% block content %}
-<div class="space-y-4">
+<div class="space-y-5">
   <div class="page-heading">
-    <div>
-      <p class="eyebrow">FRONT DESK · WHATSAPP ORDERS</p>
-      <h1 class="page-title">Order Bookings</h1>
-      <p class="page-subtitle">Food orders, room requests, and service bookings from WhatsApp in one queue.</p>
+    <div class="flex items-center gap-3">
+      <span class="room-icon-chip" style="background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-clipboard-text"></i></span>
+      <div>
+        <p class="eyebrow">FRONT DESK · WHATSAPP ORDERS</p>
+        <h1 class="page-title">Order Bookings</h1>
+        <p class="page-subtitle">Food, room, and service requests from WhatsApp in one queue.</p>
+      </div>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      {% if wa_connected %}<span class="badge-teal">WhatsApp connected</span>{% else %}<span class="badge-amber">Simulator mode</span>{% endif %}
-      <a href="#wa-simulator" class="btn-secondary">Open simulator</a>
+      {% if wa_connected %}<span class="badge-teal"><i class="ph ph-whatsapp-logo" style="font-size:.8rem;"></i>WhatsApp connected</span>{% else %}<span class="badge-amber"><i class="ph ph-flask" style="font-size:.8rem;"></i>Simulator mode</span>{% endif %}
+      <a href="#wa-simulator" class="btn-secondary"><i class="ph ph-paper-plane-tilt" style="font-size:.95rem;"></i>Open simulator</a>
     </div>
   </div>
 
-  <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Order summary">
-    <article class="metric-card-hero"><span class="section-label">New requests</span><p class="mt-2 text-2xl font-extrabold {{ 'text-amber-700' if metrics.new else 'text-slate-900' }}">{{ metrics.new }}</p><p class="mt-1 text-xs text-slate-500">Waiting for the front desk</p></article>
-    <article class="metric-card"><span class="section-label">In progress</span><p class="mt-2 text-xl font-extrabold text-slate-900">{{ metrics.active }}</p><p class="mt-1 text-xs text-slate-500">Confirmed, preparing, or ready</p></article>
-    <article class="metric-card"><span class="section-label">Ready to hand over</span><p class="mt-2 text-xl font-extrabold {{ 'text-teal-700' if metrics.ready else 'text-slate-900' }}">{{ metrics.ready }}</p><p class="mt-1 text-xs text-slate-500">Pickup, delivery, or room</p></article>
-    <article class="metric-card"><span class="section-label">Completed today</span><p class="mt-2 text-xl font-extrabold text-slate-900">{{ metrics.completed_today }}</p><p class="mt-1 text-xs text-slate-500">Asia/Kathmandu business day</p></article>
+  <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Order summary">
+    <article class="metric-card-hero"><span class="section-label"><i class="ph ph-bell" style="font-size:.85rem;"></i>New requests</span><p class="mt-2 text-2xl font-extrabold {{ 'text-amber-700' if metrics.new else 'text-slate-900' }}">{{ metrics.new }}</p><p class="mt-1 text-xs text-slate-500">Waiting for the front desk</p></article>
+    <article class="metric-card"><span class="section-label"><i class="ph ph-hourglass" style="font-size:.85rem;"></i>In progress</span><p class="mt-2 text-xl font-extrabold text-slate-900">{{ metrics.active }}</p><p class="mt-1 text-xs text-slate-500">Confirmed · preparing · ready</p></article>
+    <article class="metric-card"><span class="section-label"><i class="ph ph-tray" style="font-size:.85rem;"></i>Ready to hand over</span><p class="mt-2 text-xl font-extrabold {{ 'text-[color:var(--color-primary)]' if metrics.ready else 'text-slate-900' }}">{{ metrics.ready }}</p><p class="mt-1 text-xs text-slate-500">Pickup, delivery, or room</p></article>
+    <article class="metric-card"><span class="section-label"><i class="ph ph-check-circle" style="font-size:.85rem;"></i>Completed today</span><p class="mt-2 text-xl font-extrabold text-slate-900">{{ metrics.completed_today }}</p><p class="mt-1 text-xs text-slate-500">Kathmandu business day</p></article>
   </section>
 
   <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
     <section class="panel !p-0">
-      <form method="get" action="/orders" class="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
-        <label><span class="field-label">Status</span><select name="status" class="form-input">
+      <form method="get" action="/orders" class="grid gap-x-4 gap-y-5 border-b border-slate-100 p-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
+        <label><span class="field-label"><i class="ph ph-pulse"></i>Status</span><select name="status" class="form-input">
           <option value="open" {% if status_filter == 'open' %}selected{% endif %}>Open requests</option>
           <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All statuses</option>
           {% for value in ['new', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'] %}
           <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ status_labels[value] }}</option>
           {% endfor %}
         </select></label>
-        <label><span class="field-label">Type</span><select name="kind" class="form-input">
+        <label><span class="field-label"><i class="ph ph-squares-four"></i>Type</span><select name="kind" class="form-input">
           <option value="all" {% if kind_filter == 'all' %}selected{% endif %}>All types</option>
           {% for value, label in kind_labels.items() %}<option value="{{ value }}" {% if kind_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select></label>
-        <label><span class="field-label">Search</span><input name="q" value="{{ q }}" maxlength="80" class="form-input" placeholder="Order, guest, phone, room"></label>
-        <div class="flex gap-2"><button class="btn-primary grow">Filter</button><a href="/orders" class="btn-secondary">Reset</a></div>
+        <label><span class="field-label"><i class="ph ph-magnifying-glass"></i>Search</span><input name="q" value="{{ q }}" maxlength="80" class="form-input" placeholder="Order, guest, phone, room"></label>
+        <div class="flex gap-2"><button class="btn-primary grow"><i class="ph ph-funnel"></i>Filter</button><a href="/orders" class="btn-secondary"><i class="ph ph-arrow-counter-clockwise"></i>Reset</a></div>
       </form>
 
       <div class="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
-        <div><h2 class="panel-title">Requests</h2><p class="panel-subtitle">Newest first · {{ orders|length }} shown</p></div>
+        <div><h2 class="panel-title"><i class="ph ph-list-numbers" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Requests</h2><p class="panel-subtitle">Newest first · {{ orders|length }} shown</p></div>
         <div class="flex flex-wrap gap-1.5">
           {% for value, label in [('open','Open'), ('all','All'), ('completed','Completed')] %}
           <a href="/orders?status={{ value }}" class="filter-chip {% if status_filter == value %}filter-chip-active{% endif %}">{{ label }}</a>
@@ -52,11 +55,11 @@
 
       <div class="table-scroll">
         <table class="data-table soft-table min-w-[900px]">
-          <thead><tr><th>Order</th><th>Guest</th><th>Request</th><th>How</th><th class="text-right">Total</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-receipt"></i>Order</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user"></i>Guest</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-notebook"></i>Request</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-bicycle"></i>How</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-currency-inr"></i>Total</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-pulse"></i>Status</span></th><th></th></tr></thead>
           <tbody>
             {% for order in orders %}
             <tr>
-              <td><a href="/orders/{{ order.id }}" class="font-bold text-teal-700 hover:underline">{{ order.order_number }}</a><span class="mt-1 block text-xs text-slate-400">{{ local_datetime(order.created_at, '%d %b · %H:%M') }}</span></td>
+              <td><a href="/orders/{{ order.id }}" class="font-bold text-[color:var(--color-primary)] hover:underline">{{ order.order_number }}</a><span class="mt-1 block text-xs text-slate-400">{{ local_datetime(order.created_at, '%d %b · %H:%M') }}</span></td>
               <td><span class="font-semibold text-slate-800">{{ order.customer_name or 'WhatsApp guest' }}</span><span class="mt-1 block text-xs text-slate-500">{{ order.customer_phone or '—' }}</span></td>
               <td class="max-w-[280px] whitespace-normal">
                 <span class="badge-slate">{{ kind_labels.get(order.kind, order.kind) }}</span>
@@ -98,14 +101,14 @@
   <section class="panel">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h2 class="panel-title">WhatsApp connection</h2>
+        <h2 class="panel-title"><i class="ph ph-whatsapp-logo" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.15em;color:#2E7D3E;"></i>WhatsApp connection</h2>
         <p class="panel-subtitle">Meta WhatsApp Cloud API · the agent answers the same way here and on a real number.</p>
       </div>
       {% if wa_connected %}<span class="badge-teal">Live number configured</span>{% elif wa_enabled %}<span class="badge-amber">Simulator only</span>{% else %}<span class="badge-rose">Processing disabled</span>{% endif %}
     </div>
     <div class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div class="space-y-2 text-sm text-slate-600">
-        <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Webhook callback URL</p>
+        <p class="section-label" style="font-size:.68rem;"><i class="ph ph-link"></i>Webhook callback URL</p>
         <div class="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800">{{ webhook_url }}</div>
         <p class="text-xs text-slate-500">Paste this into Meta → WhatsApp → Configuration → Webhook, with the same verify token you set in <code>ARATI_WHATSAPP_VERIFY_TOKEN</code>. Subscribe to <strong>messages</strong>.</p>
         <div class="flex flex-wrap gap-2 pt-1">

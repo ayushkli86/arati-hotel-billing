@@ -5,23 +5,23 @@
 {% block content %}
 <div class="space-y-5">
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <div><p class="eyebrow">FRONT DESK / ROOM OPERATIONS</p><h1 class="page-title">Reservations</h1><p class="page-subtitle">Review bookings, manage cancellations, and reconcile any recorded deposits separately.</p></div>
-    <a href="/rooms" class="btn-secondary">← Room board</a>
+    <div><p class="eyebrow">FRONT DESK / ROOM OPERATIONS</p><h1 class="page-title"><span class="room-icon-chip" style="display:inline-flex;justify-content:center;width:2.1rem;height:2.1rem;font-size:1.1rem;margin-right:.55rem;vertical-align:-.55em;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-calendar-check"></i></span>Reservations</h1><p class="page-subtitle">Bookings, cancellations, and recorded deposits.</p></div>
+    <a href="/rooms" class="btn-secondary"><i class="ph ph-arrow-left" style="font-size:.95rem;"></i>Room board</a>
   </div>
   {% if cancelled %}<div role="status" class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">Reservation cancelled. Review its recorded deposit and process any refund separately.</div>{% endif %}
   <section class="panel !p-0">
-    <form method="get" action="/reservations" class="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-2 xl:grid-cols-5 xl:items-end">
-      <label><span class="field-label">Status</span><select name="status" class="form-input">
+    <form method="get" action="/reservations" class="grid gap-x-4 gap-y-5 border-b border-slate-100 p-4 sm:grid-cols-2 xl:grid-cols-5 xl:items-end">
+      <label><span class="field-label"><i class="ph ph-pulse"></i>Status</span><select name="status" class="form-input">
         {% for value, label in [('confirmed','Confirmed'),('checked_in','Checked in'),('checked_out','Checked out'),('cancelled','Cancelled'),('all','All statuses')] %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
       </select></label>
-      <label><span class="field-label">Room number</span><input name="room" maxlength="20" value="{{ room_filter }}" class="form-input" placeholder="All rooms"></label>
-      <label><span class="field-label">Check-in from</span><input type="date" name="check_in" value="{{ check_in_filter }}" class="form-input"></label>
-      <label><span class="field-label">Check-out through</span><input type="date" name="check_out" value="{{ check_out_filter }}" class="form-input"></label>
-      <div class="flex gap-2"><button class="btn-secondary grow">Filter</button><a href="/reservations" class="btn-secondary">Reset</a></div>
+      <label><span class="field-label"><i class="ph ph-bed"></i>Room number</span><input name="room" maxlength="20" value="{{ room_filter }}" class="form-input" placeholder="All rooms"></label>
+      <label><span class="field-label"><i class="ph ph-sign-in"></i>Check-in from</span><input type="date" name="check_in" value="{{ check_in_filter }}" class="form-input"></label>
+      <label><span class="field-label"><i class="ph ph-sign-out"></i>Check-out through</span><input type="date" name="check_out" value="{{ check_out_filter }}" class="form-input"></label>
+      <div class="flex gap-2"><button class="btn-secondary grow"><i class="ph ph-funnel"></i>Filter</button><a href="/reservations" class="btn-secondary"><i class="ph ph-arrow-counter-clockwise"></i>Reset</a></div>
     </form>
     <div class="table-scroll">
       <table class="data-table min-w-[1120px]">
-        <thead><tr><th>Guest / Contact</th><th>Room</th><th>Expected stay</th><th>Nightly rate</th><th>Deposit</th><th>Notes</th><th>Status</th><th>Action</th></tr></thead>
+        <thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user"></i>Guest / Contact</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-bed"></i>Room</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-calendar-blank"></i>Expected stay</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-tag"></i>Nightly rate</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-hand-coins"></i>Deposit</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-chat-circle-text"></i>Notes</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-pulse"></i>Status</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-gear"></i>Action</span></th></tr></thead>
         <tbody>
           {% for reservation in reservations %}
           <tr>
@@ -38,8 +38,8 @@
                 <summary class="cursor-pointer text-xs font-bold text-red-600">Cancel reservation</summary>
                 <form method="post" action="/reservations/{{ reservation.id }}/cancel" class="mt-2 space-y-2" onsubmit="return confirm('Cancel this reservation? Any deposit refund must be recorded separately.')">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                  <label class="block"><span class="field-label">Reason (optional)</span><textarea name="cancel_reason" maxlength="1000" rows="2" class="form-input"></textarea></label>
-                  <button class="btn-danger w-full">Confirm cancellation</button>
+                  <label class="block"><span class="field-label"><i class="ph ph-chat-circle-text"></i>Reason (optional)</span><textarea name="cancel_reason" maxlength="1000" rows="2" class="form-input"></textarea></label>
+                  <button class="btn-danger w-full"><i class="ph ph-x-circle"></i>Confirm cancellation</button>
                 </form>
               </details>
               {% else %}<span class="text-xs text-slate-400">—</span>{% endif %}

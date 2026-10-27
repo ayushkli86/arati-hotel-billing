@@ -6,10 +6,9 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import Invoice, InvoiceItem, Payment, Room, Stay, utcnow
+from .models import Invoice, Payment
 
 BUSINESS_TZ = ZoneInfo("Asia/Kathmandu")
 
@@ -59,30 +58,6 @@ def amount_in_words(value: float | Decimal | None) -> str:
         result += f" and {under_thousand(paisa)} Paisa"
     return result + " Only"
 
-
-def next_invoice_number(db: Session, instant: datetime | None = None) -> str:
-    day = (instant or local_now()).strftime("%Y%m%d")
-    prefix = f"ARH-{day}-"
-    count = db.scalar(select(func.count(Invoice.id)).where(Invoice.invoice_number.like(f"{prefix}%"))) or 0
-    return f"{prefix}{count + 1:04d}"
-
-
-def add_invoice(
-    db: Session, *, guest_id: int, description: str, quantity: float, rate: float,
-    room_id: int | None = None, stay_id: int | None = None,
-) -> Invoice:
-    amount = float((Decimal(str(quantity)) * Decimal(str(rate))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-    invoice = Invoice(
-        invoice_number=next_invoice_number(db), guest_id=guest_id, room_id=room_id,
-        stay_id=stay_id, issue_date=utcnow(), total=amount, paid_amount=0,
-        balance=amount, status="issued",
-    )
-    invoice.items.append(InvoiceItem(
-        description=description.strip(), quantity=quantity, rate=rate, amount=amount,
-    ))
-    db.add(invoice)
-    db.flush()
-    return invoice
 
 
 def collect_payment(

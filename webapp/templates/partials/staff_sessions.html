@@ -1,0 +1,107 @@
+{%- if users %}
+<div class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Active sessions</h2>
+      <p class="panel-subtitle">Signed-in browsers for each staff account. Revoking a session signs that browser out and rejects its cookie.</p>
+    </div>
+    <a class="btn-secondary !px-3 !py-1.5 !text-xs" href="/staff/sessions">
+      <span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;">
+        <i class="ph ph-arrows-clockwise"></i>
+      </span>
+      All accounts
+    </a>
+  </div>
+
+  {%- if request.query_params.get("revoked") == "1" %}
+  <div role="status" class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+    Session revoked.
+  </div>
+  {%- endif %}
+
+  <div class="divide-y divide-slate-100">
+    {%- for user in users %}
+    {%- set rows = sessions_by_user.get(user.id, []) %}
+    {%- set active_count = rows|selectattr('active')|list|length %}
+    {%- set revoked_count = rows|rejectattr('active')|list|length %}
+    <div class="{: 'opacity-60' if not user.active else ''">
+      <div class="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-4 py-3">
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold text-slate-800">{{ user.full_name or user.username }}</p>
+          <p class="text-xs text-slate-500">{{ user.role|title }} &middot; {{ user.username }}</p>
+        </div>
+        <div class="text-right">
+          <p class="text-sm font-bold text-slate-800">{{ rows|length }} session{{ 's' if rows|length != 1 else '' }}</p>
+          <p class="text-xs text-slate-500">{{ active_count }} active</p>
+        </div>
+        <div class="flex gap-1.5">
+          {%- if active_count %}
+          <button
+            class="btn-amber !px-2.5 !py-1 !text-xs"
+            hx-get="/staff/sessions?user_id={{ user.id }}"
+            hx-target="#sessions-root"
+            hx-swap="innerHTML"
+          >
+            View
+          </button>
+          {%- endif %}
+        </div>
+      </div>
+
+      {%- if user.id in sessions_by_user and rows %}
+      <div class="mt-2 rounded-lg border border-slate-100 bg-white p-3">
+        <table class="data-table soft-table !my-0 min-w-[680px]">
+          <thead>
+            <tr>
+              <th><span class="inline-flex items-center gap-1.5"><i class="ph ph-browsers" style="font-size:.85rem;"></i>Session</span></th>
+              <th><span class="inline-flex items-center gap-1.5"><i class="ph ph-sign-in" style="font-size:.85rem;"></i>Signed in</span></th>
+              <th><span class="inline-flex items-center gap-1.5"><i class="ph ph-eye" style="font-size:.85rem;"></i>Last seen</span></th>
+              <th><span class="inline-flex items-center gap-1.5"><i class="ph ph-device-mobile" style="font-size:.85rem;"></i>Browser</span></th>
+              <th class="text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {%- for row in rows %}
+            <tr>
+              <td>
+                <span class="font-mono text-xs text-slate-600">{{ row.session_id[:24] }}…</span>
+                {%- if row.active %}
+                <span class="ml-2 inline-flex rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">active</span>
+                {%- else %}
+                <span class="ml-2 inline-flex rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">revoked {{ row.revoked_at.strftime('%H:%M') if row.revoked_at else '' }}</span>
+                {%- endif %}
+              </td>
+              <td class="text-slate-600 text-xs whitespace-nowrap">{{ row.created_at.strftime('%d %b %H:%M') }}</td>
+              <td class="text-slate-600 text-xs whitespace-nowrap">{{ row.last_seen_at.strftime('%d %b %H:%M') }}</td>
+              <td class="text-xs text-slate-500">{{ row.ip_address or 'unknown' }}<br><span class="text-[10px]">{{ (row.user_agent or '')[:60] }}</span></td>
+              <td class="text-right whitespace-nowrap">
+                {%- if row.active and user.id != current_user_id %}
+                <form method="post" action="/staff/sessions/{{ user.id }}/{{ row.session_id }}/revoke" onsubmit="return confirm('Revoke this session? The signed-in browser will be signed out.')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="reason" value="Revoked by administrator">
+                  <button class="btn-danger !px-2.5 !py-1 !text-xs" type="submit">Revoke</button>
+                </form>
+                {%- else %}
+                <span class="text-xs text-slate-400">—</span>
+                {%- endif %}
+              </td>
+            </tr>
+            {%- endfor %}
+          </tbody>
+        </table>
+      </div>
+      {%- endif %}
+    </div>
+    {%- endfor %}
+  </div>
+</div>
+{%- else %}
+<div class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Active sessions</h2>
+      <p class="panel-subtitle">No staff accounts yet.</p>
+    </div>
+  </div>
+</div>
+{%- endif %}

@@ -23,6 +23,7 @@ from .services import local_now
 
 REPORTS = {
     "daily_sales": "Daily Sales Report",
+    "daily_full": "Complete Daily Sales Report",
     "monthly_sales": "Monthly Sales Report",
     "custom_range": "Custom Date Range Report",
     "payment_collection": "Payment Collection Report",
@@ -41,6 +42,13 @@ REPORT_COLUMNS = {
         ("tax", "VAT"), ("service_charge", "Service charge"),
         ("net_sales", "Net sales"), ("collected", "Paid"),
         ("outstanding", "Outstanding"),
+    ],
+    "daily_full": [
+        ("invoice_number", "Invoice no."), ("date", "Date"), ("time", "Time"),
+        ("guest", "Guest"), ("phone", "Phone"), ("room", "Room"),
+        ("cashier", "Cashier"), ("subtotal", "Subtotal"),
+        ("discount", "Discount"), ("tax", "VAT"), ("total", "Total"),
+        ("method", "Method"), ("paid", "Paid"), ("balance", "Balance"),
     ],
     "monthly_sales": [
         ("month", "Month"), ("invoices", "Invoices"),
@@ -141,6 +149,9 @@ def _invoice_rows(db: Session, start: str, end: str, filters: dict) -> list[Invo
     query = select(Invoice).where(
         Invoice.status.in_(_ISSUED),
         Invoice.bill_date.between(start, end),
+        # Running folios (draft invoices) are not issued sales until finalized.
+        Invoice.is_draft.is_(False),
+        Invoice.invoice_number.notlike("DRAFT-%"),
     )
     employee = (filters.get("employee") or "").strip()
     method = (filters.get("payment_method") or "").strip()
@@ -395,6 +406,30 @@ def build_report(
         if key == "daily_sales":
             totals["invoices"] = len(invoices)
         formulas.append("Voided and draft invoices are excluded.")
+    elif key == "daily_full":
+        rows = invoice_rows
+        payments = _payments(db, start, end, filters)
+        refunds = _refund_rows(db, start, end, filters)
+        by_method: dict[str, float] = defaultdict(float)
+        for payment in payments:
+            by_method[payment["method"]] += payment["amount"]
+        totals.update({
+            "transactions": len(rows),
+            "collected": _sum(payments, "amount"),
+            "payments_entries": len(payments),
+            "refunds": _sum([row for row in refunds if row["kind"] == "Refund"], "amount"),
+            "cash": round(by_method.get("Cash", 0.0), 2),
+            "card": round(sum(v for m, v in by_method.items() if m == "Card"), 2),
+            "digital": round(sum(v for m, v in by_method.items() if m not in ("Cash", "Card")), 2),
+            "by_method": {method: round(amount, 2) for method, amount in sorted(by_method.items())},
+            "room_revenue": _sum(
+                _room_revenue_by_invoice(db, start, end)[0], "revenue"
+            ),
+        })
+        formulas = [
+            FORMULAS["gross_sales"], FORMULAS["collections"],
+            FORMULAS["outstanding"], "Voided and draft invoices are excluded.",
+        ]
     elif key == "custom_range":
         refunds = _refund_rows(db, start, end, filters)
         rows = invoice_rows
@@ -415,7 +450,8 @@ def build_report(
         formulas = [FORMULAS["collections"]]
     elif key == "outstanding_invoices":
         query = select(Invoice).where(
-            Invoice.status.in_(_ISSUED), Invoice.bill_date <= end, Invoice.balance > 0
+            Invoice.status.in_(_ISSUED), Invoice.bill_date <= end, Invoice.balance > 0,
+            Invoice.is_draft.is_(False), Invoice.invoice_number.notlike("DRAFT-%"),
         )
         employee = (filters.get("employee") or "").strip()
         method = (filters.get("payment_method") or "").strip()
@@ -560,6 +596,117 @@ def build_report(
     }
 
 
+def daily_close_sections(db: Session, day: str) -> dict:
+    """Every ledger slice available for one business date, for the daily-close PDF."""
+    first, last = validate_period(day, day)
+    invoices = _invoice_rows(db, day, day, {})
+    invoice_rows = [_invoice_dict(invoice) for invoice in invoices]
+    invoice_ids = [invoice.id for invoice in invoices]
+    numbers = {invoice.id: invoice.invoice_number for invoice in invoices}
+    guest_names = {invoice.id: invoice.guest_name for invoice in invoices}
+    guests = sorted({row["guest"] for row in invoice_rows if row["guest"]})
+
+    lines: list[InvoiceItem] = []
+    if invoice_ids:
+        lines = list(db.scalars(select(InvoiceItem).where(
+            InvoiceItem.invoice_id.in_(invoice_ids)
+        ).order_by(InvoiceItem.invoice_id, InvoiceItem.id)))
+
+    line_rows = [{
+        "invoice": numbers.get(line.invoice_id) or f"#{line.invoice_id}",
+        "guest": guest_names.get(line.invoice_id, "") or "Walk-in guest",
+        "description": line.description or "",
+        "category": line.category or "other",
+        "qty": _money(line.quantity),
+        "price": _money(line.rate),
+        "discount": _money(line.discount_amount),
+        "vat": _money(line.vat_amount),
+        "amount": _money(line.amount),
+    } for line in lines]
+
+    categories: dict[str, dict] = {}
+    items: dict[tuple[str, str], dict] = {}
+    for row in line_rows:
+        base = max(0.0, row["qty"] * row["price"] - row["discount"])
+        category = categories.setdefault(row["category"], {
+            "label": row["category"], "qty": 0.0, "net_sales": 0.0, "vat": 0.0, "amount": 0.0,
+        })
+        category["qty"] += row["qty"]
+        category["net_sales"] += base
+        category["vat"] += row["vat"]
+        category["amount"] += row["amount"]
+        key = (row["description"], row["category"])
+        entry = items.setdefault(key, {
+            "label": row["description"], "category": row["category"],
+            "qty": 0.0, "net_sales": 0.0, "amount": 0.0,
+        })
+        entry["qty"] += row["qty"]
+        entry["net_sales"] += base
+        entry["amount"] += row["amount"]
+    category_rows = sorted(categories.values(), key=lambda row: -row["amount"])
+    for row in category_rows:
+        row["net_sales"] = round(row["net_sales"], 2)
+        row["vat"] = round(row["vat"], 2)
+        row["amount"] = round(row["amount"], 2)
+    item_rows = sorted(items.values(), key=lambda row: -row["amount"])[:25]
+    for row in item_rows:
+        row["net_sales"] = round(row["net_sales"], 2)
+        row["amount"] = round(row["amount"], 2)
+
+    payments = _payments(db, day, day)
+    payment_by_cashier: dict[str, float] = defaultdict(float)
+    for row in payments:
+        payment_by_cashier[row["cashier"] or "Unassigned"] += row["amount"]
+    cashiers: dict[str, dict] = defaultdict(lambda: {"cashier": "", "invoices": 0, "gross_sales": 0.0, "collected": 0.0, "outstanding": 0.0})
+    for row in invoice_rows:
+        name = row["cashier"] or "Unassigned"
+        cashiers[name]["cashier"] = name
+        cashiers[name]["invoices"] += 1
+        cashiers[name]["gross_sales"] += row["total"]
+        cashiers[name]["outstanding"] += row["balance"]
+    for name, group in cashiers.items():
+        group["collected"] = round(payment_by_cashier[name], 2)
+        group["gross_sales"] = round(group["gross_sales"], 2)
+        group["outstanding"] = round(group["outstanding"], 2)
+    cashier_rows = sorted(cashiers.values(), key=lambda row: -row["gross_sales"])
+
+    _room_rows, room_by_room = _room_revenue_by_invoice(db, day, day)
+    room_rows = [{"room": room, "revenue": round(amount, 2)} for room, amount in room_by_room.items()]
+    room_rows = sorted(room_rows, key=lambda row: -row["revenue"])
+
+    refunds = _refund_rows(db, day, day)
+
+    folio_rows = [{
+        "invoice": folio.invoice_number,
+        "guest": folio.guest_name or "Walk-in guest",
+        "room": folio.room_number or "",
+        "opened": (folio.created_at or folio.issue_date).strftime("%Y-%m-%d %H:%M") if (folio.created_at or folio.issue_date) else "",
+        "paid": _money(folio.paid_amount),
+        "balance": _money(folio.balance),
+    } for folio in db.scalars(select(Invoice).where(
+        Invoice.status.in_(_ISSUED),
+        or_(Invoice.is_draft.is_(True), Invoice.invoice_number.like("DRAFT-%")),
+        Invoice.bill_date <= day,
+    ).order_by(Invoice.bill_date, Invoice.id))]
+
+    occupancy = _occupancy_for_day(db, last)
+
+    return {
+        "day": day,
+        "guests": guests,
+        "guest_count": len(guests),
+        "categories": category_rows,
+        "items_sold": item_rows,
+        "lines": line_rows,
+        "cashiers": cashier_rows,
+        "rooms": room_rows,
+        "payments": payments,
+        "refunds": refunds,
+        "folios": folio_rows,
+        "occupancy": occupancy,
+    }
+
+
 def dashboard_cards(db: Session, day: str) -> dict:
     report = build_report(db, "operations_summary", day, day)
     totals = report["totals"]
@@ -604,7 +751,8 @@ def analysis_data(
     outstanding = _sum([
         _invoice_dict(invoice)
         for invoice in db.scalars(select(Invoice).where(
-            Invoice.status.in_(_ISSUED), Invoice.bill_date <= end, Invoice.balance > 0
+            Invoice.status.in_(_ISSUED), Invoice.bill_date <= end, Invoice.balance > 0,
+            Invoice.is_draft.is_(False), Invoice.invoice_number.notlike("DRAFT-%"),
         ))
     ], "balance")
     room_rows, by_room = _room_revenue_by_invoice(db, start, end)
@@ -727,14 +875,14 @@ def analysis_data(
         "bucket": bucket,
         "metrics": metrics,
         "charts": [
-            chart(f"Sales by {bucket}", sales),
-            chart(f"Collections by {bucket}", collections),
-            chart("Revenue by category", categories),
-            chart("Collections by payment method", methods),
-            chart("Room revenue by room", room_groups),
-            chart("Sales by cashier", employee_groups),
-            chart(f"Refunds by {bucket}", refund_trend),
-            chart(f"Discounts by {bucket}", discount_trend),
+            {"key": "sales", **chart(f"Sales by {bucket}", sales)},
+            {"key": "collections", **chart(f"Collections by {bucket}", collections)},
+            {"key": "categories", **chart("Revenue by category", categories)},
+            {"key": "methods", **chart("Collections by payment method", methods)},
+            {"key": "rooms", **chart("Room revenue by room", room_groups)},
+            {"key": "cashiers", **chart("Sales by cashier", employee_groups)},
+            {"key": "refunds", **chart(f"Refunds by {bucket}", refund_trend)},
+            {"key": "discounts", **chart(f"Discounts by {bucket}", discount_trend)},
         ],
         "comparison": comparison,
         "generated_at": local_now().strftime("%Y-%m-%d %H:%M:%S"),

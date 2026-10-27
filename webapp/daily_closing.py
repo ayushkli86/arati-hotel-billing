@@ -21,7 +21,7 @@ from .services import local_now
 
 logger = logging.getLogger(__name__)
 JOB_DAILY_CLOSE = "daily_close"
-DEFAULT_REPORT_DIRECTORY = Path(__file__).resolve().parent / "data" / "reports"
+DEFAULT_REPORT_DIRECTORY = Path(__file__).resolve().parent / "data" / "daily-reports"
 
 
 def report_directory() -> Path:
@@ -99,6 +99,21 @@ def generate_report(
         summary = {key: report["totals"].get(key, 0) for key in summary_keys}
         summary["generated_at"] = generated_at.isoformat(timespec="seconds")
         report["generated_at"] = generated_at.strftime("%Y-%m-%d %H:%M:%S")
+
+        # Complete daily sales detail: every invoice of the day with guest names,
+        # plus the payment-method breakdown from the ledger.
+        try:
+            detail = reporting.build_report(db, "daily_full", day, day)
+            report["transactions"] = detail["rows"]
+            report["transactions_columns"] = detail["columns"]
+            report["transactions_totals"] = detail["totals"]
+            summary["cash_collected"] = detail["totals"].get("cash", summary.get("cash_collected", 0))
+            # Complete analysis: every ledger slice available for the day.
+            report["sections"] = reporting.daily_close_sections(db, day)
+            report["analysis_metrics"] = reporting.analysis_data(db, day, day, "day")["metrics"]
+        except Exception:
+            logger.exception("Daily transaction listing failed for %s", day)
+            report["transactions"] = []
         output_dir = (directory or report_directory()).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
         filename = f"daily-sales-{day}-v{version}.pdf"

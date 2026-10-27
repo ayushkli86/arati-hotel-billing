@@ -112,13 +112,6 @@ def to_devanagari(value) -> str:
     return "".join(DEVANAGARI_DIGITS[int(ch)] if ch.isdigit() else ch for ch in str(value))
 
 
-def to_latin(value) -> str:
-    """Devanagari numerals back to Western digits (for the English invoice)."""
-    return "".join(
-        str(DEVANAGARI_DIGITS.index(ch)) if ch in DEVANAGARI_DIGITS else ch
-        for ch in str(value)
-    )
-
 
 def nepali_words(number: int) -> str:
     """Integer to Nepali words using the lakh/crore grouping used in Nepal."""
@@ -153,22 +146,6 @@ def label(key: str, language: str = "en") -> str:
     english, nepali = LABELS.get(key, (key, key))
     return nepali if language == "ne" else english
 
-
-def format_date(value: str | None, date_format: str = "DD/MM/YYYY") -> str:
-    """ISO date -> the configured display format (``DD/MM/YYYY`` or ``YYYY-MM-DD``).
-
-    Unparseable values are returned unchanged, so a bad date never blanks the
-    invoice.
-    """
-    if not value:
-        return ""
-    try:
-        parsed = date.fromisoformat(str(value))
-    except (TypeError, ValueError):
-        return str(value)
-    if date_format == "YYYY-MM-DD":
-        return parsed.isoformat()
-    return parsed.strftime("%d/%m/%Y")
 
 
 def to_bs(iso_date: str | None) -> tuple[str, str] | None:

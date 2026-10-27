@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from .database import Base
@@ -30,9 +30,13 @@ class User(Base):
 
 class Guest(Base):
     __tablename__ = "guests"
+    __table_args__ = (
+        UniqueConstraint("phone", name="uq_guests_phone"),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    full_name: Mapped[str] = mapped_column(String(160), default="", index=True)
     name: Mapped[str] = mapped_column(String(160), index=True)
-    phone: Mapped[str] = mapped_column(String(40), default="")
+    phone: Mapped[str] = mapped_column(String(40), nullable=True, index=True)
     email: Mapped[str] = mapped_column(String(180), default="")
     id_type: Mapped[str] = mapped_column(String(40), default="")
     id_number: Mapped[str] = mapped_column(String(100), default="")
@@ -41,8 +45,10 @@ class Guest(Base):
     customer_type: Mapped[str] = mapped_column(String(30), default="individual")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     pan_vat = synonym("pan_vat_number")
-    invoices: Mapped[list["Invoice"]] = relationship(back_populates="guest")
+    stays: Mapped[list["Stay"]] = relationship(back_populates="guest", cascade="save-update")
+    invoices: Mapped[list["Invoice"]] = relationship(back_populates="guest", cascade="save-update")
 
 
 class Room(Base):
@@ -85,6 +91,8 @@ class Reservation(Base):
     source: Mapped[str] = mapped_column(String(80), default="front desk")
     notes: Mapped[str] = mapped_column(Text, default="")
     cancel_reason: Mapped[str] = mapped_column(Text, default="")
+    # Local (Asia/Kathmandu) business day the booking was made, stored day-wise.
+    business_date: Mapped[str] = mapped_column(String(20), default="", index=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     room: Mapped[Room] = relationship(back_populates="reservations")
@@ -94,8 +102,8 @@ class Reservation(Base):
 class Stay(Base):
     __tablename__ = "stays"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id"), index=True)
-    guest_id: Mapped[int] = mapped_column(ForeignKey("guests.id"), index=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id", ondelete="RESTRICT"), nullable=False, index=True)
+    guest_id: Mapped[int] = mapped_column(ForeignKey("guests.id", ondelete="RESTRICT"), nullable=False, index=True)
     check_in: Mapped[datetime] = mapped_column(DateTime)
     check_out: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="checked_in", index=True)
@@ -110,20 +118,24 @@ class Stay(Base):
     expected_checkout: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     nights: Mapped[int] = mapped_column(Integer, default=1)
     nightly_rate: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    rate_per_night: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    business_date: Mapped[str] = mapped_column(String(20), default="", index=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     room: Mapped[Room] = relationship(back_populates="stays")
-    guest: Mapped[Guest] = relationship()
-    invoices: Mapped[list["Invoice"]] = relationship(back_populates="stay")
+    guest: Mapped[Guest] = relationship(back_populates="stays")
+    invoices: Mapped[list["Invoice"]] = relationship(back_populates="stay", cascade="save-update")
 
 
 class Invoice(Base):
     __tablename__ = "invoices"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    invoice_number: Mapped[str] = mapped_column(String(40), unique=True, index=True)
-    stay_id: Mapped[int | None] = mapped_column(ForeignKey("stays.id"), nullable=True)
-    guest_id: Mapped[int] = mapped_column(ForeignKey("guests.id"), index=True)
-    room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"), nullable=True)
+    invoice_number: Mapped[str] = mapped_column(String(40), unique=True, index=True, default="")
+    stay_id: Mapped[int | None] = mapped_column(ForeignKey("stays.id", ondelete="SET NULL"), nullable=True, index=True)
+    guest_id: Mapped[int] = mapped_column(ForeignKey("guests.id", ondelete="RESTRICT"), nullable=False, index=True)
+    room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
     issue_date: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     discount_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     total: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
@@ -144,6 +156,7 @@ class Invoice(Base):
     check_out: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     nights: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     bill_date: Mapped[str] = mapped_column(String(20), default="")
     guest_name: Mapped[str] = mapped_column(String(160), default="")
     guest_phone: Mapped[str] = mapped_column(String(40), default="")
@@ -160,10 +173,10 @@ class Invoice(Base):
     prepared_by: Mapped[str] = mapped_column(String(80), default="")
     received_by: Mapped[str] = mapped_column(String(80), default="")
     customer_type: Mapped[str] = mapped_column(String(30), default="individual")
-    is_draft: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_draft: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     bill_type: Mapped[str] = mapped_column(String(30), default="tax")
     copy_label: Mapped[str] = mapped_column(String(80), default="")
-    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     guest: Mapped[Guest] = relationship(back_populates="invoices")
     stay: Mapped[Stay | None] = relationship(back_populates="invoices")
     room: Mapped[Room | None] = relationship()
@@ -174,9 +187,11 @@ class Invoice(Base):
 class InvoiceItem(Base):
     __tablename__ = "invoice_items"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), index=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), index=True, nullable=False)
+    catalog_item_id: Mapped[int | None] = mapped_column(ForeignKey("catalog_items.id", ondelete="SET NULL"), nullable=True)
     description: Mapped[str] = mapped_column(String(240))
     quantity: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=1)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     rate: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     discount_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
@@ -185,11 +200,16 @@ class InvoiceItem(Base):
     category: Mapped[str] = mapped_column(String(30), default="food")
     unit: Mapped[str] = mapped_column(String(30), default="pcs")
     taxable: Mapped[bool] = mapped_column(Boolean, default=True)
+    business_date = mapped_column(Date, nullable=True, index=True)
+    added_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    added_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     qty = synonym("quantity")
     discount = synonym("discount_amount")
     vat = synonym("vat_amount")
     total = synonym("amount")
     invoice: Mapped[Invoice] = relationship(back_populates="items")
+    catalog_item = relationship("CatalogItem")
+    added_by = relationship("User")
 
 
 class CatalogItem(Base):
@@ -287,6 +307,8 @@ class Order(Base):
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=utcnow, index=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Local (Asia/Kathmandu) business day the order came in, stored day-wise.
+    business_date: Mapped[str] = mapped_column(String(20), default="", index=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
@@ -380,3 +402,43 @@ class AuditLog(Base):
     entity: Mapped[str] = mapped_column(String(80), default="")
     entity_id: Mapped[str] = mapped_column(String(80), default="")
     detail: Mapped[str] = mapped_column(Text, default="")
+
+
+class UserSession(Base):
+    """Server-side record of an active signed-in session.
+
+    The cookie itself remains the signed Starlette session; this table is the
+    revocation ledger. It is what lets an administrator invalidate a specific
+    browser session (by its server-side session id) without disturbing every
+    other session for the same user, and what lets ``/logout`` mark a cookie
+    dead server-side so a captured cookie cannot be replayed inside its max-age
+    window.
+
+    ``session_id`` is derived from the signed cookie value at auth time, so it
+    is stable for the life of that cookie and unique per signed session.
+    """
+
+    __tablename__ = "user_sessions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    ip_address: Mapped[str] = mapped_column(String(45), default="")
+    user_agent: Mapped[str] = mapped_column(String(512), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    revoked_reason: Mapped[str] = mapped_column(Text, default="")
+
+    user: Mapped[User] = relationship(
+        back_populates="sessions", foreign_keys=[user_id]
+    )
+    revoked_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[revoked_by_id], viewonly=True
+    )
+
+
+User.sessions: Mapped[list[UserSession]] = relationship(
+    "UserSession", back_populates="user", cascade="all, delete-orphan",
+    foreign_keys="UserSession.user_id",
+)

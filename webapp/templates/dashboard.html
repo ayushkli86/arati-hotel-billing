@@ -1,80 +1,103 @@
+{% from "partials/nav_icon.html" import nav_icon %}
 {% extends "base.html" %}
 {% set active_page = 'dashboard' %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
-  <div>
-    <p class="eyebrow">Front office</p>
-    <h1 class="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Dashboard</h1>
-    <p class="mt-1 text-sm text-slate-500">Business date <span class="font-semibold text-slate-700">{{ business_date }}</span></p>
+  <div class="flex items-center gap-3">
+    <span class="room-icon-chip" style="width:2.75rem;height:2.75rem;font-size:1.35rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-squares-four"></i></span>
+    <div>
+      <p class="eyebrow">Front office</p>
+      <h1 class="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Dashboard</h1>
+    </div>
   </div>
   <div class="flex flex-wrap items-center gap-2">
-    <a href="/dashboard/sales" class="btn-secondary">Sales details</a>
-    <a href="/reports" class="hidden btn-secondary sm:inline-flex">View reports</a>
-    <a href="/billing/create" class="btn-primary">＋ New Invoice</a>
+    <a href="/dashboard/sales" class="btn-secondary"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;"><i class="ph ph-chart-pie-slice"></i></span>Sales details</a>
+    <a href="/reports" class="hidden btn-secondary sm:inline-flex"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;"><i class="ph ph-chart-bar"></i></span>View reports</a>
+    <a href="/billing/create" class="btn-primary"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;font-size:.95rem;">{{ nav_icon('plus') }}</span>New Invoice</a>
   </div>
 </div>
 
-<section class="grid grid-cols-1 gap-3 xl:grid-cols-[1.35fr_1fr]">
+<section class="grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_1fr]">
   <article class="panel overflow-hidden">
     <div class="flex items-start justify-between gap-4">
       <div class="min-w-0">
-        <p class="metric-label">Occupancy right now</p>
+      <div class="flex items-center gap-2">
+        <span class="room-icon-chip" style="background:rgba(125,155,122,.22);color:#1B3A2A;"><i class="ph ph-percent"></i></span>
+        <p class="metric-label mt-0" style="margin-top:0;">Occupancy right now</p>
+      </div>
         <div class="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span class="kpi-hero-value">{{ occupied }}</span>
           <span class="kpi-hero-unit">of {{ capacity }} rooms</span>
         </div>
-        <p class="mt-2 text-sm text-slate-500"><span class="font-semibold text-emerald-700">{{ occupancy_rate }}%</span> occupied · {{ available }} available</p>
+        <p class="mt-2 text-sm" style="color:var(--color-text-secondary);"><span class="font-semibold" style="color:var(--accent-on-light);">{{ occupancy_rate }}%</span> occupied · {{ available }} available</p>
       </div>
-      <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Live</span>
+      <span class="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider" style="border:1px solid rgba(212,192,138,.55);background:rgba(232,213,163,.35);color:var(--accent-on-light);">Live</span>
     </div>
-    <div class="mt-6 h-4 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Occupancy" aria-valuemin="0" aria-valuemax="{{ capacity }}" aria-valuenow="{{ occupied }}">
-      <div class="h-full rounded-full bg-emerald-500 transition-all" style="width: {{ occupancy_rate }}%"></div>
+    <div class="mt-6 h-4 overflow-hidden rounded-full" style="background:rgba(27,58,42,.08);" role="progressbar" aria-label="Occupancy" aria-valuemin="0" aria-valuemax="{{ capacity }}" aria-valuenow="{{ occupied }}">
+      <div class="h-full rounded-full" data-grow="width" style="width: {{ occupancy_rate }}%; background:linear-gradient(90deg, #8FAE90, #6b8769); transition:width .7s cubic-bezier(.2,.8,.2,1);"></div>
+      <span class="absolute inset-0 rounded-full opacity-10" aria-hidden="true"></span>
     </div>
-    <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-      <a href="/rooms" class="stat-card stat-card-occupied" aria-label="View occupied rooms"><span class="stat-card-label">Occupied</span><strong class="stat-card-value">{{ occupied }}</strong></a>
-      <a href="/rooms" class="stat-card stat-card-checkout" aria-label="View rooms checking out today"><span class="stat-card-label">Checkout today</span><strong class="stat-card-value">{{ checkouts_today }}</strong></a>
-      <a href="/rooms" class="stat-card stat-card-attention" aria-label="View rooms needing attention"><span class="stat-card-label">Needs attention</span><strong class="stat-card-value">{{ rooms|length }}</strong></a>
+    <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <a href="/rooms" class="stat-card stat-card-occupied" aria-label="View occupied rooms"><span class="stat-card-label"><i class="ph ph-bed"></i><span class="sr-only">Occupied</span>Occupied</span><strong class="stat-card-value">{{ occupied }}</strong></a>
+      <a href="/rooms" class="stat-card stat-card-checkout" aria-label="View rooms checking out today"><span class="stat-card-label"><i class="ph ph-sign-out"></i><span class="sr-only">Checkout today</span>Checkout today</span><strong class="stat-card-value">{{ checkouts_today }}</strong></a>
+      <a href="/rooms" class="stat-card stat-card-attention" aria-label="View rooms needing attention"><span class="stat-card-label"><i class="ph ph-warning"></i><span class="sr-only">Needs attention</span>Needs attention</span><strong class="stat-card-value">{{ rooms|length }}</strong></a>
     </div>
   </article>
 
   <article class="panel">
     <div class="panel-heading mb-1">
-      <div><h2 class="panel-title">Today's performance</h2><p class="panel-subtitle">Issued and collected today</p></div>
+      <div class="flex items-center gap-3"><span class="room-icon-chip" style="background:rgba(58,124,58,.14);color:#2E7D3E;"><i class="ph ph-chart-line-up"></i></span><div><h2 class="panel-title">Today's performance</h2><p class="panel-subtitle">Issued and collected today</p></div></div>
       <span class="badge-teal">Live</span>
     </div>
     <div class="grid grid-cols-2 gap-x-5">
       <div class="kpi-row"><span class="kpi-row-label">Gross sales</span><span class="kpi-row-value">{{ money(gross) }}</span></div>
       <div class="kpi-row"><span class="kpi-row-label">Net sales</span><span class="kpi-row-value">{{ money(net) }}</span></div>
-      <div class="kpi-row"><span class="kpi-row-label">Cash collected</span><span class="kpi-row-value text-teal-700">{{ money(cash_today) }}</span></div>
+      <div class="kpi-row"><span class="kpi-row-label">Cash collected</span><span class="kpi-row-value" style="color:var(--accent-on-light);">{{ money(cash_today) }}</span></div>
       <div class="kpi-row"><span class="kpi-row-label">Invoices issued</span><span class="kpi-row-value">{{ invoice_count }}</span></div>
     </div>
     <div class="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
-      <span class="text-xs font-semibold text-slate-500">Room revenue today</span>
+      <span class="text-xs font-semibold text-slate-500 flex items-center gap-2"><i class="ph ph-bed" style="color:#2E5C3A;"></i>Room revenue today</span>
       <span class="text-sm font-bold text-slate-800">{{ money(room_revenue) }}</span>
     </div>
   </article>
 </section>
 
-<section class="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-[1.55fr_1fr]">
+<section class="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[1.55fr_1fr]">
   <article class="panel min-w-0">
     <div class="panel-heading">
-      <div><h2 class="panel-title">Rooms right now</h2><p class="panel-subtitle">Occupied, dirty, and checking out today</p></div>
+      <div class="flex items-center gap-3"><span class="room-icon-chip" style="background:rgba(27,58,42,.12);color:#1B3A2A;"><i class="ph ph-bed"></i></span><div><h2 class="panel-title">Rooms right now</h2><p class="panel-subtitle">Occupied, dirty, and checking out today</p></div></div>
       <a href="/rooms" class="link-quiet">Room board →</a>
     </div>
     <div id="room-filter-chips" class="room-filter-group mb-4">
       {% for key, label in [('attention','Needs attention'),('occupied','Occupied'),('dirty','Dirty'),('available','Available'),('all','All rooms')] %}
-      <button class="room-filter-chip {% if room_filter == key %}room-filter-chip-active{% endif %}" hx-get="/dashboard/rooms?room_filter={{ key }}" hx-target="#room-table-body" hx-swap="innerHTML" onclick="document.querySelectorAll('#room-filter-chips .room-filter-chip').forEach(x=>x.classList.remove('room-filter-chip-active'));this.classList.add('room-filter-chip-active')"><span class="room-filter-dot room-filter-dot-{{ key }}"></span>{{ label }}</button>
+      <button class="room-filter-chip {% if room_filter == key %}room-filter-chip-active{% endif %}" hx-get="/dashboard/rooms?room_filter={{ key }}" hx-target="#room-table-body" hx-swap="innerHTML" onclick="document.querySelectorAll('#room-filter-chips .room-filter-chip').forEach(x=>x.classList.remove('room-filter-chip-active'));this.classList.add('room-filter-chip-active')"><i class="ph ph-{{ {'attention':'warning-circle','occupied':'bed','dirty':'broom','available':'key','all':'squares-four'}[key] }}"></i>{{ label }}</button>
       {% endfor %}
     </div>
-    <div class="table-scroll"><table class="data-table room-now-table min-w-[840px]"><thead><tr><th>Room</th><th>Type</th><th>Status</th><th>Guest</th><th>Checkout date &amp; time</th><th class="text-right">Balance</th><th class="w-10"><span class="sr-only">Actions</span></th></tr></thead><tbody id="room-table-body">{% include "partials/room_rows.html" %}</tbody></table></div>
+    <div class="loading-region" data-loading-region="dashboard-rooms">
+    <div class="table-scroll"><table class="data-table room-now-table min-w-[840px]"><thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-door"></i>Room</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-bed"></i>Type</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-pulse"></i>Status</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user"></i>Guest</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-circle-notch"></i>Checkout due</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-currency-inr"></i>Balance</span></th><th class="w-10"><span class="sr-only">Actions</span></th></tr></thead><tbody id="room-table-body">{% include "partials/room_rows.html" %}</tbody></table></div>
+      <div class="loading-veil" aria-hidden="true" data-skeleton-delay="250">
+        {% for _ in range(5) %}
+        <div class="skeleton-row">
+          <div class="skeleton skeleton-line" style="width:3.5rem"></div>
+          <div class="skeleton skeleton-line" style="width:6.5rem"></div>
+          <div class="skeleton skeleton-line" style="width:5rem"></div>
+          <div class="skeleton skeleton-line" style="flex:1"></div>
+          <div class="skeleton skeleton-line" style="width:4rem"></div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
   </article>
 
   <article class="panel outstanding-card min-w-0">
     <div class="outstanding-banner">
-      <div>
-        <h2 class="panel-title">Outstanding balances</h2>
-        <p class="panel-subtitle">Top {{ outstanding|length }} open guest accounts</p>
+      <div class="flex items-center gap-3">
+        <span class="room-icon-chip" style="background:rgba(255,255,255,.35);color:#5A3D00;"><i class="ph ph-warning"></i></span>
+        <div>
+          <h2 class="panel-title"><i class="ph ph-coins" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Outstanding balances</h2>
+          <p class="panel-subtitle">Top {{ outstanding|length }} open guest accounts</p>
+        </div>
       </div>
       <div class="text-right">
         <span class="block text-[10px] font-bold uppercase tracking-wider" style="color:var(--danger)">Total due</span>
@@ -86,9 +109,12 @@
       <div class="divide-y divide-slate-100">
         {% for invoice in outstanding %}
         <div class="flex items-center justify-between gap-3 py-3">
-          <div class="min-w-0">
-            <p class="truncate text-xs font-bold" style="color:var(--text)">{{ invoice.invoice_number }}</p>
-            <p class="mt-1 truncate text-xs" style="color:var(--muted)">{{ invoice.guest.name if invoice.guest else invoice.guest_name }}{% if invoice.room %} · Room {{ invoice.room.number }}{% endif %}</p>
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="room-icon-chip" style="width:1.75rem;height:1.75rem;font-size:.85rem;border-radius:.5rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-file-text"></i></span>
+            <div class="min-w-0">
+              <p class="truncate text-xs font-bold" style="color:var(--text)">{{ invoice.invoice_number }}</p>
+              <p class="mt-1 truncate text-xs" style="color:var(--muted)">{{ invoice.guest.name if invoice.guest else invoice.guest_name }}{% if invoice.room %} · Room {{ invoice.room.number }}{% endif %}</p>
+            </div>
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <span class="text-sm font-bold" style="color:var(--text)">{{ money(invoice.balance) }}</span>
@@ -102,21 +128,21 @@
         <a href="/payments" class="link-quiet">View all →</a>
       </div>
       {% else %}
-      <div class="empty-state min-h-[11rem]"><span class="text-2xl" style="color:var(--primary)">✓</span><p class="mt-2 font-semibold" style="color:var(--text)">All balances are settled</p><p class="mt-1 text-sm" style="color:var(--muted)">There are no open invoices to collect.</p></div>
+      <div class="empty-state min-h-[11rem]"><span class="nav-icon" style="width:1.6rem;height:1.6rem;font-size:1.6rem;font-size:1.6rem;color:var(--color-secondary);">{{ nav_icon('check') }}</span><p class="mt-2 font-semibold" style="color:var(--text)">All balances are settled</p><p class="mt-1 text-sm" style="color:var(--muted)">There are no open invoices to collect.</p></div>
       {% endif %}
     </div>
   </article>
 </section>
 
 <section class="panel mt-3">
-  <div class="panel-heading"><div><h2 class="panel-title">Recent invoices</h2><p class="panel-subtitle">The latest 10 invoices</p></div><a href="/invoices" class="link-quiet">View all →</a></div>
-  <div class="table-scroll"><table class="data-table recent-invoices-table min-w-[720px]"><thead><tr><th>Time</th><th>Invoice #</th><th>Guest</th><th>Room</th><th>Payment method</th><th class="text-right">Total</th></tr></thead><tbody>{% for invoice in recent %}{% set method = invoice.payments[-1].method if invoice.payments else 'Unpaid' %}<tr><td class="text-slate-500">{{ local_datetime(invoice.issue_date, '%H:%M') }}</td><td><a class="font-semibold text-teal-800 hover:underline" href="/invoices?q={{ invoice.invoice_number }}">{{ invoice.invoice_number }}</a></td><td>{{ invoice.guest.name if invoice.guest else invoice.guest_name }}</td><td>{% if invoice.room %}{{ invoice.room.number }}{% else %}{{ invoice.room_number or '—' }}{% endif %}</td><td><span class="pay-badge {% if method == 'Cash' %}pay-cash{% elif method == 'Card' %}pay-card{% elif method == 'Bank Transfer' %}pay-bank{% elif method in ['eSewa', 'Khalti', 'Fonepay', 'Digital Wallet'] %}pay-wallet{% elif method == 'Room Credit' %}pay-credit{% else %}pay-unpaid{% endif %}">{{ method }}</span></td><td class="num-tabular text-right font-semibold">{{ money(invoice.total) }}</td></tr>{% else %}<tr><td colspan="6" class="py-10 text-center text-sm text-slate-500">No invoices yet. Create the first invoice to get started.</td></tr>{% endfor %}</tbody></table></div>
+  <div class="panel-heading"><div class="flex items-center gap-3"><span class="room-icon-chip" style="background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-file-text"></i></span><div><h2 class="panel-title"><i class="ph ph-receipt" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Recent invoices</h2><p class="panel-subtitle">The latest 10 invoices</p></div></div><a href="/invoices" class="link-quiet">View all →</a></div>
+  <div class="table-scroll"><table class="data-table recent-invoices-table min-w-[720px]"><thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-clock"></i>Time</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-file-text"></i>Invoice #</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user"></i>Guest</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-bed"></i>Room</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-credit-card"></i>Payment</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-currency-inr"></i>Total</span></th></tr></thead><tbody>{% for invoice in recent %}{% set method = invoice.payments[-1].method if invoice.payments else 'Unpaid' %}<tr><td class="text-slate-500">{{ local_datetime(invoice.issue_date, '%H:%M') }}</td><td><span class="flex items-center gap-2"><span class="room-icon-chip" style="width:1.75rem;height:1.75rem;font-size:.85rem;border-radius:.5rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-file-text"></i></span><a class="font-semibold hover:underline" style="color:var(--accent-on-light);" href="/invoices?q={{ invoice.invoice_number }}">{{ invoice.invoice_number }}</a></span></td><td>{{ invoice.guest.name if invoice.guest else invoice.guest_name }}</td><td>{% if invoice.room %}{{ invoice.room.number }}{% else %}{{ invoice.room_number or '—' }}{% endif %}</td><td><span class="pay-badge {% if method == 'Cash' %}pay-cash{% elif method == 'Card' %}pay-card{% elif method == 'Bank Transfer' %}pay-bank{% elif method in ['eSewa', 'Khalti', 'Fonepay', 'Digital Wallet'] %}pay-wallet{% elif method == 'Room Credit' %}pay-credit{% else %}pay-unpaid{% endif %}">{{ method }}</span></td><td class="num-tabular text-right font-semibold">{{ money(invoice.total) }}</td></tr>{% else %}<tr><td colspan="6" class="py-10 text-center text-sm text-slate-500">No invoices yet. Create the first invoice to get started.</td></tr>{% endfor %}</tbody></table></div>
 </section>
 
-<section class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-  <div class="mini-metric"><span>Cash collected today</span><strong class="text-teal-700">{{ money(cash_today) }}</strong></div>
-  <div class="mini-metric"><span>Invoices issued today</span><strong>{{ invoice_count }}</strong></div>
-  <div class="mini-metric"><span>Room revenue today</span><strong>{{ money(room_revenue) }}</strong></div>
+<section class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+  <div class="mini-metric"><span class="flex items-center gap-2"><span class="room-icon-chip" style="width:1.75rem;height:1.75rem;font-size:.8rem;border-radius:.5rem;background:rgba(58,124,58,.14);color:#2E7D3E;"><i class="ph ph-money"></i></span>Cash collected today</span><strong style="color:var(--accent-on-light);">{{ money(cash_today) }}</strong></div>
+  <div class="mini-metric"><span class="flex items-center gap-2"><span class="room-icon-chip" style="width:1.75rem;height:1.75rem;font-size:.8rem;border-radius:.5rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-file-text"></i></span>Invoices issued today</span><strong>{{ invoice_count }}</strong></div>
+  <div class="mini-metric"><span class="flex items-center gap-2"><span class="room-icon-chip" style="width:1.75rem;height:1.75rem;font-size:.8rem;border-radius:.5rem;background:rgba(125,155,122,.18);color:#2E5C3A;"><i class="ph ph-bed"></i></span>Room revenue today</span><strong>{{ money(room_revenue) }}</strong></div>
 </section>
 <script>
 (function(){

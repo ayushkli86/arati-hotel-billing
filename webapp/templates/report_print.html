@@ -6,20 +6,20 @@
   <style>
     @page { size: A4 portrait; margin: 14mm 12mm 16mm; }
     * { box-sizing: border-box; }
-    body { margin: 0; color: #172033; font: 9pt Arial, sans-serif; }
-    header { border-bottom: 2px solid #0d9488; margin-bottom: 12px; padding-bottom: 8px; }
-    h1 { margin: 0; color: #0f766e; font-size: 16pt; }
-    h2 { margin: 8px 0 3px; font-size: 12pt; }
-    p { margin: 3px 0; color: #64748b; font-size: 8pt; }
+    body { margin: 0; color: #1B3A2A; font: 9pt Arial, sans-serif; }
+    header { border-bottom: 2px solid #CFA11B; margin-bottom: 12px; padding-bottom: 8px; }
+    h1 { margin: 0; color: #1B3A2A; font-size: 16pt; }
+    h2 { margin: 8px 0 3px; font-size: 12pt; color: #8A6A14; }
+    p { margin: 3px 0; color: #6B6B60; font-size: 8pt; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     thead { display: table-header-group; }
     tr { break-inside: avoid; }
-    th, td { border: .5pt solid #cbd5e1; padding: 4px 5px; text-align: left; }
-    th { background: #f1f5f9; font-size: 7pt; text-transform: uppercase; }
+    th, td { border: .5pt solid #EDD9A0; padding: 4px 5px; text-align: left; }
+    th { background: #FAF4E2; font-size: 7pt; text-transform: uppercase; color: #5A4A1A; }
     td { font-size: 7.5pt; }
-    tfoot td { background: #f8fafc; font-weight: 700; }
-    .empty { border: 1px dashed #94a3b8; margin-top: 16px; padding: 12px; color: #64748b; }
-    .footer { border-top: .5pt solid #cbd5e1; margin-top: 14px; padding-top: 6px; }
+    tfoot td { background: #FDFBF3; font-weight: 700; }
+    .empty { border: 1px dashed #C9BFA6; margin-top: 16px; padding: 12px; color: #6B6B60; }
+    .footer { border-top: .5pt solid #EDD9A0; margin-top: 14px; padding-top: 6px; }
   </style>
   {% macro format_value(key, value) -%}
     {%- if value is number -%}
@@ -49,6 +49,183 @@
     {% if report.totals %}<tfoot><tr>{% for key, _label in report.columns %}{% set value = report.totals.get(key) %}<td>{% if loop.first and value is none %}TOTAL{% else %}{{ format_value(key, value) }}{% endif %}</td>{% endfor %}</tr></tfoot>{% endif %}
   </table>
   {% else %}<div class="empty">{{ report.empty_message }}</div>{% endif %}
+
+  {% if report.transactions %}
+  <div style="break-before: page;"></div>
+  <h2>Transactions of the day</h2>
+  <p>Every issued invoice for this business date, with guest names and settlement status.</p>
+  <table>
+    <thead><tr>
+      <th>Invoice no.</th><th>Date</th><th>Guest</th><th>Room</th><th>Cashier</th>
+      <th>Subtotal</th><th>Discount</th><th>VAT</th><th>Total</th><th>Method</th><th>Paid</th><th>Balance</th>
+    </tr></thead>
+    <tbody>
+      {% for row in report.transactions %}
+      <tr>
+        <td>{{ row.get('invoice_number') }}</td>
+        <td>{{ row.get('date') }}</td>
+        <td>{{ row.get('guest') }}</td>
+        <td>{{ row.get('room') }}</td>
+        <td>{{ row.get('cashier') }}</td>
+        <td>{{ money(row.get('subtotal', 0)) }}</td>
+        <td>{{ money(row.get('discount', 0)) }}</td>
+        <td>{{ money(row.get('tax', 0)) }}</td>
+        <td>{{ money(row.get('total', 0)) }}</td>
+        <td>{{ row.get('method') }}</td>
+        <td>{{ money(row.get('paid', 0)) }}</td>
+        <td>{{ money(row.get('balance', 0)) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% if report.transactions_totals %}
+    <tfoot><tr>
+      <td>TOTAL</td><td></td><td></td><td></td><td></td>
+      <td>{{ money(report.transactions_totals.get('gross_sales', 0)) }}</td>
+      <td>{{ money(report.transactions_totals.get('discount', 0)) }}</td>
+      <td>{{ money(report.transactions_totals.get('tax', 0)) }}</td>
+      <td>{{ money(report.transactions_totals.get('gross_sales', 0)) }}</td>
+      <td></td>
+      <td>{{ money(report.transactions_totals.get('collected', 0)) }}</td>
+      <td>{{ money(report.transactions_totals.get('outstanding', 0)) }}</td>
+    </tr></tfoot>
+    {% endif %}
+  </table>
+
+  {% if report.transactions_totals.get('by_method') %}
+  <h2>Payments by method</h2>
+  <table style="width:auto;min-width:40%;">
+    <thead><tr><th>Method</th><th>Amount</th></tr></thead>
+    <tbody>
+      {% for method, amount in report.transactions_totals.get('by_method').items() %}
+      <tr><td>{{ method }}</td><td>{{ money(amount) }}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td>TOTAL</td><td>{{ money(report.transactions_totals.get('collected', 0)) }}</td></tr></tfoot>
+  </table>
+  {% endif %}
+  {% endif %}
+
+  {% set sections = report.sections %}
+  {% if sections %}
+
+  {% if report.analysis_metrics %}
+  <h2>Complete daily analysis</h2>
+  <table style="width:auto;min-width:62%;">
+    <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+    <tbody>
+      {% for metric in report.analysis_metrics %}
+      <tr>
+        <td>{{ metric.label }}</td>
+        <td>{{ money(metric.value) if metric.unit == 'amount' else '%.2f'|format(metric.value) + '%' if metric.unit == 'percent' else metric.value|int }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p>{{ sections.guest_count }} guest(s) served: {{ sections.guests|join(', ') if sections.guests else '' }}</p>
+  {% endif %}
+
+  {% if sections.categories %}
+  <h2>Revenue by category</h2>
+  <table>
+    <thead><tr><th>Category</th><th>Qty</th><th>Net sales</th><th>VAT</th><th>Amount</th></tr></thead>
+    <tbody>
+      {% for row in sections.categories %}
+      <tr><td>{{ row.label|title }}</td><td>{{ row.qty }}</td><td>{{ money(row.net_sales) }}</td><td>{{ money(row.vat) }}</td><td>{{ money(row.amount) }}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td>TOTAL</td><td></td><td></td><td></td><td>{{ money(sections.categories | sum(attribute='amount')) }}</td></tr></tfoot>
+  </table>
+  {% endif %}
+
+  {% if sections.items_sold %}
+  <h2>Items sold</h2>
+  <table>
+    <thead><tr><th>Item</th><th>Category</th><th>Qty</th><th>Net sales</th><th>Amount</th></tr></thead>
+    <tbody>
+      {% for row in sections.items_sold %}
+      <tr><td>{{ row.label }}</td><td>{{ row.category }}</td><td>{{ row.qty }}</td><td>{{ money(row.net_sales) }}</td><td>{{ money(row.amount) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if sections.rooms %}
+  <h2>Room revenue by room</h2>
+  <table style="width:auto;min-width:40%;">
+    <thead><tr><th>Room</th><th>Revenue</th></tr></thead>
+    <tbody>
+      {% for row in sections.rooms %}
+      <tr><td>{{ row.room }}</td><td>{{ money(row.revenue) }}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td>TOTAL</td><td>{{ money(sections.rooms | sum(attribute='revenue')) }}</td></tr></tfoot>
+  </table>
+  {% endif %}
+
+  {% if sections.cashiers %}
+  <h2>Cashier production</h2>
+  <table>
+    <thead><tr><th>Cashier</th><th>Invoices</th><th>Gross sales</th><th>Collected</th><th>Outstanding</th></tr></thead>
+    <tbody>
+      {% for row in sections.cashiers %}
+      <tr><td>{{ row.cashier }}</td><td>{{ row.invoices|int }}</td><td>{{ money(row.gross_sales) }}</td><td>{{ money(row.collected) }}</td><td>{{ money(row.outstanding) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h2>Payments ledger</h2>
+  {% if sections.payments %}
+  <table>
+    <thead><tr><th>Time</th><th>Invoice</th><th>Guest</th><th>Room</th><th>Method</th><th>Amount</th><th>Cashier</th></tr></thead>
+    <tbody>
+      {% for row in sections.payments %}
+      <tr><td>{{ row.date }} {{ row.time }}</td><td>{{ row.invoice_number }}</td><td>{{ row.guest }}</td><td>{{ row.room }}</td><td>{{ row.method }}</td><td>{{ money(row.amount) }}</td><td>{{ row.cashier }}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td colspan="5">TOTAL</td><td>{{ money(sections.payments | sum(attribute='amount')) }}</td><td></td></tr></tfoot>
+  </table>
+  {% else %}<p>No payments were recorded for this business date.</p>{% endif %}
+
+  {% if sections.refunds %}
+  <h2>Refunds and adjustments</h2>
+  <table>
+    <thead><tr><th>Type</th><th>Invoice</th><th>Method</th><th>Amount</th><th>Reason</th><th>Cashier</th></tr></thead>
+    <tbody>
+      {% for row in sections.refunds %}
+      <tr><td>{{ row.kind }}</td><td>{{ row.invoice_number }}</td><td>{{ row.method }}</td><td>{{ money(row.amount) }}</td><td>{{ row.reason }}</td><td>{{ row.cashier }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if sections.folios %}
+  <h2>Open running folios (as at end of day)</h2>
+  <table>
+    <thead><tr><th>Folio</th><th>Guest</th><th>Room</th><th>Opened</th><th>Paid</th><th>Balance</th></tr></thead>
+    <tbody>
+      {% for row in sections.folios %}
+      <tr><td>{{ row.invoice }}</td><td>{{ row.guest }}</td><td>{{ row.room }}</td><td>{{ row.opened }}</td><td>{{ money(row.paid) }}</td><td>{{ money(row.balance) }}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td colspan="4">TOTAL</td><td>{{ money(sections.folios | sum(attribute='paid')) }}</td><td>{{ money(sections.folios | sum(attribute='balance')) }}</td></tr></tfoot>
+  </table>
+  {% endif %}
+
+  {% if sections.occupancy.get('status_counts') %}
+  <h2>Room board status</h2>
+  <table style="width:auto;min-width:50%;">
+    <thead><tr><th>Room status</th><th>Rooms</th></tr></thead>
+    <tbody>
+      {% for status, count in sections.occupancy.status_counts.items() %}
+      <tr><td>{{ status|title }}</td><td>{{ count|int }}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td>Active inventory</td><td>{{ sections.occupancy.sellable|int }}</td></tr></tfoot>
+  </table>
+  {% endif %}
+  {% endif %}
+
   <p class="footer">{{ report.period }} · {{ hotel_settings.get('hotel_name', 'Arati Hotel') }}</p>
 </body>
 </html>

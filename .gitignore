@@ -20,3 +20,47 @@ dist/
 backups/
 arati/*.csv
 .run/
+
+# Large media files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+
+# Binary/executable files
+nuphus-mcp
+
+# Temporary and test files
+_tmp_*.py
+*_tmp_*.py
+test_*.py
+tests/test_*.py
+
+# Setup/install scripts
+install-*.sh
+setup-*.bat
+setup-*.ps1
+
+# Misc config and scripts
+mcp-config.json
+requirements-*.txt
+yt_upload.py
+whiteboard_*.py
+arati_desktop.py
+einstein_*.py
+einstein_*.json
+house_demo.mp4
+
+# IDE/editor
+.agents/
+.aws/
+.codex/
+.freebuff/
+
+# Documentation files (generated)
+BACKEND_FLOWCHART.md
+HOTEL_FLOWCHART.md
+UI_FEEDBACK_REPORT.md
+WINDOWS_SETUP.md
+RELEASE.md

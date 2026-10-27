@@ -1,13 +1,14 @@
+{% from "partials/nav_icon.html" import nav_icon %}
 {% extends "base.html" %}
 {% set active_page='customers' %}
 {% block title %}Customers{% endblock %}
 {% block header_title %}Customers{% endblock %}
 {% block content %}
 <div class="page-heading">
-  <div><p class="eyebrow">Operations</p><h1 class="page-title">Customers</h1><p class="page-subtitle">Guest contact directory and billing history</p></div>
+  <div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.75rem;height:2.75rem;font-size:1.35rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-users-three"></i></span><div><p class="eyebrow">Operations</p><h1 class="page-title">Customers</h1></div><p class="page-subtitle">Guest contact directory and billing history</p></div>
   <div class="flex flex-wrap gap-2">
-    <a href="/billing/create" class="btn-secondary">＋ New invoice</a>
-    <a href="#add-guest" class="btn-primary">Add guest</a>
+    <a href="/billing/create" class="btn-secondary"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;font-size:.95rem;">{{ nav_icon('plus') }}</span>New Invoice</a>
+    <a href="#add-guest" class="btn-primary" onclick="var d=document.getElementById('add-guest');if(d){d.open=true;}"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-user-plus"></i></span>Add guest</a>
   </div>
 </div>
 {% if error %}<div role="alert" class="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800">{{ error }}</div>{% endif %}
@@ -15,51 +16,50 @@
 {% if request.query_params.get('updated') %}<div role="status" class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">Guest profile updated.</div>{% endif %}
 {% if request.query_params.get('deactivated') %}<div role="status" class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">Guest deactivated. Their invoice history is retained.</div>{% endif %}
 
-<div class="mb-4 grid gap-3 sm:grid-cols-3">
-  <div class="metric-card"><span class="section-label">Guests in directory</span><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ customers|length }}</p><p class="mt-1 text-xs text-slate-500">Active guest profiles</p></div>
-  <div class="metric-card"><span class="section-label">Repeat guests</span><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ customers|selectattr('invoice_count','gt',1)|list|length }}</p><p class="mt-1 text-xs text-slate-500">More than one invoice</p></div>
-  <div class="metric-card"><span class="section-label">Lifetime billed</span><p class="mt-2 text-2xl font-extrabold text-teal-700">{{ money(customers|sum(attribute='total_billed')) }}</p><p class="mt-1 text-xs text-slate-500">Across listed guests</p></div>
+<div class="mb-4 grid gap-4 sm:grid-cols-3">
+  <div class="metric-card"><span class="section-label"><i class="ph ph-users" style="font-size:.9rem;"></i> Guests in directory</span><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ customers|length }}</p><p class="mt-1 text-xs text-slate-500">Active guest profiles</p></div>
+  <div class="metric-card"><span class="section-label"><i class="ph ph-arrows-clockwise" style="font-size:.9rem;"></i> Repeat guests</span><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ customers|selectattr('invoice_count','gt',1)|list|length }}</p><p class="mt-1 text-xs text-slate-500">More than one invoice</p></div>
+  <div class="metric-card"><span class="section-label"><i class="ph ph-receipt" style="font-size:.9rem;"></i> Lifetime billed</span><p class="mt-2 text-2xl font-extrabold text-[color:var(--color-primary)]">{{ money(customers|sum(attribute='total_billed')) }}</p><p class="mt-1 text-xs text-slate-500">Across listed guests</p></div>
 </div>
 
 <details id="add-guest" class="panel mb-4 group" {% if error %}open{% endif %}>
   <summary class="flex cursor-pointer list-none items-center justify-between gap-3">
-    <span><span class="panel-title">Add a guest</span><span class="mt-0.5 block text-xs text-slate-500">Create a profile for faster future check-ins</span></span>
-    <span class="btn-secondary group-open:hidden">＋ Add guest</span>
+    <span class="flex items-center gap-3"><span class="room-icon-chip" style="background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-user-plus"></i></span><span><span class="panel-title">Add a guest</span><span class="mt-0.5 block text-xs text-slate-500">Create a profile for faster future check-ins</span></span></span>
     <span class="hidden text-xs font-semibold text-slate-500 group-open:inline">Close</span>
   </summary>
-  <form method="post" action="/customers" class="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
+  <form method="post" action="/customers" class="mt-5 grid gap-x-4 gap-y-5 border-t border-slate-100 pt-4 sm:grid-cols-2">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label class="block"><span class="field-label">Name *</span><input class="form-input" name="name" value="{{ form_values.get('name', '') if form_values else '' }}" required></label>
-    <label class="block"><span class="field-label">Phone</span><input class="form-input" name="phone" value="{{ form_values.get('phone', '') if form_values else '' }}" placeholder="98XXXXXXXX"></label>
-    <label class="block"><span class="field-label">Email</span><input class="form-input" name="email" type="email" value="{{ form_values.get('email', '') if form_values else '' }}"></label>
-    <label class="block"><span class="field-label">Address</span><input class="form-input" name="address" value="{{ form_values.get('address', '') if form_values else '' }}"></label>
-    <label class="block"><span class="field-label">PAN / VAT number</span><input class="form-input" name="pan_vat_number" value="{{ form_values.get('pan_vat_number', '') if form_values else '' }}"></label>
-    <label class="block"><span class="field-label">Guest type</span><select class="form-input" name="customer_type"><option value="individual" {% if not form_values or form_values.get('customer_type') == 'individual' %}selected{% endif %}>Individual</option><option value="business" {% if form_values and form_values.get('customer_type') == 'business' %}selected{% endif %}>Business</option></select></label>
-    <label class="block"><span class="field-label">ID type</span><input class="form-input" name="id_type" value="{{ form_values.get('id_type', '') if form_values else '' }}" placeholder="Citizenship / Passport"></label>
-    <label class="block"><span class="field-label">ID number</span><input class="form-input" name="id_number" value="{{ form_values.get('id_number', '') if form_values else '' }}"></label>
+    <label class="block"><span class="field-label"><i class="ph ph-user"></i>Name *</span><input class="form-input" name="name" value="{{ form_values.get('name', '') if form_values else '' }}" required></label>
+    <label class="block"><span class="field-label"><i class="ph ph-phone"></i>Phone</span><input class="form-input" name="phone" value="{{ form_values.get('phone', '') if form_values else '' }}" placeholder="98XXXXXXXX"></label>
+    <label class="block"><span class="field-label"><i class="ph ph-envelope-simple"></i>Email</span><input class="form-input" name="email" type="email" value="{{ form_values.get('email', '') if form_values else '' }}"></label>
+    <label class="block"><span class="field-label"><i class="ph ph-map-pin"></i>Address</span><input class="form-input" name="address" value="{{ form_values.get('address', '') if form_values else '' }}"></label>
+    <label class="block"><span class="field-label"><i class="ph ph-identification-card"></i>PAN / VAT number</span><input class="form-input" name="pan_vat_number" value="{{ form_values.get('pan_vat_number', '') if form_values else '' }}"></label>
+    <label class="block"><span class="field-label"><i class="ph ph-users"></i>Guest type</span><select class="form-input" name="customer_type"><option value="individual" {% if not form_values or form_values.get('customer_type') == 'individual' %}selected{% endif %}>Individual</option><option value="business" {% if form_values and form_values.get('customer_type') == 'business' %}selected{% endif %}>Business</option></select></label>
+    <label class="block"><span class="field-label"><i class="ph ph-identification-badge"></i>ID type</span><input class="form-input" name="id_type" value="{{ form_values.get('id_type', '') if form_values else '' }}" placeholder="Citizenship / Passport"></label>
+    <label class="block"><span class="field-label"><i class="ph ph-hash"></i>ID number</span><input class="form-input" name="id_number" value="{{ form_values.get('id_number', '') if form_values else '' }}"></label>
     <div class="flex items-end sm:col-span-2"><button class="btn-primary">Save guest</button></div>
   </form>
 </details>
 
 <section class="panel !p-0">
   <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
-    <div><h2 class="panel-title">Guest directory</h2><p class="panel-subtitle">Search by name, phone, email, or VAT number</p></div>
+    <div class="flex items-center gap-3"><span class="room-icon-chip" style="background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-address-book"></i></span><div><h2 class="panel-title">Guest directory</h2><p class="panel-subtitle">Search by name, phone, email, or VAT number</p></div>
     <form method="get" class="flex gap-2">
-      <label class="relative"><span class="sr-only">Search guests</span><span class="search-icon">⌕</span><input class="form-input w-64 !py-2 !pl-9" name="q" value="{{ q }}" placeholder="Search guests"></label>
+      <label class="relative"><span class="sr-only">Search guests</span><span class="search-icon"><i class="ph ph-magnifying-glass"></i></span><input class="form-input w-64 !py-2 !pl-9" name="q" value="{{ q }}" placeholder="Search guests"></label>
       <button class="btn-secondary">Search</button>
     </form>
   </div>
-  <div class="table-scroll"><table class="data-table soft-table min-w-[960px]"><thead><tr><th>Guest</th><th>Contact</th><th>Tax / ID</th><th class="text-right">Invoices</th><th class="text-right">Lifetime billed</th><th class="text-right">Actions</th></tr></thead><tbody>
+  <div class="table-scroll"><table class="data-table soft-table min-w-[960px]"><thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user" style="font-size:.85rem;"></i>Guest</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-phone" style="font-size:.85rem;"></i>Contact</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-identification-card" style="font-size:.85rem;"></i>Tax / ID</span></th><th class="text-right"><span class="inline-flex items-center gap-1.5"><i class="ph ph-file-text" style="font-size:.85rem;"></i>Invoices</span></th><th class="text-right"><span class="inline-flex items-center gap-1.5"><i class="ph ph-money" style="font-size:.85rem;"></i>Lifetime billed</span></th><th class="text-right"><span class="inline-flex items-center gap-1.5"><i class="ph ph-gear" style="font-size:.85rem;"></i>Actions</span></th></tr></thead><tbody>
   {% for customer in customers %}{% set guest = customer.guest %}<tr>
-    <td><span class="font-semibold text-slate-800">{{ guest.name }}</span><span class="mt-0.5 block text-xs text-slate-500">{{ guest.customer_type|title }}{% if guest.address %} · {{ guest.address }}{% endif %}</span></td>
+    <td><div><div class="flex items-center gap-2.5"><span class="room-icon-chip" style="width:1.75rem;height:1.75rem;font-size:.85rem;border-radius:.5rem;background:rgba(125,155,122,.18);color:#2E5C3A;"><i class="ph ph-user"></i></span><span class="font-semibold text-slate-800">{{ guest.name }}</span></div><span class="mt-0.5 block text-xs text-slate-500">{{ guest.customer_type|title }}{% if guest.address %} · {{ guest.address }}{% endif %}</span></div></td>
     <td><span class="block text-sm text-slate-700">{{ guest.phone or '—' }}</span>{% if guest.email %}<span class="block text-xs text-slate-500">{{ guest.email }}</span>{% endif %}</td>
     <td><span class="block text-sm text-slate-700">{{ guest.pan_vat_number or '—' }}</span>{% if guest.id_number %}<span class="block text-xs text-slate-500">{{ guest.id_type or 'ID' }} · {{ guest.id_number }}</span>{% endif %}</td>
     <td class="text-right font-medium">{{ customer.invoice_count }}</td><td class="text-right font-semibold">{{ money(customer.total_billed) }}</td>
     <td class="text-right whitespace-nowrap">
-      <a class="btn-primary !px-3 !py-1.5 !text-xs" href="/invoices?guest_id={{ guest.id }}">Invoices</a>
+      <a class="btn-primary !px-3 !py-1.5 !text-xs inline-flex items-center gap-1.5" href="/invoices?guest_id={{ guest.id }}"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-file-text"></i></span>Invoices</a>
       <a class="ml-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50" href="/customers/{{ guest.id }}/edit">Edit</a>
       {% if current_user and current_user.role == 'admin' %}<details class="row-menu ml-1 inline-block align-middle"><summary aria-label="More guest actions">⋯</summary><div class="row-menu-panel">
-        <a href="/invoices?guest_id={{ guest.id }}">View invoices</a><a href="/customers/{{ guest.id }}/edit">Edit profile</a>
+        <a href="/invoices?guest_id={{ guest.id }}"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-file-text"></i></span> View invoices</a><a href="/customers/{{ guest.id }}/edit"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-pencil-simple"></i></span> Edit profile</a>
         <form method="post" action="/customers/{{ guest.id }}/deactivate" onsubmit="return confirm('Deactivate this guest? Their invoices will be kept.')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="menu-danger">Deactivate guest</button></form>
       </div></details>{% endif %}
     </td>

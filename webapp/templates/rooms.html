@@ -1,7 +1,8 @@
+{% from "partials/nav_icon.html" import nav_icon %}
 {% extends "base.html" %}
 {% set active_page = 'rooms' %}
 {% block title %}Room Board{% endblock %}
-{% block header_title %}Room Board · {{ business_date }}{% endblock %}
+{% block header_title %}Room Board{% endblock %}
 {% block content %}
 <style>#quick-action-bar{display:none!important}</style>
 <div
@@ -10,58 +11,61 @@
   @room-modal-close.window="document.getElementById('modal-root').innerHTML=''"
   class="room-board space-y-5"
 >
-  <h1 class="sr-only">Room Board</h1>
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <div>
-      <p class="eyebrow">FRONT DESK <span class="mx-1 text-slate-300">/</span> ROOM OPERATIONS</p>
-      <p class="page-subtitle">{{ room_total }} rooms in the inventory</p>
-    </div>
-    <div class="flex flex-wrap gap-2">
-      <a href="/reservations" class="btn-secondary">Reservations</a>
-      {% if current_user.role == 'admin' %}<a href="/rooms/inventory" class="btn-secondary">Manage inventory</a>{% endif %}
-      <a href="/billing/create" class="btn-primary">＋ New Invoice</a>
+  <div class="page-heading">
+    <div class="flex items-center gap-3">
+      <span class="room-icon-chip" style="background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-bed"></i></span>
+      <div>
+        <p class="eyebrow">FRONT DESK <span class="mx-1 text-slate-300">/</span> ROOM OPERATIONS</p>
+        <h1 class="page-title">Room Board</h1>
+        <p class="page-subtitle">{{ room_total }} rooms in the inventory</p>
+      </div>
     </div>
   </div>
 
-  <div id="room-summary-region">{% include "partials/room_summary.html" %}</div>
+  <div id="room-summary-region" class="mt-4">{% include "partials/room_summary.html" %}</div>
 
   <section class="room-toolbar" aria-label="Room board controls">
     <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
       <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter rooms">
         <span class="mr-1 text-xs font-semibold text-slate-500">Show</span>
-        <button type="button" @click="selectAttention()" :aria-pressed="filters.includes('attention').toString()" :class="filters.includes('attention')?'filter-chip-active':''" class="filter-chip">Needs attention</button>
-        <button type="button" @click="selectAll()" :aria-pressed="filters.includes('all').toString()" :class="filters.includes('all')?'filter-chip-active':''" class="filter-chip">All</button>
-        <template x-for="filter in filterOptions" :key="filter.id">
-          <button
-            type="button"
-            @click="toggle(filter.id)"
-            :aria-pressed="filters.includes(filter.id).toString()"
-            :class="filters.includes(filter.id)?'filter-chip-active':''"
-            class="filter-chip"
-            x-text="filter.label"
-          ></button>
-        </template>
+        <button type="button" @click="selectAttention()" :aria-pressed="filters.includes('attention').toString()" :class="filters.includes('attention')?'filter-chip-active':''" class="filter-chip flex items-center gap-2"><i class="ph ph-warning-circle"></i> Needs attention</button>
+        <button type="button" @click="selectAll()" :aria-pressed="filters.includes('all').toString()" :class="filters.includes('all')?'filter-chip-active':''" class="filter-chip flex items-center gap-2"><i class="ph ph-squares-four"></i> All</button>
+        {% for filter in filterOptions %}
+      <button
+        type="button"
+        @click="toggle(filter.id)"
+        :aria-pressed="filters.includes(filter.id).toString()"
+        :class="filter-chip flex items-center gap-2"
+      ><i :class="{'occupied':'ph ph-bed','dirty':'ph ph-broom','available':'ph ph-key','reserved':'ph ph-calendar-check','maintenance':'ph ph-wrench'}[filter.id]"></i><span class="sr-only" x-text="filter.label">{{ filter.label }}</span></button>
+{% endfor %}
       </div>
       <div class="flex flex-wrap items-center gap-3">
         <label class="relative min-w-[220px] flex-1">
           <span class="sr-only">Search rooms or guests</span>
-          <span aria-hidden="true" class="absolute left-3 top-2.5 text-slate-400">⌕</span>
+          <span aria-hidden="true" class="absolute left-3 top-2.5 text-slate-400"><i class="ph ph-magnifying-glass"></i></span>
           <input x-model="q" @input.debounce.250ms="refresh()" class="form-input !py-2 !pl-9 text-sm" placeholder="Room or guest">
         </label>
         <div class="view-toggle" role="group" aria-label="Room layout">
-          <button type="button" @click="setView('grid')" :aria-pressed="(view==='grid').toString()" :class="view==='grid'?'on':''">▦ Cards</button>
+          <button type="button" @click="setView('grid')" :aria-pressed="(view==='grid').toString()" :class="view==='grid'?'on':''"><span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;">{{ nav_icon('dashboard') }}</span> Cards</button>
           <button type="button" @click="setView('list')" :aria-pressed="(view==='list').toString()" :class="view==='list'?'on':''">☷ List</button>
         </div>
       </div>
     </div>
   </section>
 
-  <div id="room-board-content">{% include "partials/room_board_content.html" %}</div>
+  <div class="loading-region" data-loading-region="room-board">
+    <div id="room-board-content">{% include "partials/room_board_content.html" %}</div>
+    <div class="loading-veil" aria-hidden="true" data-skeleton-delay="250">
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {% for _ in range(4) %}<div class="skeleton" style="height:11rem;border-radius:.8rem"></div>{% endfor %}
+      </div>
+    </div>
+  </div>
 </div>
 <script>
 function roomBoard() {
   return {
-    filters: ['attention'],
+    filters: ['all'],
     filterOptions: [
       { id: 'occupied', label: 'Occupied' },
       { id: 'dirty', label: 'Dirty' },
@@ -87,12 +91,18 @@ function roomBoard() {
       } else {
         this.filters = [...this.filters, id];
       }
-      this.filters = this.filters.length ? this.filters : ['attention'];
+      this.filters = this.filters.length ? this.filters : ['all'];
       this.refresh();
     },
     setView(value) {
       this.view = value;
       this.refresh();
+    },
+    openBilling(event, roomId) {
+      // Double-click a room card to open the billing page with that room's
+      // folio (nights + dishes/charges) preloaded.
+      if (event && event.target && event.target.closest('button, a, form, summary, input, select, textarea, label, details')) return;
+      window.location.href = '/billing/create?room_id=' + roomId;
     },
     refresh() {
       if (!window.htmx) return;

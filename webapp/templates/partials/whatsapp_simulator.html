@@ -13,9 +13,9 @@
 <div class="mt-3 h-80 space-y-2 overflow-y-auto rounded-xl bg-slate-50 p-3" aria-live="polite">
   {% for message in sim_messages %}
   <div class="flex {{ 'justify-end' if message.direction == 'out' else 'justify-start' }}">
-    <div class="max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed shadow-sm {{ 'bg-teal-600 text-white' if message.direction == 'out' else 'border border-slate-200 bg-white text-slate-700' }}">
+    <div class="max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed shadow-sm {{ 'bg-[color:var(--color-primary)] text-white' if message.direction == 'out' else 'border border-slate-200 bg-white text-slate-700' }}">
       <p class="whitespace-pre-line">{{ message.body }}</p>
-      <p class="mt-1 text-[10px] {{ 'text-teal-100' if message.direction == 'out' else 'text-slate-400' }}">
+      <p class="mt-1 text-[10px] {{ 'text-[rgba(247,241,222,0.75)]' if message.direction == 'out' else 'text-slate-400' }}">
         {{ local_datetime(message.created_at, '%H:%M') }}{% if message.direction == 'out' and message.status != 'sent' and message.status != 'simulated' %} · {{ message.status }}{% endif %}
       </p>
     </div>

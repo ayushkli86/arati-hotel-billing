@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% set active_page = 'calendar' %}
+{% block title %}Day Book{% endblock %}
+{% block header_title %}Day Book{% endblock %}
+{% block content %}
+<div class="space-y-5">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">Insights - Day-wise records</p>
+      <h1 class="page-title"><span class="room-icon-chip" style="display:inline-flex;justify-content:center;width:2.1rem;height:2.1rem;font-size:1.1rem;margin-right:.55rem;vertical-align:-.55em;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-calendar-dots"></i></span>Day Book</h1>
+      <p class="page-subtitle">Every bill, payment, arrival, departure, booking, order and customer - stored day by day. Click a date to open its records.</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <a class="btn-secondary" href="/calendar?month={{ prev_month }}" aria-label="Previous month"><i class="ph ph-caret-left"></i>Previous</a>
+      <a class="btn-primary" href="/calendar"><i class="ph ph-calendar-check"></i>Today</a>
+      <a class="btn-secondary" href="/calendar?month={{ next_month }}" aria-label="Next month">Next<i class="ph ph-caret-right"></i></a>
+      <form class="flex items-center gap-1" method="get" action="/calendar">
+        <select name="month" class="input" style="min-width:150px" onchange="this.form.submit()">
+          {% for y in range(month.year-2, month.year+3) %}
+            {% for m in range(1,13) %}
+            <option value="{{ y }}-{{ '%02d' % m }}" {% if month.year==y and month.month==m %}selected{% endif %}>{{ ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1] }} {{ y }}</option>
+            {% endfor %}
+          {% endfor %}
+        </select>
+      </form>
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div><h2 class="panel-title"><i class="ph ph-calendar-blank" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>{{ month.strftime('%B %Y') }}</h2><p class="panel-subtitle">Click a day to see its records - Grouped by business date (Asia/Kathmandu)</p></div>
+      <span class="badge-slate">{{ grid|length }} week{{ 's' if grid|length != 1 else '' }}</span>
+    </div>
+    <div class="calendar-wrapper">
+      <div class="calendar-weekdays">
+        {% for label in ('Mon','Tue','Wed','Thu','Fri','Sat','Sun') %}<div class="calendar-weekday">{{ label }}</div>{% endfor %}
+      </div>
+      {% for week in grid %}
+      <div class="calendar-row">
+        {% for cell in week %}
+          {% if cell %}
+          <a class="calendar-day {% if cell.other_month %}calendar-day-other{% endif %} {% if cell.iso == selected_iso %}calendar-day-selected{% elif cell.iso == today_iso %}calendar-day-today{% endif %}" href="/calendar?month={{ cell.date.strftime('%Y-%m') }}&date={{ cell.iso }}" aria-label="{{ cell.iso }}">
+            <div class="calendar-day-header">
+              <span class="calendar-day-number">{{ cell.date.day }}</span>
+              {% set _has = cell.invoices>0 or cell.payment_count>0 or (cell.checkins+cell.checkouts)>0 or (cell.bookings+cell.orders+cell.guests)>0 %}
+              {% if _has %}<span class="calendar-has-indicator"></span>{% endif %}
+            </div>
+            <div class="calendar-day-metrics">
+              {% if cell.invoices>0 %}<div class="calendar-metric"><span class="metric-dot metric-dot-gold"></span><span>Inv {{ cell.invoices }} - {{ money(cell.sales) }}</span></div>{% endif %}
+              {% if cell.payment_count>0 %}<div class="calendar-metric"><span class="metric-dot metric-dot-green"></span><span>Pay {{ cell.payment_count }} - {{ money(cell.payments) }}</span></div>{% endif %}
+              {% if cell.checkins>0 or cell.checkouts>0 %}<div class="calendar-metric"><span class="metric-dot metric-dot-dark"></span><span>{{ cell.checkins }} in - {{ cell.checkouts }} out</span></div>{% endif %}
+              {% if cell.bookings>0 or cell.orders>0 or cell.guests>0 %}<div class="calendar-metric"><span class="metric-dot metric-dot-amber"></span><span>{{ cell.bookings }} bk - {{ cell.orders }} ord - {{ cell.guests }} g</span></div>{% endif %}
+            </div>
+          </a>
+          {% else %}
+          <div class="calendar-day calendar-day-empty"></div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-100 px-5 py-3 text-[11px] font-semibold text-slate-500">
+      <span class="legend-dot-label"><span class="metric-dot metric-dot-gold"></span>Invoices billed</span>
+      <span class="legend-dot-label"><span class="metric-dot metric-dot-green"></span>Payments received</span>
+      <span class="legend-dot-label"><span class="metric-dot metric-dot-dark"></span>Arrivals / departures</span>
+      <span class="legend-dot-label"><span class="metric-dot metric-dot-amber"></span>Bookings - orders - new customers</span>
+    </div>
+  </section>
+
+  <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <article class="metric-card-hero cursor-pointer" ondblclick="document.getElementById('modal-invoices').showModal()"><p class="section-label">Sales on {{ selected_iso }}</p><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ money(day_sales) }}</p><p class="mt-1 text-xs text-slate-500">{{ day_invoices|length }} invoice(s)</p></article>
+    <article class="metric-card cursor-pointer" ondblclick="document.getElementById('modal-payments').showModal()"><p class="section-label">Collected on {{ selected_iso }}</p><p class="mt-2 text-xl font-extrabold text-[color:var(--color-primary)]">{{ money(day_collected) }}</p><p class="mt-1 text-xs text-slate-500">{{ day_payments|length }} payment(s)</p></article>
+    <article class="metric-card cursor-pointer" ondblclick="document.getElementById('modal-arrivals').showModal()"><p class="section-label">Arrivals - Departures</p><p class="mt-2 text-xl font-extrabold soft-amber-text">{{ day_checkins|length }} in - {{ day_checkouts|length }} out</p><p class="mt-1 text-xs text-slate-500">{{ day_charges_count }} extra charge(s)</p></article>
+    <article class="metric-card cursor-pointer" ondblclick="document.getElementById('modal-bookings').showModal()"><p class="section-label">Bookings - Orders - Customers</p><p class="mt-2 text-xl font-extrabold text-slate-900">{{ day_reservations|length }} - {{ day_orders|length }} - {{ day_guests|length }}</p></article>
+  </section>
+
+  <section class="grid gap-4 xl:grid-cols-2">
+    <article class="panel !p-0">
+      <div class="flex items-center justify-between border-b border-slate-100 p-5"><h2 class="panel-title"><i class="ph ph-receipt" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Invoices billed this day</h2><span class="badge-slate">{{ day_invoices|length }}</span></div>
+      <div class="table-scroll"><table class="data-table soft-table min-w-full">
+        <thead><tr><th>Invoice</th><th>Guest</th><th>Room</th><th>Method</th><th class="text-right">Total</th><th class="text-right">Balance</th></tr></thead>
+        <tbody>
+          {% for inv in day_invoices %}<tr><td class="font-semibold">{{ inv.invoice_number }}</td><td>{{ inv.guest_name }}</td><td>{{ inv.room_number or '-' }}</td><td>{{ inv.payment_method }}</td><td class="text-right tabular-nums font-semibold">{{ money(inv.total) }}</td><td class="text-right tabular-nums">{{ money(inv.balance) }}</td></tr>
+          {% else %}<tr><td colspan="6" class="py-8 text-center text-sm text-slate-500">No invoices billed on this date.</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </article>
+    <article class="panel !p-0">
+      <div class="flex items-center justify-between border-b border-slate-100 p-5"><h2 class="panel-title"><i class="ph ph-credit-card" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Payments received</h2><span class="badge-slate">{{ day_payments|length }}</span></div>
+      <div class="table-scroll"><table class="data-table soft-table min-w-full">
+        <thead><tr><th>Receipt</th><th>Method</th><th>Type</th><th class="text-right">Amount</th></tr></thead>
+        <tbody>
+          {% for p in day_payments %}<tr><td class="font-semibold">{{ p.receipt_number }}</td><td>{{ p.method }}</td><td>{{ p.payment_type }}</td><td class="text-right tabular-nums font-semibold">{{ money(p.amount) }}</td></tr>
+          {% else %}<tr><td colspan="4" class="py-8 text-center text-sm text-slate-500">No payments on this date.</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </article>
+  </section>
+</div>
+
+<dialog id="modal-invoices" class="modal">
+  <div class="modal-panel max-w-4xl">
+    <div class="flex items-center justify-between border-b border-slate-100 p-4"><h3 class="text-lg font-bold">Invoices billed on {{ selected_iso }}</h3><button onclick="document.getElementById('modal-invoices').close()" class="btn-ghost">Close</button></div>
+    <div class="p-4 overflow-auto max-h-[70vh]">
+      <table class="data-table w-full"><thead><tr><th>Invoice</th><th>Guest</th><th>Room</th><th>Method</th><th class="text-right">Total</th><th class="text-right">Paid</th><th class="text-right">Balance</th></tr></thead><tbody>
+      {% for inv in day_invoices %}<tr><td>{{ inv.invoice_number }}</td><td>{{ inv.guest_name }}</td><td>{{ inv.room_number or '-' }}</td><td>{{ inv.payment_method }}</td><td class="text-right">{{ money(inv.total) }}</td><td class="text-right">{{ money(inv.amount_paid) }}</td><td class="text-right">{{ money(inv.balance) }}</td></tr>
+      {% else %}<tr><td colspan="7" class="text-center py-6">No invoices</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="modal-payments" class="modal">
+  <div class="modal-panel max-w-3xl">
+    <div class="flex items-center justify-between border-b border-slate-100 p-4"><h3 class="text-lg font-bold">Payments received on {{ selected_iso }}</h3><button onclick="document.getElementById('modal-payments').close()" class="btn-ghost">Close</button></div>
+    <div class="p-4 overflow-auto max-h-[70vh]">
+      <table class="data-table w-full"><thead><tr><th>Receipt</th><th>Invoice</th><th>Method</th><th>Type</th><th class="text-right">Amount</th><th>Date</th></tr></thead><tbody>
+      {% for p in day_payments %}<tr><td>{{ p.receipt_number }}</td><td>{{ p.invoice_id }}</td><td>{{ p.method }}</td><td>{{ p.payment_type }}</td><td class="text-right">{{ money(p.amount) }}</td><td>{{ p.paid_at }}</td></tr>
+      {% else %}<tr><td colspan="6" class="text-center py-6">No payments</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="modal-arrivals" class="modal">
+  <div class="modal-panel max-w-4xl">
+    <div class="flex items-center justify-between border-b border-slate-100 p-4"><h3 class="text-lg font-bold">Arrivals / Departures on {{ selected_iso }}</h3><button onclick="document.getElementById('modal-arrivals').close()" class="btn-ghost">Close</button></div>
+    <div class="p-4 grid gap-4 md:grid-cols-2">
+      <div>
+        <h4 class="font-semibold mb-2">Arrivals ({{ day_checkins|length }})</h4>
+        <table class="data-table w-full"><thead><tr><th>Guest</th><th>Room</th><th>Check In</th></tr></thead><tbody>
+        {% for s in day_checkins %}<tr><td>{{ s.guest.full_name if s.guest else s.guest_id }}</td><td>{{ s.room.room_number if s.room else s.room_id }}</td><td>{{ s.check_in }}</td></tr>
+        {% else %}<tr><td colspan="3" class="text-center py-4">None</td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+      <div>
+        <h4 class="font-semibold mb-2">Departures ({{ day_checkouts|length }})</h4>
+        <table class="data-table w-full"><thead><tr><th>Guest</th><th>Room</th><th>Check Out</th></tr></thead><tbody>
+        {% for s in day_checkouts %}<tr><td>{{ s.guest.full_name if s.guest else s.guest_id }}</td><td>{{ s.room.room_number if s.room else s.room_id }}</td><td>{{ s.check_out }}</td></tr>
+        {% else %}<tr><td colspan="3" class="text-center py-4">None</td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="modal-bookings" class="modal">
+  <div class="modal-panel max-w-5xl">
+    <div class="flex items-center justify-between border-b border-slate-100 p-4"><h3 class="text-lg font-bold">Bookings / Orders / Customers on {{ selected_iso }}</h3><button onclick="document.getElementById('modal-bookings').close()" class="btn-ghost">Close</button></div>
+    <div class="p-4 grid gap-4">
+      <div>
+        <h4 class="font-semibold mb-2">Reservations ({{ day_reservations|length }})</h4>
+        <table class="data-table w-full"><thead><tr><th>Guest</th><th>Room</th><th>Check In</th><th>Check Out</th><th>Status</th></tr></thead><tbody>
+        {% for r in day_reservations %}<tr><td>{{ r.guest.full_name if r.guest else r.guest_id }}</td><td>{{ r.room.room_number if r.room else r.room_id }}</td><td>{{ r.check_in }}</td><td>{{ r.check_out }}</td><td>{{ r.status }}</td></tr>
+        {% else %}<tr><td colspan="5" class="text-center py-4">None</td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+      <div>
+        <h4 class="font-semibold mb-2">Orders ({{ day_orders|length }})</h4>
+        <table class="data-table w-full"><thead><tr><th>Order</th><th>Table/Room</th><th>Status</th><th class="text-right">Total</th></tr></thead><tbody>
+        {% for o in day_orders %}<tr><td>{{ o.order_number }}</td><td>{{ o.table_number or o.room_number or '-' }}</td><td>{{ o.status }}</td><td class="text-right">{{ money(o.total) }}</td></tr>
+        {% else %}<tr><td colspan="4" class="text-center py-4">None</td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+      <div>
+        <h4 class="font-semibold mb-2">New Customers ({{ day_guests|length }})</h4>
+        <table class="data-table w-full"><thead><tr><th>Name</th><th>Phone</th><th>Email</th></tr></thead><tbody>
+        {% for g in day_guests %}<tr><td>{{ g.full_name }}</td><td>{{ g.phone or '-' }}</td><td>{{ g.email or '-' }}</td></tr>
+        {% else %}<tr><td colspan="3" class="text-center py-4">None</td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+{% endblock %}
