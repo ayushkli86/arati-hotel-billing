@@ -6,6 +6,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 arati.db
+webapp.db
 webapp/data/
 *.db-shm
 *.db-wal
@@ -13,7 +14,7 @@ invoices/
 receipts/
 /*.csv
 *.log
-dist/
+/cookies*.txt
 .ruff_cache/
 *.tar.gz
 *.tar.gz.sha256
@@ -47,7 +48,6 @@ mcp-config.json
 requirements-*.txt
 yt_upload.py
 whiteboard_*.py
-arati_desktop.py
 einstein_*.py
 einstein_*.json
 house_demo.mp4
@@ -64,3 +64,5 @@ HOTEL_FLOWCHART.md
 UI_FEEDBACK_REPORT.md
 WINDOWS_SETUP.md
 RELEASE.md
+# Build artifacts
+/dist/

@@ -2,8 +2,19 @@
 {% extends "base.html" %}{% set active_page='billing' %}{% block title %}Create Invoice{% endblock %}
 {% block header_title %}Create Invoice{% endblock %}
 {% block content %}
-<style>#quick-action-bar{display:none!important}.billing-workspace .panel{padding:1rem}@media(max-width:1279px){.preview-panel{display:block!important;position:static!important;grid-column:1/-1}.invoice-paper{max-width:680px;margin:auto}}</style>
-<div x-data="billingWorkspace({{ rooms|map(attribute='number')|list|tojson|forceescape }}, {{ rooms|map(attribute='type')|list|tojson|forceescape }}, {{ rooms|map(attribute='nightly_rate')|map('string')|list|tojson|forceescape }}, {{ rooms|map(attribute='id')|list|tojson|forceescape }}, {{ rooms|map(attribute='status')|list|tojson|forceescape }}, {{ catalog|map(attribute='name')|list|tojson|forceescape }}, {{ catalog|map(attribute='category')|list|tojson|forceescape }}, {{ catalog|map(attribute='rate')|map('string')|list|tojson|forceescape }}, {{ catalog|map(attribute='id')|list|tojson|forceescape }}, {{ catalog|map(attribute='taxable')|list|tojson|forceescape }}, {{ guests|map(attribute='id')|list|tojson|forceescape }}, {{ guests|map(attribute='name')|list|tojson|forceescape }}, {{ guests|map(attribute='phone')|list|tojson|forceescape }}, {{ guests|map(attribute='address')|list|tojson|forceescape }}, {{ guests|map(attribute='pan_vat_number')|list|tojson|forceescape }}, {{ guests|map(attribute='email')|list|tojson|forceescape }}, {{ billing_settings.get('service_charge_rate', '10')|float }}, {{ billing_settings.get('vat_rate', '13')|float }}, {{ draft_payload|tojson|forceescape }}, {{ occupied_stays|default({}, true)|tojson|forceescape }})" class="billing-workspace">
+<style>#quick-action-bar{display:none!important}.billing-workspace .panel{padding:1rem}
+.pad-preview{position:relative;background:#F7DDE0;border:1.5px solid #141414;color:#141414;padding:12px 12px 18px;font-family:"Noto Sans Devanagari",Arial,sans-serif;font-size:10px;box-shadow:0 2px 10px rgba(0,0,0,.1)}
+.pv-head{display:flex;gap:8px}.pv-left{flex:0 0 auto;max-width:32%}.pv-left img{max-width:52px;max-height:52px;object-fit:contain}
+.pv-meta{margin-left:auto;width:62%;min-width:250px}
+.pv-title{margin:0;font-size:12px;font-weight:700;text-decoration:underline}.pv-name{margin:0;font-weight:700}.pv-addr{margin:0 0 4px}
+.pv-line{margin:1px 0;font-size:9px}.pv-line strong{font-weight:600}
+.pv-boxes{display:inline-flex;gap:2px;vertical-align:middle;margin-left:4px}.pv-box{display:inline-flex;width:12px;height:12px;border:1px solid #141414;align-items:center;justify-content:center;font-size:8px}
+.pv-mop{margin-top:4px;padding-top:3px;border-top:1px solid #141414}.pv-cb{display:inline-flex;align-items:center;justify-content:center;width:10px;height:10px;border:1px solid #141414;margin:0 3px -1px 8px;font-size:8px}.pv-cb:first-of-type{margin-left:12px}
+.pv-table{width:100%;border-collapse:collapse;margin-top:8px;font-size:8.5px;table-layout:fixed}.pv-table th{border:1px solid #141414;font-weight:600;padding:3px 4px;text-align:center}.pv-table td{border:1px solid #141414;padding:3px 4px;height:16px;vertical-align:top}.pv-table .pv-sn,.pv-table .pv-qty{text-align:center}.pv-table .pv-part{text-align:left}.pv-table .pv-num{text-align:right}
+.pv-bottom{display:flex;gap:10px;margin-top:8px;align-items:flex-end}.pv-words{flex:1 1 auto;min-width:0}.pv-w-label{margin:0;font-weight:600}.pv-w-line{border-bottom:1px solid #141414;min-height:15px}.pv-eoe{margin:5px 0 0;font-size:9px}
+.pv-summary{flex:0 0 44%;border-collapse:collapse;font-size:9px}.pv-summary td{border:1px solid #141414;padding:3px 6px}.pv-summary td:last-child{text-align:right;width:42%;background:rgba(255,255,255,.35)}.pv-summary .pv-grand td{font-weight:700;font-size:10px;border-top:2px solid #141414}
+.pv-signatures{display:flex;justify-content:space-between;gap:12px;margin-top:16px;font-size:9px}.pv-copy{position:absolute;bottom:4px;left:0;right:0;text-align:center;font-size:8px;font-style:italic;color:#3c2226}</style>
+<div x-data="billingWorkspace({{ rooms|map(attribute='number')|list|tojson|forceescape }}, {{ rooms|map(attribute='type')|list|tojson|forceescape }}, {{ rooms|map(attribute='nightly_rate')|map('string')|list|tojson|forceescape }}, {{ rooms|map(attribute='id')|list|tojson|forceescape }}, {{ rooms|map(attribute='status')|list|tojson|forceescape }}, {{ catalog|map(attribute='name')|list|tojson|forceescape }}, {{ catalog|map(attribute='category')|list|tojson|forceescape }}, {{ catalog|map(attribute='menu_group')|list|tojson|forceescape }}, {{ catalog|map(attribute='rate')|map('string')|list|tojson|forceescape }}, {{ catalog|map(attribute='id')|list|tojson|forceescape }}, {{ catalog|map(attribute='taxable')|list|tojson|forceescape }}, {{ guests|map(attribute='id')|list|tojson|forceescape }}, {{ guests|map(attribute='name')|list|tojson|forceescape }}, {{ guests|map(attribute='phone')|list|tojson|forceescape }}, {{ guests|map(attribute='address')|list|tojson|forceescape }}, {{ guests|map(attribute='pan_vat_number')|list|tojson|forceescape }}, {{ guests|map(attribute='email')|list|tojson|forceescape }}, {{ billing_settings.get('service_charge_rate', '10')|float }}, {{ billing_settings.get('vat_rate', '13')|float }}, {{ draft_payload|tojson|forceescape }}, {{ occupied_stays|default({}, true)|tojson|forceescape }}, {{ draft_kots|default([], true)|tojson|forceescape }})" class="billing-workspace">
   <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
     <div class="flex items-center gap-3">
       <span class="room-icon-chip" style="width:2.75rem;height:2.75rem;font-size:1.35rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-receipt"></i></span>
@@ -15,7 +26,6 @@
     </div>
     <div class="flex items-center gap-2">
       <span class="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{{ invoice_number }}</span>
-      <button type="button" @click="submitAction('print', $event)" class="btn-primary"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-printer"></i></span>Save &amp; Print Invoice</button>
     </div>
   </div>
   {% if error %}<div role="alert" class="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800">{{ error }}</div>{% endif %}
@@ -24,17 +34,40 @@
     <span x-text="toast_message"></span>
   </div>{% endif %}
   {% if prefill_invoice_number %}<div role="status" class="mb-4 flex items-start gap-2 rounded-xl border border-[color:var(--color-primary)]/25 bg-[rgba(125,155,122,0.14)] p-3 text-xs font-semibold text-[color:var(--color-primary)]"><i class="ph ph-receipt mt-0.5" aria-hidden="true"></i><span>This room's stay is already invoiced as <strong>{{ prefill_invoice_number }}</strong> — the checkout button in Rooms settles that invoice's total. Dishes and charges added here are already included in the folio.</span></div>{% endif %}
-  <form id="invoice-form" method="post" action="/billing/create" @submit="syncItems($event)" class="pb-24">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="line_items" :value="JSON.stringify(items)"><input type="hidden" name="action" x-model="action"><input type="hidden" name="invoice_id" x-model="invoiceId">
-    <div class="grid items-start gap-4 xl:grid-cols-[23%_minmax(420px,1fr)_30%]">
-      <section class="panel picker-panel">
+  <form id="invoice-form" method="post" action="/billing/create" @submit="syncItems($event)">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="line_items" :value="JSON.stringify(items)"><input type="hidden" name="kots_data_json" :value="kotsDataJSON()"><input type="hidden" name="action" x-model="action"><input type="hidden" name="invoice_id" x-model="invoiceId">
+    <div class="sticky top-14 z-20 mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
+    <div class="flex items-center gap-1">
+      <button type="button" @click="submitAction('draft', $event)" class="btn-secondary"><span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-floppy-disk"></i></span>Save as draft</button>
+      <details class="row-menu"><summary aria-label="More invoice actions">⋯</summary><div class="row-menu-panel bottom-11 top-auto left-0">
+        <button type="button" @click="submitAction('preview', $event)"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-eye"></i></span>Preview PDF</button>
+        <button type="button" @click="submitAction('pdf', $event)"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-download-simple"></i></span>Download PDF</button>
+        <button type="button" class="menu-danger" @click="if(confirm('Reset this invoice?')) location.reload()"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-arrow-counter-clockwise"></i></span>Reset invoice</button>
+      </div></details>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="hidden text-xs text-slate-500 sm:inline" x-text="items.length ? items.length+' line item'+(items.length===1?'':'s') : 'Add at least one item'"></span>
+      <button type="button" @click="submitAction('print', $event)" class="btn-primary !px-5 !py-3"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-printer"></i></span>Save &amp; Print Receipt</button>
+    </div>
+  </div>
+    <div class="grid items-start gap-4 xl:grid-cols-[34%_minmax(400px,1fr)]">
+      <div class="relative w-full min-w-0 self-stretch">
+
+      <section class="panel picker-panel xl:absolute xl:inset-0 xl:flex xl:flex-col">
         <div class="form-section-head">
           <div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.5rem;height:2.5rem;font-size:1.2rem;background:rgba(125,155,122,.18);color:#2E5C3A;"><i class="ph ph-squares-four"></i></span><div><h2 class="panel-title"><i class="ph ph-notebook" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>1 · Select items</h2><p class="panel-subtitle">Rooms, restaurant, services</p></div></div>
           <span class="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600" x-text="items.length"></span>
         </div>
         <label class="search-field mb-3 block"><span class="search-icon"><i class="ph ph-magnifying-glass"></i></span><span class="sr-only">Search rooms and items</span><input class="form-input" x-model="search" placeholder="Search rooms, types, items..."></label>
         <div class="mb-3 flex items-stretch gap-1 rounded-xl bg-slate-100 p-1">
-          <template x-for="tab in ['Rooms','Restaurant','Services']" :key="tab"><button type="button" @click="category=tab" :class="category===tab?'bg-[color:var(--color-primary)] text-white shadow-sm':'text-slate-600 hover:bg-white'" class="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[11px] font-bold"><i :class="tab==='Rooms' ? 'ph ph-bed' : tab==='Restaurant' ? 'ph ph-fork-knife' : 'ph ph-sparkle'"></i><span x-text="tab"></span></button></template>
+          <template x-for="tab in ['Rooms','Restaurant','Services']" :key="tab"><button type="button" @click="category=tab; if(tab!=='Restaurant')menuGroup=''" :class="category===tab?'bg-[color:var(--color-primary)] text-white shadow-sm':'text-slate-600 hover:bg-white'" class="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[11px] font-bold"><i :class="tab==='Rooms' ? 'ph ph-bed' : tab==='Restaurant' ? 'ph ph-fork-knife' : 'ph ph-sparkle'"></i><span x-text="tab"></span></button></template>
+        </div>
+        <div class="mb-3" x-show="category==='Restaurant'">
+          <label class="section-label" for="menu-group-select">Menu category</label>
+          <select id="menu-group-select" class="form-input mt-1" x-model="menuGroup">
+            <option value="">All categories</option>
+            <template x-for="g in menuGroups()" :key="g"><option :value="g" x-text="g"></option></template>
+          </select>
         </div>
         <label class="mb-3 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-2 text-xs font-medium text-slate-600"><span><span class="mr-1.5 text-[color:var(--color-secondary)]">●</span>Available rooms only</span><input type="checkbox" x-model="availableOnly" class="h-4 w-4 accent-[color:var(--color-secondary)]"></label>
 
@@ -49,22 +82,23 @@
           <p x-show="!items.length" class="py-1 text-[11px] text-slate-400">No items selected yet.</p>
         </div>
 
-        <div class="max-h-[55vh] divide-y divide-slate-100 overflow-y-auto pr-1">
-          <template x-if="category==='Rooms'"><template x-for="room in filteredRooms()" :key="room.id"><div class="flex items-center gap-2.5 py-3"><span class="room-icon-chip" :class="room.type.toLowerCase().includes('super') ? 'room-chip-superdelux' : room.type.toLowerCase().includes('delux') ? 'room-chip-delux' : 'room-chip-standard'"><i :class="room.type.toLowerCase().includes('super') ? 'ph ph-fill2 ph-bed' : room.type.toLowerCase().includes('delux') ? 'ph ph-bold2 ph-bed' : 'ph ph-thin ph-bed'"></i></span><div class="min-w-0 flex-1"><p class="truncate text-sm font-bold text-slate-800" x-text="room.number"></p><p class="mt-0.5 text-[11px] text-slate-500" x-text="room.type+' · NPR '+fmt(room.rate)+' / night'"></p><p class="mt-0.5 text-[11px] font-semibold" x-show="room.stay" :class="room.stay&&room.stay.invoice_number?'text-slate-400':'text-[color:var(--accent-on-light)]" x-text="'Folio NPR '+fmt(room.stay?room.stay.total:0)+(room.stay&&room.stay.invoice_number?' · invoiced '+room.stay.invoice_number:'')"></p><span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold" :class="room.status==='Available'?'bg-[rgba(163,184,159,0.22)] text-[color:var(--color-text-secondary)]':room.status.toLowerCase()==='occupied'?'bg-[rgba(125,155,122,0.14)] text-[color:var(--color-primary)]':room.status.toLowerCase()==='dirty'?'bg-[rgba(232,213,163,0.35)] text-[color:var(--accent-on-light)]':'bg-slate-100 text-slate-600'" x-text="statusLabel(room.status)"></span></div><button type="button" @click="addRoom(room)" :disabled="items.some(i=>i.room_id===room.id)||(room.stay&&room.stay.invoice_number)" class="rounded-lg bg-[color:var(--color-accent)] px-2.5 py-2 text-xs font-bold text-[color:var(--color-text-on-accent)] hover:bg-[color:var(--accent-dark)] disabled:bg-slate-300 disabled:cursor-not-allowed" x-text="items.some(i=>i.room_id===room.id)?'Added':(room.stay&&room.stay.invoice_number)?'Invoiced':room.status==='Available'?'Add':'Bill stay'"></button></div></template></template>
-          <template x-if="category!=='Rooms'"><template x-for="entry in filteredCatalog()" :key="entry.id"><div class="flex items-center gap-2.5 py-3"><span class="room-icon-chip" :class="category==='Restaurant' ? 'room-chip-restaurant' : 'room-chip-services'"><i :class="category==='Restaurant' ? 'ph ph-fill2 ph-fork-knife' : 'ph ph-fill2 ph-sparkle'"></i></span><div class="min-w-0 flex-1"><p class="truncate text-sm font-bold text-slate-800" x-text="entry.name"></p><p class="mt-0.5 text-[11px] text-slate-500" x-text="'Rs. '+fmt(entry.rate)"></p></div><button type="button" @click="addCatalog(entry)" class="rounded-lg bg-[color:var(--color-primary)] px-2.5 py-2 text-xs font-bold text-white hover:bg-[color:var(--color-primary)]">Add</button></div></template></template>
+        <div class="divide-y divide-slate-100 pr-1 xl:min-h-0 xl:flex-1 xl:overflow-y-auto" x-effect="category; menuGroup; search; $el.scrollTop = 0">
+          <template x-if="category==='Rooms'"><template x-for="room in filteredRooms()" :key="room.id"><div class="flex items-center gap-2.5 py-3"><span class="room-icon-chip" :class="room.type.toLowerCase().includes('super') ? 'room-chip-superdelux' : room.type.toLowerCase().includes('delux') ? 'room-chip-delux' : 'room-chip-standard'"><i :class="room.type.toLowerCase().includes('super') ? 'ph ph-fill2 ph-bed' : room.type.toLowerCase().includes('delux') ? 'ph ph-bold2 ph-bed' : 'ph ph-thin ph-bed'"></i></span><div class="min-w-0 flex-1"><p class="truncate text-sm font-bold text-slate-800" x-text="room.number"></p><p class="mt-0.5 text-[11px] text-slate-500" x-text="room.type+' · NPR '+fmt(room.rate)+' / night'"></p><p class="mt-0.5 text-[11px] font-semibold" x-show="room.stay" :class="room.stay&&room.stay.invoice_number?'text-slate-400':'text-[color:var(--accent-on-light)]'" x-text="'Folio NPR '+fmt(room.stay?room.stay.total:0)+(room.stay&&room.stay.invoice_number?' · invoiced '+room.stay.invoice_number:'')"></p><span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold" :class="room.status==='Available'?'bg-[rgba(163,184,159,0.22)] text-[color:var(--color-text-secondary)]':room.status.toLowerCase()==='occupied'?'bg-[rgba(125,155,122,0.14)] text-[color:var(--color-primary)]':room.status.toLowerCase()==='dirty'?'bg-[rgba(232,213,163,0.35)] text-[color:var(--accent-on-light)]':'bg-slate-100 text-slate-600'" x-text="statusLabel(room.status)"></span></div><button type="button" @click="addRoom(room)" :disabled="items.some(i=>i.room_id===room.id)||(room.stay&&room.stay.invoice_number)" class="rounded-lg bg-[color:var(--color-accent)] px-2.5 py-2 text-xs font-bold text-[color:var(--color-text-on-accent)] hover:bg-[color:var(--accent-dark)] disabled:bg-slate-300 disabled:cursor-not-allowed" x-text="items.some(i=>i.room_id===room.id)?'Added':(room.stay&&room.stay.invoice_number)?'Invoiced':room.status==='Available'?'Add':'Bill stay'"></button></div></template></template>
+          <template x-if="category!=='Rooms'"><div><template x-for="section in menuSections()" :key="section.name"><div class="divide-y divide-slate-100"><p x-show="section.name" class="px-1 pb-1.5 pt-3 text-[10px] font-bold uppercase tracking-wide text-[color:var(--color-primary)]" x-text="section.name"></p><template x-for="entry in section.items" :key="entry.id"><div class="flex items-center gap-2.5 py-3"><span class="room-icon-chip" :class="category==='Restaurant' ? 'room-chip-restaurant' : 'room-chip-services'"><i :class="category==='Restaurant' ? 'ph ph-fill2 ph-fork-knife' : 'ph ph-fill2 ph-sparkle'"></i></span><div class="min-w-0 flex-1"><p class="truncate text-sm font-bold text-slate-800" x-text="entry.name"></p><p class="mt-0.5 text-[11px] text-slate-500" x-text="'Rs. '+fmt(entry.rate)"></p></div><button type="button" @click="addCatalog(entry)" class="rounded-lg bg-[color:var(--color-primary)] px-2.5 py-2 text-xs font-bold text-white hover:bg-[color:var(--color-primary)]">Add</button></div></template></div></template></div></template>
           <div x-show="category==='Rooms' && filteredRooms().length===0" class="py-10 text-center text-xs text-slate-500">No matching rooms.</div><div x-show="category!=='Rooms' && filteredCatalog().length===0" class="py-10 text-center text-xs text-slate-500">No items in this category yet.</div>
         </div>
       </section>
+      </div>
 
       <div class="min-w-0 space-y-4">
         <section class="panel" x-data="{open:true}">
           <button type="button" class="form-section-head w-full cursor-pointer text-left" @click="open=!open">
-            <span class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.5rem;height:2.5rem;font-size:1.2rem;background:rgba(27,58,42,.12);color:#1B3A2A;"><i class="ph ph-user-circle"></i></span><span><span class="panel-title">Guest information</span><p class="panel-subtitle" x-text="guestName || 'Walk-in guest — details optional'">Walk-in guest — details optional</p></span></span>
+            <span class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.5rem;height:2.5rem;font-size:1.2rem;background:rgba(27,58,42,.12);color:#1B3A2A;"><i class="ph ph-user-circle"></i></span><span><span class="panel-title">Guest information</span><p class="panel-subtitle" x-text="guestName || 'Enter guest details'">Enter guest details</p></span></span>
             <span class="grid h-8 w-8 place-items-center rounded-full text-slate-400 transition-transform duration-200" :class="open ? '' : '-rotate-90'" aria-hidden="true"><i class="ph ph-caret-down" style="font-size:1.05rem;"></i></span>
           </button>
           <div x-show="open" x-cloak class="mt-5 grid gap-x-4 gap-y-5 sm:grid-cols-2">
-            <label class="block sm:col-span-2"><span class="field-label"><i class="ph ph-selection-foreground"></i>Select existing guest</span><select class="form-input" name="guest_id" x-model="guestId" @change="fillGuest"><option value="">Walk-in / new guest</option>{% for guest in guests %}<option value="{{ guest.id }}">{{ guest.name }}{% if guest.phone %} · {{ guest.phone }}{% endif %}</option>{% endfor %}</select></label>
-            <label class="block"><span class="field-label"><i class="ph ph-user"></i>Guest name</span><input class="form-input" name="guest_name" x-model="guestName" placeholder="Walk-in guest" maxlength="160"></label>
+            <input type="hidden" name="guest_id" :value="guestId">
+            <label class="block"><span class="field-label"><i class="ph ph-user"></i>Guest name</span><input class="form-input" name="guest_name" x-model="guestName" placeholder="" maxlength="160"></label>
             <label class="block"><span class="field-label"><i class="ph ph-phone"></i>Phone</span><input class="form-input" name="guest_phone" x-model="guestPhone" placeholder="98XXXXXXXX" maxlength="40"></label>
             <label class="block"><span class="field-label"><i class="ph ph-envelope-simple"></i>Email (optional)</span><input class="form-input" type="email" name="guest_email" x-model="guestEmail" placeholder="guest@example.com" maxlength="180"></label>
             <label class="block"><span class="field-label"><i class="ph ph-map-pin"></i>Address</span><input class="form-input" name="guest_address" x-model="guestAddress" placeholder="Address" maxlength="240"></label>
@@ -101,7 +135,53 @@
 
         <section class="panel"><label class="block"><span class="field-label"><i class="ph ph-chat-circle-text"></i>Notes (visible on invoice)</span><textarea name="notes" x-model="notes" rows="2" maxlength="2000" class="form-input resize-y" placeholder="Thank you for staying with us."></textarea></label></section>
 
-        <section class="panel ml-auto max-w-xl">
+        <div class="mt-4 grid items-stretch gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
+    <!-- KOT Section -->
+    <section class="panel" x-init="loadSavedKots">
+      <input type="hidden" x-ref="kotCsrf" value="{{ csrf_token }}">
+      <div class="form-section-head"><div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.5rem;height:2.5rem;font-size:1.2rem;background:rgba(125,155,122,.18);color:#1B3A2A;"><i class="ph ph-notepad"></i></span><div><h2 class="panel-title"><i class="ph ph-notepad" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>KOT</h2><p class="panel-subtitle">Kitchen Order Tickets for this bill</p></div></div><button type="button" class="btn-primary shrink-0" @click="addKot">Add KOT</button></div>
+      <template x-if="!kotPages.length"><div class="mt-3 p-3 bg-slate-50 rounded"><p class="text-sm text-slate-700">No KOT pages on this bill. Click Add KOT to open a new blank KOT form.</p></div></template>
+      <template x-if="kotPages.length"><div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <template x-for="(page, i) in kotPages" :key="'kot-tab-'+i">
+            <span class="flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold" :class="i===kotActive ? 'border-emerald-600 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-500'">
+              <button type="button" class="cursor-pointer" @click="kotActive = i; kotSaveList()" x-text="kotLabel(i)"></button>
+              <button type="button" class="text-slate-400 hover:text-red-500" @click="removeKot(i)" title="Remove this KOT page">✕</button>
+            </span>
+          </template>
+        </div>
+        <div class="mt-3 p-4 bg-slate-50 rounded border border-slate-200">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <p class="text-sm font-bold text-slate-800" x-text="'Filling: ' + kotLabel(kotActive)"></p>
+            <div class="flex items-center gap-2">
+              <button type="button" class="btn-secondary text-sm" x-show="kotPages[kotActive].kotId" @click="kotPrint(kotActive)"><i class="ph ph-printer"></i> Print K.O.T</button>
+              <button type="button" class="btn-primary text-sm" @click="saveKot" :disabled="kotSaving" x-text="kotSaving ? 'Saving…' : (kotPages[kotActive].kotId ? 'Update KOT' : 'Save KOT')"></button>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block"><span class="field-label"><i class="ph ph-textbox"></i>Table No.</span><input class="form-input" type="text" x-model="kotPages[kotActive].tableNo" @change="kotSaveList" placeholder="Table 1"></label>
+            <label class="block"><span class="field-label"><i class="ph ph-user"></i>Guest</span><select class="form-input" x-model="kotPages[kotActive].guestId" @change="kotSaveList"><option value="">Walk-in guest</option>{% for guest in guests %}<option value="{{ guest.id }}">{{ guest.name }}{% if guest.phone %} · {{ guest.phone }}{% endif %}</option>{% endfor %}</select></label>
+          </div>
+          <div class="mt-3" x-show="kotSources(kotActive).length">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Items <span class="font-normal normal-case">— restaurant items picked on this bill appear here automatically</span></p>
+            <template x-for="(src, i) in kotSources(kotActive)" :key="'kot-src-'+i+'-'+src.key">
+              <div class="flex items-center gap-2 text-xs text-slate-600 py-1 border-b border-slate-200">
+                <span class="w-5 shrink-0" x-text="i+1"></span>
+                <span class="flex-1 truncate" x-text="src.description || src.short || src.particular || 'Item'"></span>
+                <span x-text="kotQty(src)"></span> ×
+                <span x-text="'Rs. '+kotMoney(src.rate)"></span>
+                <span class="font-semibold" x-text="'= Rs. '+kotMoney(kotAmount(src))"></span>
+                <button type="button" x-show="kotPages.length>1" class="text-slate-400 hover:text-slate-800" @click="kotMove(src)" title="Move this item to another KOT page">⇄</button>
+              </div>
+            </template>
+            <div class="flex justify-end pt-1 text-sm font-bold text-slate-800"><span>Total: Rs. <span x-text="kotPageTotal()"></span></span></div>
+          </div>
+          <template x-if="!kotSources(kotActive).length"><p class="mt-3 text-xs text-slate-500">No restaurant items on the bill yet. Add items from the <strong>Restaurant</strong> tab above — only restaurant items come into the KOT (rooms and services stay out).</p></template>
+          <template x-if="kotPages[kotActive].kotId"><p class="mt-2 text-xs text-emerald-700"><i class="ph ph-check-circle"></i> Saved permanently as <span x-text="kotPages[kotActive].kotNumber"></span> — linked to this table &amp; person, and included in the final bill.</p></template>
+        </div>
+      </div></template>
+    </section>
+        <section class="panel">
           <div class="mb-2 flex items-center gap-3"><span class="room-icon-chip" style="width:2.5rem;height:2.5rem;font-size:1.2rem;background:rgba(190,34,26,.10);color:#C22D24;"><i class="ph ph-calculator"></i></span><h2 class="panel-title"><i class="ph ph-calculator" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Payment summary</h2></div>
           <div class="space-y-2.5">
             <div class="flex justify-between text-sm text-slate-600"><span>Subtotal</span><span x-text="'NPR '+fmt(subtotal)"></span></div>
@@ -114,51 +194,55 @@
             <div class="flex justify-between rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold soft-amber-text"><span>Balance due</span><span x-text="'NPR '+fmt(balance)"></span></div>
           </div>
         </section>
+        </div>
       </div>
 
-      <aside class="panel preview-panel sticky top-20">
-        <div class="panel-heading"><div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.5rem;height:2.5rem;font-size:1.2rem;background:rgba(125,155,122,.18);color:#2E5C3A;"><i class="ph ph-eye"></i></span><div><h2 class="panel-title"><i class="ph ph-eye" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Live invoice preview</h2><p class="panel-subtitle">Full layout, updates as you edit</p></div></div><span class="badge-teal">Live</span></div>
-        <div class="invoice-paper">
-          <div class="flex items-center gap-3 border-b-2 border-[color:var(--color-primary)] pb-3">{% if printer_logo_src %}<img src="{{ printer_logo_src }}" alt="Arati Hotel logo" class="h-11 w-11 shrink-0 rounded-full object-contain" style="background:rgba(125,155,122,0.14);padding:4px;">{% else %}<span class="grid h-11 w-11 place-items-center rounded-full bg-[rgba(125,155,122,0.14)] text-2xl text-[color:var(--color-primary)]"><i class="ph ph-flower-lotus"></i></span>{% endif %}<div class="flex-1"><p class="font-display text-base font-bold text-slate-800">Arati Hotel</p><p class="text-xs text-slate-500">Khandbari</p></div><div class="text-right text-[9px] leading-4 text-slate-600">Khandbari, Sankhuwasabha, Nepal<br>Phone: +977 29-560123<br>Email: info@aratihotel.com.np</div></div>
-          <div class="mt-4 flex items-start justify-between"><div><p class="font-bold tracking-wide text-[color:var(--accent-on-light)]" x-text="invoiceType.toUpperCase()"></p><p class="mt-2 text-[10px] font-bold text-slate-700">Bill to:</p><p class="text-xs font-semibold text-slate-800" x-text="guestName||'Walk-in guest'"></p><p class="text-[10px] text-slate-500" x-text="guestPhone||'Phone: —'"></p><p class="text-[10px] text-slate-500" x-text="guestEmail||'Email: —'"></p><p class="text-[10px] text-slate-500" x-text="guestAddress||'Address: —'"></p></div><div class="text-right text-[10px] text-slate-600">Invoice No: <strong>{{ invoice_number }}</strong><br>Date: <span x-text="invoiceDate"></span><br><span x-text="copyType"></span></div></div>
-          <div class="mt-4 overflow-hidden"><table class="w-full text-left text-[9px]"><thead><tr class="border-y border-slate-200 text-slate-500"><th class="py-2">Description</th><th class="py-2 text-right">Qty</th><th class="py-2 text-right">Rate</th><th class="py-2 text-right">VAT</th><th class="py-2 text-right">Total (Rs.)</th></tr></thead><tbody><template x-for="item in items" :key="item.key"><tr class="border-b border-slate-100"><td class="py-2 pr-1" x-text="item.description"></td><td class="py-2 text-right" x-text="item.quantity"></td><td class="py-2 text-right" x-text="fmt(item.rate*item.quantity)"></td><td class="py-2 text-right" x-text="fmt(vat(item))"></td><td class="py-2 text-right font-bold" x-text="fmt(total(item))"></td></tr></template><tr x-show="!items.length"><td colspan="5" class="py-3 text-center text-[10px] text-slate-400">No line items yet — add a room or service.</td></tr></tbody></table></div>
-          <div class="ml-auto mt-4 w-3/4 space-y-1.5 text-[10px]"><div class="flex justify-between"><span>Subtotal</span><span x-text="fmt(subtotal)"></span></div><div class="flex justify-between"><span>Item discount</span><span x-text="fmt(itemDiscountTotal)"></span></div><div class="flex justify-between"><span>Invoice discount</span><span x-text="fmt(discountTotal)"></span></div><div class="flex justify-between"><span x-text="'Service charge ('+serviceChargeRate+'%)'"></span><span x-text="fmt(serviceCharge)"></span></div><div class="flex justify-between"><span x-text="invoiceType==='Bill of Supply'?'VAT not applicable':'VAT ('+vatRate+'%)'"></span><span x-text="fmt(vatTotal)"></span></div><div class="flex justify-between rounded border border-[color:var(--color-primary)] px-2 py-2 text-sm font-extrabold text-[color:var(--accent-on-light)]"><span>Grand total</span><span x-text="fmt(grandTotal)"></span></div></div>
-          <p class="mt-4 text-[9px] leading-4 text-slate-600"><strong>Amount in words:</strong> <span x-text="amountWords()"></span></p><p class="mt-7 text-center text-xs font-semibold text-slate-700">Thank you for staying with us.<br>We hope to see you again.</p><p class="mt-4 border-t border-slate-100 pt-2 text-center text-[9px] text-slate-500" x-text="copyType"></p>
-        </div>
-      </aside>
     </div>
   </form>
 
-  <div class="fixed inset-x-0 bottom-0 z-30 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur lg:pl-[17rem] sm:px-7">
-    <div class="flex items-center gap-1">
-      <button type="button" @click="submitAction('draft', $event)" class="btn-secondary"><span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-floppy-disk"></i></span>Save as draft</button>
-      <details class="row-menu"><summary aria-label="More invoice actions">⋯</summary><div class="row-menu-panel bottom-11 top-auto left-0">
-        <button type="button" @click="submitAction('preview', $event)"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-eye"></i></span>Preview PDF</button>
-        <button type="button" @click="submitAction('pdf', $event)"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-download-simple"></i></span>Download PDF</button>
-        <button type="button" class="menu-danger" @click="if(confirm('Reset this invoice?')) location.reload()"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-arrow-counter-clockwise"></i></span>Reset invoice</button>
-      </div></details>
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="hidden text-xs text-slate-500 sm:inline" x-text="items.length ? items.length+' line item'+(items.length===1?'':'s') : 'Add at least one item'"></span>
-      <button type="button" @click="submitAction('print', $event)" class="btn-primary !px-5 !py-3"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-printer"></i></span>Save &amp; Print Invoice</button>
-    </div>
-  </div>
 </div>
 <script>
-function billingWorkspace(roomNumbers, roomTypes, roomRates, roomIds, roomStatuses, catalogNames, catalogCats, catalogRates, catalogIds, catalogTaxable, guestIds, guestNames, guestPhones, guestAddresses, guestPans, guestEmails, serviceChargeRate, vatRate, draft, occupiedStays) {
+function billingWorkspace(roomNumbers, roomTypes, roomRates, roomIds, roomStatuses, catalogNames, catalogCats, catalogGroups, catalogRates, catalogIds, catalogTaxable, guestIds, guestNames, guestPhones, guestAddresses, guestPans, guestEmails, serviceChargeRate, vatRate, draft, occupiedStays, draftKots) {
   const now = new Date(); const local = new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
   const tomorrow = new Date(now.getTime()+86400000-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
   return {
     rooms: roomIds.map((id,i)=>({id,number:roomNumbers[i],type:roomTypes[i],rate:Number(roomRates[i]),status:roomStatuses[i]==='available'?'Available':roomStatuses[i],stay:(occupiedStays||{})[String(id)]||null})),
-    catalog: catalogIds.map((id,i)=>({id,name:catalogNames[i],category:catalogCats[i],rate:Number(catalogRates[i]),taxable:catalogTaxable[i]})),
-    guests: guestIds.map((id,i)=>({id,name:guestNames[i],phone:guestPhones[i],address:guestAddresses[i],pan:guestPans[i],email:guestEmails[i]})), search:'', category:'Rooms', availableOnly:false, items:draft?.items||[], serial:0, toastDismissed:false,
+    catalog: catalogIds.map((id,i)=>({id,name:catalogNames[i],category:catalogCats[i],group:catalogGroups[i]||'',rate:Number(catalogRates[i]),taxable:catalogTaxable[i]})),
+    guests: guestIds.map((id,i)=>({id,name:guestNames[i],phone:guestPhones[i],address:guestAddresses[i],pan:guestPans[i],email:guestEmails[i]})), search:'', category:'Rooms', menuGroup:'', availableOnly:false, items:draft?.items||[], serial:0, toastDismissed:false,
     invoiceId:draft?.id||'', guestId:draft?.guest_id?String(draft.guest_id):'', guestName:draft?.guest_name||'Walk-in guest', guestPhone:draft?.guest_phone||'', guestAddress:draft?.guest_address||'', guestPan:draft?.guest_pan||'', guestEmail:draft?.guest_email||'', customerType:draft?.customer_type||'individual',
     invoiceType:draft?.invoice_type||'Tax Invoice', invoiceDate:draft?.invoice_date||'{{ today }}', language:draft?.language||{{ invoice_language_default|tojson }}, copyType:draft?.copy_type||{{ invoice_copy_default|tojson }}, paymentTerms:draft?.payment_terms||{{ payment_terms_default|tojson }}, checkIn:draft?.check_in||local, checkOut:draft?.check_out||tomorrow, nights:draft?.nights||1, notes:draft?.notes||'Thank you for staying with us.', action:'issue',
     serviceChargeRate:Number(serviceChargeRate)||0, vatRate:Number(vatRate)||0, discountKind:'amount', discountValue:Number(draft?.discount_amount)||0, amountPaid:Number(draft?.paid_amount)||0, paymentMethod:{{ payment_methods|tojson }}.includes(draft?.payment_method)?draft.payment_method:{{ payment_methods[0]|tojson }},
+kotPages:(function(){const pages=(draftKots||[]).map(k=>({tableNo:k.table_number||'',guestId:k.guest_id?String(k.guest_id):'',kotId:k.id,kotNumber:k.kot_number||'',items:Array.isArray(k.items)?k.items:[]}));pages.push({tableNo:'',guestId:'',kotId:null,kotNumber:'',items:null});return pages;})(),
+        kotActive:(draftKots||[]).length,
+        kotSaving:false,
+        kotSavedList:[], kotSavedTable:'__all__',
+        kotCats:['restaurant','food'],
+        addKot(){this.kotPages.push({tableNo:'',guestId:'',kotId:null,kotNumber:'',items:null}); this.kotActive=this.kotPages.length-1;},
+        openKotIndex(){let i=this.kotPages.findIndex(p=>!p.kotId); if(i>=0)return i; this.addKot(); return this.kotPages.length-1;},
+        removeKot(i){const page=this.kotPages[i]; if(!page)return; const savedKeys=(page.items||[]).map(x=>x.key).filter(Boolean); this.items.forEach(it=>{if(savedKeys.includes(it.key))it.kot_id=null;}); this.kotPages.splice(i,1); if(this.kotActive>this.kotPages.length-1){this.kotActive=Math.max(this.kotPages.length-1,0);} this.items.forEach(it=>{if(this.kotCats.includes((it.category||'').toLowerCase())){const g=Number.isInteger(it.kot_group)?it.kot_group:0; if(g===i){it.kot_group=0;} else if(g>i){it.kot_group=g-1;}}}); if(page.kotId){window.showToast&&window.showToast('KOT detached from this invoice.','info');} this.loadSavedKots();},
+        kotIsRestaurant(it){return this.kotCats.includes((it.category||'').toLowerCase());},
+        kotGroup(it){const raw=it.kot_group; return (Number.isInteger(raw)&&raw>=0&&raw<this.kotPages.length)?raw:0;},
+        kotSources(i){const page=this.kotPages[i]; if(page&&page.kotId&&Array.isArray(page.items))return page.items.filter(it=>it&&it.particular); return this.items.filter(it=>this.kotIsRestaurant(it)&&!it.kot_id&&this.kotGroup(it)===i);},
+        kotLineOf(it,idx){const qty=Math.max(Number(it.quantity ?? it.qty)||1,0); const rate=Math.max(Number(it.rate)||0,0); return {sn:idx+1,key:it.key||'',particular:(it.description||it.short||it.particular||'Item').slice(0,160),qty:qty,rate:rate,amount:Math.round(qty*rate*100)/100};},
+        kotMove(it){const cur=this.kotGroup(it); it.kot_group=(cur<this.kotPages.length-1)?(cur+1):0; this.kotActive=it.kot_group;},
+        kotQty(it){const q=Math.max(Number(it.quantity ?? it.qty)||1,0); return q%1===0?q.toFixed(0):q.toFixed(2);},
+        kotAmount(it){const q=Math.max(Number(it.quantity ?? it.qty)||0,0); const r=Math.max(Number(it.rate)||0,0); return Math.round(q*r*100)/100;},
+        kotMoney(v){return Number(v).toLocaleString('en-IN',{minimumFractionDigits:2});},
+        kotPageTotal(){return this.kotSources(this.kotActive).reduce((s,it)=>s+this.kotAmount(it),0).toLocaleString('en-IN',{minimumFractionDigits:2});},
+        kotLabel(i){const k=this.kotPages[i]; const t=(k.tableNo||'').trim(); return (k.kotNumber||'KOT '+(i+1))+(t?' · '+t:'');},
+        kotPrint(i){if(!this.kotPages[i].kotId){window.showToast&&window.showToast('Save this KOT first to print it.','warning');return;} window.open('/kots/'+this.kotPages[i].kotId+'/print','_blank','noopener');},
+        kotPayload(i){return this.kotSources(i).map((it,idx)=>this.kotLineOf(it,idx));},
+        kotsDataJSON(){return JSON.stringify(this.kotPages.map((p,i)=>({p,i})).filter(x=>!x.p.kotId).map(x=>({tableNo:x.p.tableNo||'',guestId:x.p.guestId||'',guestName:this.guestName||'',items:this.kotPayload(x.i)})).filter(x=>x.items.length))},
+        kotIdsJSON(){return JSON.stringify(this.kotPages.map(k=>k.kotId).filter(Boolean))},
+        async saveKot(){const page=this.kotPages[this.kotActive]; const itemsKV=this.kotPayload(this.kotActive); if(!itemsKV.length){window.showToast&&window.showToast('Add restaurant items to the bill first — they appear in this KOT automatically.','warning');return;} this.kotSaving=true; try{const res=await fetch('/kots/api/save',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({csrf_token:this.$refs.kotCsrf.value,kot_id:page.kotId||'',invoice_id:this.invoiceId||'',table_number:(page.tableNo||'').trim()||'Walk-in',guest_id:page.guestId||'',guest_name:this.guestName||'',items:itemsKV})}); const data=await res.json().catch(()=>({})); if(!res.ok||!data.ok){throw new Error(data.detail||('Saving failed ('+res.status+').'))} page.kotId=data.id; page.kotNumber=data.kot_number; page.items=itemsKV.map(it=>Object.assign({},it)); this.items.forEach(it=>{if(itemsKV.some(x=>x.key&&x.key===it.key))it.kot_id=data.id;}); window.showToast&&window.showToast('KOT saved permanently as '+data.kot_number+'. The next items you add go to a new KOT.','success'); this.kotSavedTable=''; if(!this.kotPages.some(p=>!p.kotId))this.addKot(); else this.kotActive=this.openKotIndex(); await this.loadSavedKots();}catch(err){window.showToast&&window.showToast(err.message,'error')} finally{this.kotSaving=false}},
+        async loadSavedKots(){const page=this.kotPages[this.kotActive]; const t=((page&&page.tableNo)||'').trim(); const key=t||'__all__'; if(key===this.kotSavedTable&&this.kotSavedList.length){return;} this.kotSavedTable=key; try{const res=await fetch('/kots/by-table?table='+encodeURIComponent(t||'all'),{credentials:'same-origin'}); const data=await res.json().catch(()=>({})); if(res.ok){this.kotSavedList=data.kots||[];}}catch(err){}},
+        kotSaveList(){this.kotSavedTable=''; this.loadSavedKots();},
     fmt(value){return (Number(value)||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})},
     filteredRooms(){return this.rooms.filter(r=>(!this.search||(r.number+' '+r.type).toLowerCase().includes(this.search.toLowerCase()))&&(!this.availableOnly||r.status==='Available'))},
     statusLabel(status){return status.charAt(0).toUpperCase()+status.slice(1)},
     filteredCatalog(){const categories=this.category==='Restaurant'?['restaurant','food']:['service','other'];return this.catalog.filter(i=>categories.includes(i.category.toLowerCase())&&(!this.search||i.name.toLowerCase().includes(this.search.toLowerCase())))},
+    menuGroups(){const out=[];this.catalog.forEach(i=>{if(i.category.toLowerCase()==='restaurant'&&i.group&&!out.includes(i.group))out.push(i.group)});return out},
+    menuSections(){const list=this.filteredCatalog().filter(i=>!this.menuGroup||i.group===this.menuGroup);if(this.category!=='Restaurant')return [{name:'',items:list}];const out=[];const grouped=new Map();list.forEach(i=>{const g=i.group||'Other';if(!grouped.has(g)){grouped.set(g,[]);out.push({name:g,items:grouped.get(g)});}grouped.get(g).push(i);});return out},
     addRoom(room){
       if(this.items.some(i=>i.room_id===room.id)) return;
       const stay = room.stay;
@@ -185,14 +269,18 @@ function billingWorkspace(roomNumbers, roomTypes, roomRates, roomIds, roomStatus
     addCatalog(entry){
       this.serial++;
       const key = 'item_' + this.serial + '_' + Date.now();
+      const restaurant = this.kotCats.includes((entry.category || '').toLowerCase());
+      const group = restaurant ? this.openKotIndex() : undefined;
       this.items.push({
         key: key, catalog_id: entry.id,
         description: entry.name,
         short: entry.name,
         quantity: 1,
         rate: Number(entry.rate) || 0,
-        discount: 0, taxable:entry.taxable, category:entry.category
+        discount: 0, taxable:entry.taxable, category:entry.category,
+        kot_group: group
       });
+      if (restaurant) this.kotActive = group;
     },
     addCustom(){
       this.serial++;
@@ -246,7 +334,7 @@ function billingWorkspace(roomNumbers, roomTypes, roomRates, roomIds, roomStatus
       }
     },
     amountWords(){let n=Math.round(this.grandTotal);if(!n)return 'Zero Rupees Only';const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];const tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];const under=x=>x<20?ones[x]:tens[Math.floor(x/10)]+(x%10?' '+ones[x%10]:'');let words='';if(n>=10000000){words+=under(Math.floor(n/10000000))+' Crore ';n%=10000000}if(n>=100000){words+=under(Math.floor(n/100000))+' Lakh ';n%=100000}if(n>=1000){words+=under(Math.floor(n/1000))+' Thousand ';n%=1000}if(n>=100){words+=ones[Math.floor(n/100)]+' Hundred ';n%=100}if(n)words+=under(n)+' ';return words.trim()+' Rupees Only'},
-    syncItems(evt){if(!this.items.length){evt.preventDefault();window.showToast&&window.showToast('Add at least one item before saving.','warning')}else if((Number(this.amountPaid)||0)>this.grandTotal){evt.preventDefault();window.showToast&&window.showToast('Amount received cannot exceed the invoice total.','warning')}},submitAction(value,event){this.action=value;var button=event&&event.currentTarget;this.$nextTick(function(){var form=document.getElementById('invoice-form');if(button){button.classList.add('is-busy');button.setAttribute('aria-busy','true');}if(form.requestSubmit){form.requestSubmit(button)}else{form.requestSubmit()}})}
+    syncItems(evt){if(!this.items.length){evt.preventDefault();window.showToast&&window.showToast('Add at least one item before saving.','warning')}else if((Number(this.amountPaid)||0)>this.grandTotal){evt.preventDefault();window.showToast&&window.showToast('Amount received cannot exceed the invoice total.','warning')}},submitAction(value,event){this.action=value;var button=event&&event.currentTarget;this.$nextTick(function(){var form=document.getElementById('invoice-form');if(button){button.classList.add('is-busy');button.setAttribute('aria-busy','true');}if(form.requestSubmit){form.requestSubmit()}else{form.submit()}})}
   }
 }
 </script>

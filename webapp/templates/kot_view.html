@@ -1,0 +1,37 @@
+{% extends "base.html" %}{% set active_page='kots' %}{% block title %}KOT {{ kot.kot_number }}{% endblock %}{% block header_title %}KOT {{ kot.kot_number }}{% endblock %}{% block content %}
+<div class="page-heading"><div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.75rem;height:2.75rem;font-size:1.35rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-receipt"></i></span><div><p class="eyebrow">Front desk <span class="text-slate-500">/</span> KOT</p><h1 class="page-title">KOT {{ kot.kot_number }}</h1><p class="page-subtitle">Kitchen Order Ticket</p></div></div>
+<div class="mt-4 panel">
+  <div class="panel-heading mb-2"><div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.5rem;height:2.5rem;font-size:1.2rem;background:rgba(58,124,58,.14);color:#2E7D3E;"><i class="ph ph-notepad"></i></span><div><h2 class="panel-title"><i class="ph ph-notepad" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Kitchen Order Ticket</h2><p class="panel-subtitle">Arati Hotel · Khandbari, Sankhuwasabha</p></div></div>
+  <div class="panel-body">
+    <p><strong>K.O.T No.:</strong> {{ kot.kot_number }}</p>
+    <p><strong>Table:</strong> {{ kot.table_number or 'Walk-in' }}</p>
+    <p><strong>Date:</strong> {{ kot.date }}</p>
+    <p><strong>Guest:</strong> {{ kot.guest.name if kot.guest else 'Walk-in guest' }}</p>
+    <p><strong>Status:</strong> {{ kot.status|capitalize }}</p>
+  </div>
+  <div class="mt-4">
+    <h3 class="panel-title">Items</h3>
+    <table class="data-table soft-table min-w-[600px]">
+      <thead><tr><th>S.N.</th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-textbox"></i>Particular</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-numbox"></i>Qty.</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-currency-inr"></i>Rate</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-calculator"></i>Amount</span></th></tr></thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.get('sn', loop.index) }}</td>
+          <td>{{ item.get('particular', '') }}</td>
+          <td class="text-right">{{ item.get('qty', 1) }}</td>
+          <td class="text-right">{{ '%.2f'|format(item.get('rate', 0)|float) }}</td>
+          <td class="text-right">{{ '%.2f'|format(item.get('amount', 0)|float) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="mt-4 p-3 bg-slate-50 rounded flex items-center justify-between">
+    <p class="font-medium">Total: Rs. {{ '%.2f'|format(total|default(0)|float) }}</p>
+    <div class="flex items-center gap-2">
+      <a class="btn-secondary" href="/kots/{{ kot.id }}/print"><i class="ph ph-printer"></i> Print K.O.T</a>
+      <a class="btn-secondary" href="/kots{% if kot.invoice_id %}?invoice_id={{ kot.invoice_id }}{% endif %}">All KOTs</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

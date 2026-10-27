@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% set active_page = 'staff' %}
+{% block title %}{{ target.full_name or target.username }} · Staff tracking{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">SYSTEM · STAFF TRACKING</p>
+    <h1 class="page-title">{{ target.full_name or target.username }}</h1>
+    <p class="page-subtitle">{{ target.role|title }} · {{ target.username }}{% if not target.active %} · disabled{% endif %} · complete activity from {{ start }} to {{ end }}.</p>
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    <a class="btn-secondary !px-3 !py-1.5 !text-xs" href="/staff/tracking?start={{ start }}&end={{ end }}">
+      <span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-arrow-left"></i></span>
+      All staff
+    </a>
+    <a class="btn-secondary !px-3 !py-1.5 !text-xs" href="/staff">
+      <span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-users"></i></span>
+      Staff accounts
+    </a>
+  </div>
+</div>
+
+<section class="panel mb-5">
+  <form method="get" action="/staff/tracking/{{ target.id }}" class="flex flex-wrap items-end gap-3">
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-semibold text-slate-700">From</span>
+      <input class="form-input" type="date" name="start" value="{{ start }}">
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-semibold text-slate-700">To</span>
+      <input class="form-input" type="date" name="end" value="{{ end }}">
+    </label>
+    <button class="btn-primary" type="submit">Apply</button>
+    <a class="btn-secondary" href="/staff/tracking/{{ target.id }}">This month</a>
+  </form>
+</section>
+
+<div class="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  <article class="metric-card-hero">
+    <p class="section-label">Sales handled</p>
+    <p class="mt-2 text-2xl font-extrabold text-slate-900">{{ money(bucket.sales) }}</p>
+    <p class="mt-1 text-xs text-slate-500">{{ bucket.invoice_rows|length }} non-draft invoice{{ '' if bucket.invoice_rows|length == 1 else 's' }}</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Customers served</p>
+    <p class="mt-2 text-xl font-extrabold text-slate-900">{{ bucket.customers }}</p>
+    <p class="mt-1 text-xs text-slate-500">{{ bucket.stay_rows|length }} guest check-in{{ '' if bucket.stay_rows|length == 1 else 's' }}</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Discounts given</p>
+    <p class="mt-2 text-xl font-extrabold soft-amber-text">{{ money(bucket.discount) }}</p>
+    <p class="mt-1 text-xs text-slate-500">Bill + item discounts</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Payments collected</p>
+    <p class="mt-2 text-xl font-extrabold text-[color:var(--color-primary)]">{{ money(bucket.collected) }}</p>
+    <p class="mt-1 text-xs text-slate-500">Cash and digital receipts</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Staff sign-ins</p>
+    <p class="mt-2 text-xl font-extrabold text-slate-900">{{ bucket.sessions|length }}</p>
+    <p class="mt-1 text-xs text-slate-500">{{ bucket.active_sessions }} active · {{ bucket.session_time }} signed in</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Last sign-in</p>
+    <p class="mt-2 text-base font-extrabold text-slate-900">{{ local_datetime(bucket.last_signin) }}</p>
+    <p class="mt-1 text-xs text-slate-500">Most recent browser session</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Errors / corrections</p>
+    <p class="mt-2 text-xl font-extrabold text-red-700">{{ bucket.error_count }}</p>
+    <p class="mt-1 text-xs text-slate-500">Voids, deleted drafts, refunds</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Correction value</p>
+    <p class="mt-2 text-xl font-extrabold text-red-700">{{ money(bucket.error_amount) }}</p>
+    <p class="mt-1 text-xs text-slate-500">Voided invoices + refunds</p>
+  </article>
+</div>
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Sign-in sessions</h2>
+      <p class="panel-subtitle">Every staff sign-in recorded during this period.</p>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table soft-table min-w-[860px]">
+      <thead><tr><th>Signed in</th><th>Last seen / ended</th><th>Duration</th><th>IP address</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for item in bucket.sessions %}
+        <tr>
+          <td class="whitespace-nowrap text-xs text-slate-600">{{ local_datetime(item.session.created_at) }}</td>
+          <td class="whitespace-nowrap text-xs text-slate-600">{{ local_datetime(item.ended_at) }}</td>
+          <td class="whitespace-nowrap text-xs text-slate-600">{{ item.duration_label }}</td>
+          <td class="text-xs text-slate-500">{{ item.session.ip_address or '—' }}</td>
+          <td>
+            {% if item.active %}
+            <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Active</span>
+            {% else %}
+            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">Revoked</span>
+            {% if item.session.revoked_reason %}<span class="block text-[10px] text-slate-400">{{ item.session.revoked_reason }}</span>{% endif %}
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="py-6 text-center text-sm text-slate-500">No staff sign-ins in this period.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Guest check-ins handled</h2>
+      <p class="panel-subtitle">Rooms and guests checked in by this staff member.</p>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table soft-table min-w-[780px]">
+      <thead><tr><th>Check-in</th><th>Room</th><th>Guest</th><th>Status</th><th>Invoice</th></tr></thead>
+      <tbody>
+        {% for stay in bucket.stay_rows %}
+        <tr>
+          <td class="whitespace-nowrap text-xs text-slate-600">{{ local_datetime(stay.check_in) }}</td>
+          <td class="font-semibold text-slate-800">{{ stay.room_number or (stay.room.number if stay.room else '—') }}</td>
+          <td class="text-slate-700">{{ stay.guest_name or (stay.guest.name if stay.guest else '—') }}</td>
+          <td class="text-xs text-slate-600">{{ stay.status|replace('_', ' ')|title }}</td>
+          <td class="font-mono text-xs text-slate-600">{{ stay.invoice_number or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="py-6 text-center text-sm text-slate-500">No guest check-ins in this period.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Invoices handled</h2>
+      <p class="panel-subtitle">Non-draft invoices prepared by this staff member.</p>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table soft-table min-w-[860px]">
+      <thead><tr><th>Time</th><th>Invoice</th><th>Guest</th><th class="text-right">Total</th><th class="text-right">Discount</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for invoice in bucket.invoice_rows %}
+        <tr>
+          <td class="whitespace-nowrap text-xs text-slate-600">{{ local_datetime(invoice.issue_date) }}</td>
+          <td class="font-mono text-xs text-slate-700">{{ invoice.invoice_number }}</td>
+          <td class="text-slate-700">{{ invoice.guest_name or (invoice.guest.name if invoice.guest else '—') }}</td>
+          <td class="text-right tabular-nums font-semibold text-slate-800">{{ money(invoice.total) }}</td>
+          <td class="text-right tabular-nums soft-amber-text">{{ money(invoice.discount_amount + invoice.item_discount) }}</td>
+          <td><span class="rounded-full px-2 py-0.5 text-[10px] font-semibold {% if invoice.status == 'paid' %}bg-emerald-50 text-emerald-700{% elif invoice.status == 'void' %}bg-red-50 text-red-700{% else %}bg-amber-50 text-amber-700{% endif %}">{{ invoice.status|title }}</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="py-6 text-center text-sm text-slate-500">No invoices in this period.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Errors and corrections</h2>
+      <p class="panel-subtitle">Voided invoices, deleted drafts, refunds, and credit adjustments attributed to this staff member.</p>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table soft-table min-w-[860px]">
+      <thead><tr><th>Time</th><th>Type</th><th>Reference</th><th class="text-right">Amount</th><th>Detail</th></tr></thead>
+      <tbody>
+        {% for item in bucket.error_rows %}
+        <tr>
+          <td class="whitespace-nowrap text-xs text-slate-600">{{ local_datetime(item.when) }}</td>
+          <td><span class="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">{{ item.type }}</span></td>
+          <td class="font-mono text-xs text-slate-700">
+            {% if item.href %}<a class="hover:underline" href="{{ item.href }}">{{ item.reference }}</a>{% else %}{{ item.reference }}{% endif %}
+          </td>
+          <td class="text-right tabular-nums text-red-700">{% if item.amount is not none %}{{ money(item.amount) }}{% else %}—{% endif %}</td>
+          <td class="text-xs text-slate-500">{{ item.detail or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="py-6 text-center text-sm text-slate-500">No errors or corrections in this period.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Complete activity log</h2>
+      <p class="panel-subtitle">Audit trail for this staff account in the selected period, newest first.</p>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table soft-table min-w-[900px]">
+      <thead><tr><th>Time</th><th>Action</th><th>Entity</th><th>Detail</th></tr></thead>
+      <tbody>
+        {% for entry in bucket.audit_rows %}
+        <tr>
+          <td class="whitespace-nowrap text-xs text-slate-600">{{ local_datetime(entry.created_at) }}</td>
+          <td class="font-mono text-xs text-slate-700">{{ entry.action }}</td>
+          <td class="text-xs text-slate-500">{{ entry.entity }}{% if entry.entity_id %} · {{ entry.entity_id }}{% endif %}</td>
+          <td class="text-xs text-slate-600">{{ entry.detail }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="py-6 text-center text-sm text-slate-500">No recorded activity in this period.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

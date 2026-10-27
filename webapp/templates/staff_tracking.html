@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% set active_page = 'staff' %}
+{% block title %}Staff tracking{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">SYSTEM · STAFF TRACKING</p>
+    <h1 class="page-title">{{ users|length }} staff account{{ '' if users|length == 1 else 's' }}</h1>
+    <p class="page-subtitle">Sign-ins, guests checked in, customers served, discounts, and ledger corrections for the selected period.</p>
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    <a class="btn-secondary !px-3 !py-1.5 !text-xs" href="/staff">
+      <span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-users"></i></span>
+      Staff accounts
+    </a>
+    <a class="btn-secondary !px-3 !py-1.5 !text-xs" href="/staff/sessions">
+      <span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-arrows-clockwise"></i></span>
+      Active sessions
+    </a>
+  </div>
+</div>
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Tracking period</h2>
+      <p class="panel-subtitle">All figures below cover the selected dates in the hotel business day.</p>
+    </div>
+  </div>
+  <form method="get" action="/staff/tracking" class="flex flex-wrap items-end gap-3">
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-semibold text-slate-700">From</span>
+      <input class="form-input" type="date" name="start" value="{{ start }}">
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-semibold text-slate-700">To</span>
+      <input class="form-input" type="date" name="end" value="{{ end }}">
+    </label>
+    <button class="btn-primary" type="submit">Apply</button>
+    <a class="btn-secondary" href="/staff/tracking">This month</a>
+  </form>
+</section>
+
+<div class="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+  <article class="metric-card-hero">
+    <p class="section-label">Sales</p>
+    <p class="mt-2 text-2xl font-extrabold text-slate-900">{{ money(totals.sales) }}</p>
+    <p class="mt-1 text-xs text-slate-500">Issued and paid invoices</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Customers</p>
+    <p class="mt-2 text-xl font-extrabold text-slate-900">{{ totals.customers }}</p>
+    <p class="mt-1 text-xs text-slate-500">Distinct guests served</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Guest check-ins</p>
+    <p class="mt-2 text-xl font-extrabold text-slate-900">{{ totals.checkins }}</p>
+    <p class="mt-1 text-xs text-slate-500">Stays handled</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Discounts</p>
+    <p class="mt-2 text-xl font-extrabold soft-amber-text">{{ money(totals.discount) }}</p>
+    <p class="mt-1 text-xs text-slate-500">Bill + item discounts</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Staff sign-ins</p>
+    <p class="mt-2 text-xl font-extrabold text-[color:var(--color-primary)]">{{ totals.signins }}</p>
+    <p class="mt-1 text-xs text-slate-500">{{ totals.active_sessions }} active now · {{ totals.session_time }}</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Errors / corrections</p>
+    <p class="mt-2 text-xl font-extrabold text-red-700">{{ totals.errors }}</p>
+    <p class="mt-1 text-xs text-slate-500">{{ money(totals.error_amount) }} voided or refunded</p>
+  </article>
+</div>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Staff summary</h2>
+      <p class="panel-subtitle">Click a staff member to see their full activity, sessions, and correction history.</p>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table min-w-[1120px]">
+      <thead>
+        <tr>
+          <th>Staff</th>
+          <th>Last sign-in</th>
+          <th class="text-right">Sign-ins</th>
+          <th class="text-right">Guest check-ins</th>
+          <th class="text-right">Customers</th>
+          <th class="text-right">Sales</th>
+          <th class="text-right">Discounts</th>
+          <th class="text-right">Errors</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for person in users %}
+        {% set bucket = buckets[person.id] %}
+        <tr>
+          <td>
+            <p class="font-semibold text-slate-800">{{ person.full_name or person.username }}</p>
+            <p class="text-xs text-slate-500">{{ person.role|title }} · {{ person.username }}{% if not person.active %} · disabled{% endif %}</p>
+          </td>
+          <td class="whitespace-nowrap text-xs text-slate-600">{{ local_datetime(bucket.last_signin) }}</td>
+          <td class="text-right tabular-nums">
+            {{ bucket.sessions|length }}
+            {% if bucket.active_sessions %}<span class="ml-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">{{ bucket.active_sessions }} live</span>{% endif %}
+          </td>
+          <td class="text-right tabular-nums">{{ bucket.stay_rows|length }}</td>
+          <td class="text-right tabular-nums">{{ bucket.customers }}</td>
+          <td class="text-right tabular-nums font-semibold text-slate-800">{{ money(bucket.sales) }}</td>
+          <td class="text-right tabular-nums soft-amber-text">{{ money(bucket.discount) }}</td>
+          <td class="text-right tabular-nums">
+            {% if bucket.error_count %}
+            <span class="font-semibold text-red-700">{{ bucket.error_count }}</span>
+            <span class="block text-[10px] text-slate-400">{{ money(bucket.error_amount) }}</span>
+            {% else %}
+            <span class="text-slate-400">0</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <a class="btn-secondary !px-2.5 !py-1 !text-xs" href="/staff/tracking/{{ person.id }}?start={{ start }}&end={{ end }}">Details</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="py-8 text-center text-sm text-slate-500">No staff accounts found.</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th>Total</th>
+          <th>—</th>
+          <th class="text-right">{{ totals.signins }}</th>
+          <th class="text-right">{{ totals.checkins }}</th>
+          <th class="text-right">{{ totals.customers }}</th>
+          <th class="text-right">{{ money(totals.sales) }}</th>
+          <th class="text-right">{{ money(totals.discount) }}</th>
+          <th class="text-right">{{ totals.errors }}</th>
+          <th></th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</section>
+{% endblock %}

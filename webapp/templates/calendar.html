@@ -41,8 +41,11 @@
           {% if cell %}
           <a class="calendar-day {% if cell.other_month %}calendar-day-other{% endif %} {% if cell.iso == selected_iso %}calendar-day-selected{% elif cell.iso == today_iso %}calendar-day-today{% endif %}" href="/calendar?month={{ cell.date.strftime('%Y-%m') }}&date={{ cell.iso }}" aria-label="{{ cell.iso }}">
             <div class="calendar-day-header">
-              <span class="calendar-day-number">{{ cell.date.day }}</span>
-              {% set _has = cell.invoices>0 or cell.payment_count>0 or (cell.checkins+cell.checkouts)>0 or (cell.bookings+cell.orders+cell.guests)>0 %}
+              <span class="flex min-w-0 items-center gap-1.5">
+                <span class="calendar-day-number">{{ cell.date.day }}</span>
+                {% if cell.rooms>0 %}<span class="calendar-room-badge" title="Rooms booked or packed on this day">{{ cell.rooms }} room{{ 's' if cell.rooms != 1 else '' }}</span>{% endif %}
+              </span>
+              {% set _has = cell.invoices>0 or cell.payment_count>0 or (cell.checkins+cell.checkouts)>0 or (cell.bookings+cell.orders+cell.guests)>0 or cell.rooms>0 %}
               {% if _has %}<span class="calendar-has-indicator"></span>{% endif %}
             </div>
             <div class="calendar-day-metrics">
@@ -64,6 +67,7 @@
       <span class="legend-dot-label"><span class="metric-dot metric-dot-green"></span>Payments received</span>
       <span class="legend-dot-label"><span class="metric-dot metric-dot-dark"></span>Arrivals / departures</span>
       <span class="legend-dot-label"><span class="metric-dot metric-dot-amber"></span>Bookings - orders - new customers</span>
+      <span class="legend-dot-label"><span class="metric-dot" style="background:#7D9B7A;"></span>Rooms booked or packed that day</span>
     </div>
   </section>
 

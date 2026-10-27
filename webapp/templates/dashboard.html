@@ -13,7 +13,7 @@
   </div>
   <div class="flex flex-wrap items-center gap-2">
     <a href="/dashboard/sales" class="btn-secondary"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;"><i class="ph ph-chart-pie-slice"></i></span>Sales details</a>
-    <a href="/reports" class="hidden btn-secondary sm:inline-flex"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;"><i class="ph ph-chart-bar"></i></span>View reports</a>
+    {% if current_user.role == 'admin' %}<a href="/reports" class="hidden btn-secondary sm:inline-flex"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;"><i class="ph ph-chart-bar"></i></span>View reports</a>{% endif %}
     <a href="/billing/create" class="btn-primary"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;font-size:.95rem;">{{ nav_icon('plus') }}</span>New Invoice</a>
   </div>
 </div>
@@ -34,9 +34,9 @@
       </div>
       <span class="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider" style="border:1px solid rgba(212,192,138,.55);background:rgba(232,213,163,.35);color:var(--accent-on-light);">Live</span>
     </div>
-    <div class="mt-6 h-4 overflow-hidden rounded-full" style="background:rgba(27,58,42,.08);" role="progressbar" aria-label="Occupancy" aria-valuemin="0" aria-valuemax="{{ capacity }}" aria-valuenow="{{ occupied }}">
+    <div class="relative mt-6 h-4 overflow-hidden rounded-full" style="background:rgba(27,58,42,.08);" role="progressbar" aria-label="Occupancy" aria-valuemin="0" aria-valuemax="{{ capacity }}" aria-valuenow="{{ occupied }}">
       <div class="h-full rounded-full" data-grow="width" style="width: {{ occupancy_rate }}%; background:linear-gradient(90deg, #8FAE90, #6b8769); transition:width .7s cubic-bezier(.2,.8,.2,1);"></div>
-      <span class="absolute inset-0 rounded-full opacity-10" aria-hidden="true"></span>
+      <span class="absolute inset-0 rounded-full opacity-10" aria-hidden="true" style="pointer-events: none;"></span>
     </div>
     <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
       <a href="/rooms" class="stat-card stat-card-occupied" aria-label="View occupied rooms"><span class="stat-card-label"><i class="ph ph-bed"></i><span class="sr-only">Occupied</span>Occupied</span><strong class="stat-card-value">{{ occupied }}</strong></a>

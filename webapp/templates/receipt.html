@@ -20,12 +20,12 @@ body {
 .copy { page-break-after: always; }
 .copy:last-child { page-break-after: auto; }
 .toolbar {
-  max-width: {{ printer_config.paper }}mm;
+  max-width: 760px;
   margin: 12px auto 0;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   font-family: Inter, 'Noto Sans Devanagari', Arial, sans-serif;
   font-size: 12px;
@@ -38,8 +38,19 @@ body {
   color: #fff;
   text-decoration: none;
   cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
 }
+.toolbar .primary { background: linear-gradient(135deg, #f0c75e, #d4a017); color: #1b3a2a; font-weight: 600; }
 .toolbar .secondary { background: #3f5b4c; }
+.share-status {
+  max-width: 760px;
+  margin: 8px auto 0;
+  font-family: Inter, 'Noto Sans Devanagari', Arial, sans-serif;
+  font-size: 12px;
+  color: #3f5b4c;
+  text-align: center;
+}
 @media screen {
   body { background: #efe7d2; padding: 12px; }
   .copy {
@@ -49,12 +60,12 @@ body {
     padding: 4mm;
     box-shadow: 0 2px 6px rgba(27,58,42,.28);
   }
-  .toolbar { width: {{ printer_config.paper }}mm; }
+  .toolbar { width: 100%; max-width: 760px; }
 }
 @media print {
   body { background: #fff; padding: 0; }
   .copy { box-shadow: none; padding: 0; }
-  .toolbar { display: none !important; }
+  .toolbar, .share-status { display: none !important; }
 }
 .head { text-align: center; font-size: 9pt; font-weight: bold; margin: 1px 0; }
 .head.small { font-size: 7pt; font-weight: normal; }
@@ -81,12 +92,16 @@ body {
 </head>
 <body>
 <div class="toolbar">
-  <button type="button" onclick="window.print()" style="background:linear-gradient(135deg,#f0c75e,#d4a017);color:#1b3a2a;font-weight:600">Print Receipt</button>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;">
-    <a href="/billing/invoices/{{ invoice.id }}/receipt.pdf">Receipt PDF</a>
-    <a class="secondary" href="/invoices">Back to invoices</a>
-  </div>
+  <button type="button" class="primary" onclick="window.print()">Print Receipt</button>
+  {% if invoice.status not in ('draft', 'void') %}
+  <button type="button" onclick="shareInvoice(this, 'email')" data-pdf-url="/billing/invoices/{{ invoice.id }}/pdf" data-invoice-number="{{ invoice.invoice_number }}" data-guest-name="{{ invoice.guest_name or invoice.guest.name }}" data-recipient="{{ invoice.guest.email or '' }}" data-items="{{ invoice.items|map(attribute='description')|join(', ') }}" data-total="{{ invoice.total }}" data-paid="{{ invoice.paid_amount }}" data-balance="{{ invoice.balance }}">Email</button>
+  <button type="button" onclick="shareInvoice(this, 'whatsapp')" data-pdf-url="/billing/invoices/{{ invoice.id }}/pdf" data-invoice-number="{{ invoice.invoice_number }}" data-guest-name="{{ invoice.guest_name or invoice.guest.name }}" data-recipient="{{ invoice.guest_phone or invoice.guest.phone or '' }}" data-items="{{ invoice.items|map(attribute='description')|join(', ') }}" data-total="{{ invoice.total }}" data-paid="{{ invoice.paid_amount }}" data-balance="{{ invoice.balance }}">WhatsApp</button>
+  {% endif %}
+  <a href="/billing/invoices/{{ invoice.id }}/invoice">View Invoice</a>
+  <a href="/billing/invoices/{{ invoice.id }}/receipt.pdf">Receipt PDF</a>
+  <a class="secondary" href="/invoices">Back to invoices</a>
 </div>
+<p id="share-status" class="share-status" role="status" aria-live="polite"></p>
 {% for _ in range(printer_config.copies) %}
 <section class="copy">
 {% if printer_config.show_header %}
@@ -147,5 +162,69 @@ body {
 {% if auto_print %}
 <script>window.addEventListener('load', function(){ window.print(); });</script>
 {% endif %}
+<script>
+async function shareInvoice(button, channel) {
+  const {pdfUrl, invoiceNumber, guestName, recipient, items, total, paid, balance} = button.dataset;
+  const email = channel === 'email';
+  const subject = `Arati Hotel invoice ${invoiceNumber}`;
+  const message = `Hello ${guestName},\n\nPlease find invoice ${invoiceNumber} attached.\nItems: ${items}\nTotal: NPR ${Number(total).toFixed(2)}\nPaid: NPR ${Number(paid).toFixed(2)}\nBalance due: NPR ${Number(balance).toFixed(2)}\n\nThank you for staying with Arati Hotel.`;
+  const status = document.getElementById('share-status');
+  const phoneDigits = recipient.replace(/\D/g, '');
+  const whatsappNumber = phoneDigits.startsWith('977')
+    ? phoneDigits
+    : phoneDigits.startsWith('0')
+      ? `977${phoneDigits.slice(1)}`
+      : phoneDigits.length === 10 && phoneDigits.startsWith('9')
+        ? `977${phoneDigits}`
+        : phoneDigits;
+  const fallbackUrl = email
+    ? `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`
+    : `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+  const supportsFileShare = typeof navigator.share === 'function'
+    && typeof navigator.canShare === 'function'
+    && navigator.canShare({files: [new File([''], `${invoiceNumber}.pdf`, {type: 'application/pdf'})]});
+
+  if (!supportsFileShare) {
+    const shareWindow = window.open(fallbackUrl, '_blank', 'noopener');
+    const download = document.createElement('a');
+    download.href = pdfUrl;
+    download.download = `${invoiceNumber}.pdf`;
+    download.click();
+    status.textContent = shareWindow
+      ? 'The PDF is downloading. Attach it to the ready-to-send message in the opened app.'
+      : 'The PDF is downloading. Open your email or WhatsApp app and attach it to the ready-to-send message.';
+    return;
+  }
+
+  button.disabled = true;
+  status.textContent = 'Preparing invoice PDF…';
+  try {
+    const response = await fetch(pdfUrl, {credentials: 'same-origin'});
+    if (!response.ok) {
+      throw new Error(`Invoice PDF request failed (${response.status}).`);
+    }
+    const blob = await response.blob();
+    if (blob.type !== 'application/pdf') {
+      throw new Error('The invoice PDF could not be generated.');
+    }
+    const file = new File([blob], `${invoiceNumber}.pdf`, {type: 'application/pdf'});
+    if (!navigator.canShare({files: [file]})) {
+      throw new Error('This device cannot share the generated PDF as an attachment.');
+    }
+    await navigator.share({files: [file], title: subject, text: message});
+    status.textContent = 'Invoice shared. Complete sending in the selected app.';
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      status.textContent = 'Sharing cancelled.';
+    } else {
+      console.error('Unable to share invoice PDF:', error);
+      status.textContent = `Could not share the invoice PDF: ${error.message}`;
+    }
+  } finally {
+    button.disabled = false;
+  }
+}
+</script>
+
 </body>
 </html>

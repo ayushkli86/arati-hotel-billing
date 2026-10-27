@@ -20,7 +20,7 @@
       <label><span class="field-label"><i class="ph ph-currency-inr"></i>Nightly rate (NPR)</span><input id="room-rate" type="number" min="0" step=".01" name="nightly_rate" value="{{ form_values.nightly_rate|default('') }}" class="form-input"><span class="mt-1 block text-xs text-slate-500">Leave blank to use the selected type rate. A different amount becomes a room-specific override.</span></label>
       <div class="flex items-end"><button class="btn-primary w-full"><i class="ph ph-plus"></i>Add room</button></div>
     </form>
-    {% if not room_types %}<p class="mt-3 text-xs font-medium text-amber-700">Add an active item in the <a class="font-bold underline" href="/catalog?category=room">Room type catalog</a> before creating rooms.</p>{% endif %}
+    {% if not room_types %}<p class="mt-3 text-xs font-medium text-amber-700">{% if current_user.role == 'admin' %}Add an active item in the <a class="font-bold underline" href="/catalog?category=room">Room type catalog</a> before creating rooms.{% else %}Ask an administrator to add an active room type in the catalog before creating rooms.{% endif %}</p>{% endif %}
   </section>
   <section class="panel !p-0">
     <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4"><h2 class="panel-title"><i class="ph ph-bed" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Rooms</h2><span class="text-xs text-slate-500">{{ rooms|selectattr('active')|list|length }} active · {{ rooms|rejectattr('active')|list|length }} archived</span></div>

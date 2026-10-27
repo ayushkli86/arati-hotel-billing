@@ -182,6 +182,7 @@ class Invoice(Base):
     room: Mapped[Room | None] = relationship()
     items: Mapped[list["InvoiceItem"]] = relationship(back_populates="invoice", cascade="all, delete-orphan")
     payments: Mapped[list["Payment"]] = relationship(back_populates="invoice", cascade="all, delete-orphan")
+    kots: Mapped[list["Kot"]] = relationship(back_populates="invoice", cascade="all, delete-orphan")
 
 
 class InvoiceItem(Base):
@@ -210,6 +211,43 @@ class InvoiceItem(Base):
     invoice: Mapped[Invoice] = relationship(back_populates="items")
     catalog_item = relationship("CatalogItem")
     added_by = relationship("User")
+    kot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("kots.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    kot: Mapped["Kot | None"] = relationship(back_populates="items_rows")
+
+
+class Kot(Base):
+    """Kitchen Order Ticket: a kitchen-bound snapshot of restaurant items."""
+
+    __tablename__ = "kots"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kot_number: Mapped[str] = mapped_column(String(40), unique=True, index=True, default="")
+    invoice_id: Mapped[int | None] = mapped_column(
+        ForeignKey("invoices.id", ondelete="CASCADE"), nullable=True, index=True,
+    )
+    table_number: Mapped[str] = mapped_column(String(40), default="", index=True)
+    guest_id: Mapped[int | None] = mapped_column(
+        ForeignKey("guests.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    guest_name: Mapped[str] = mapped_column(String(160), default="")
+    items: Mapped[str] = mapped_column(Text, default="[]")
+    total: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    status: Mapped[str] = mapped_column(String(30), default="open", index=True)
+    business_date: Mapped[str] = mapped_column(String(20), default="", index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=utcnow, index=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+    )
+    invoice: Mapped[Invoice | None] = relationship(back_populates="kots")
+    guest: Mapped[Guest | None] = relationship()
+    items_rows: Mapped[list["InvoiceItem"]] = relationship(back_populates="kot")
+
+    @property
+    def date(self) -> str:
+        return self.created_at.strftime("%Y-%m-%d %H:%M") if self.created_at else ""
 
 
 class CatalogItem(Base):
@@ -218,6 +256,7 @@ class CatalogItem(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(160), index=True)
     category: Mapped[str] = mapped_column(String(30), index=True)
+    menu_group: Mapped[str] = mapped_column(String(80), default="", index=True)
     rate: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     item_code: Mapped[str] = mapped_column(String(80), default="")

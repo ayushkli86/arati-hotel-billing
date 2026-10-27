@@ -8,7 +8,7 @@
     <form hx-post="/rooms/{{ room.id }}/reserve" hx-target="#modal-root" hx-swap="innerHTML" class="mt-4 space-y-4" x-data="{fillGuest(event){const guest=event.target.selectedOptions[0];this.$refs.name.value=guest.dataset.name||'';this.$refs.phone.value=guest.dataset.phone||'';this.$refs.email.value=guest.dataset.email||'';this.$refs.address.value=guest.dataset.address||''}}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label class="block">
-        <span class="field-label">Select existing guest</span>
+        <span class="field-label">Guest</span>
         <select name="guest_id" class="form-input" @change="fillGuest($event)">
           <option value="">New guest</option>
           {% for guest in guests %}

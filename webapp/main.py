@@ -21,7 +21,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.exceptions import RequestValidationError
 from markupsafe import escape as html_escape
 from fastapi.responses import (
-    FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response,
+    FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response,
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -39,9 +39,10 @@ from .nepali import amount_in_words as amount_in_words_ne, label as source_invoi
 
 from . import analytics as web_analytics, auth, daily_closing, excel_analysis, models, reporting, whatsapp
 from .database import Base, SessionLocal, engine, get_db
+from .seed_menu import MENU as MENU_ITEMS
 from .models import (
     AuditLog, CatalogItem, DailyReport, Guest, HotelSetting, Invoice, InvoiceItem,
-    Order, Payment, Refund, Reservation, Room, RoomCharge, Stay, User, UserSession,
+    Kot, Order, Payment, Refund, Reservation, Room, RoomCharge, Stay, User, UserSession,
     WhatsAppConversation, WhatsAppMessage,
 )
 from .services import guest_service, invoice_service, payment_service, room_service, stay_service
@@ -142,6 +143,62 @@ def billing_label(key: str, language: str) -> str:
 
 templates.env.globals["billing_label"] = billing_label
 templates.env.globals["amount_in_words_ne"] = amount_in_words_ne
+
+
+def vat_taxable_base(vat_amount, vat_rate) -> Decimal:
+    """Reverse the VAT amount back to its taxable base, rounded to paisa."""
+    try:
+        rate = Decimal(str(vat_rate or 0))
+        vat = Decimal(str(vat_amount or 0))
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal("0.00")
+    if rate <= 0:
+        return Decimal("0.00")
+    return (vat * Decimal("100") / rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def pad_money(value) -> str:
+    """Summary totals with thousands separators and always two paisa digits."""
+    try:
+        amount = Decimal(str(value or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError):
+        amount = Decimal("0.00")
+    return f"{amount:,.2f}"
+
+
+def rs_ps(value) -> tuple[str, str]:
+    """Split an amount into the (rupees, paisa) columns of the print layout."""
+    try:
+        paisa_total = int(
+            (Decimal(str(value or 0)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
+    except (InvalidOperation, ValueError, TypeError):
+        paisa_total = 0
+    sign = "-" if paisa_total < 0 else ""
+    rupees, paisa = divmod(abs(paisa_total), 100)
+    return f"{sign}{rupees:,}", f"{paisa:02d}"
+
+
+def bs_date_slashes(value) -> str:
+    """Bikram Sambat date as YYYY/MM/DD, or blank when unavailable."""
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        value = value.date()
+    if isinstance(value, date):
+        iso = value.isoformat()
+    else:
+        iso = str(value)[:10]
+    converted = to_bs(iso)
+    if not converted:
+        return ""
+    return converted[0].replace("-", "/")
+
+
+templates.env.globals["vat_taxable_base"] = vat_taxable_base
+templates.env.globals["pad_money"] = pad_money
+templates.env.globals["rs_ps"] = rs_ps
+templates.env.globals["bs_date_slashes"] = bs_date_slashes
 
 
 def local_datetime(value: datetime | None, fmt: str = "%d %b · %H:%M") -> str:
@@ -299,12 +356,14 @@ def upgrade_database(bind=engine) -> None:
             "category": "VARCHAR(30) NOT NULL DEFAULT 'food'",
             "unit": "VARCHAR(30) NOT NULL DEFAULT 'pcs'",
             "taxable": "BOOLEAN NOT NULL DEFAULT 1",
+            "kot_id": "INTEGER REFERENCES kots(id)",
         },
         "catalog_items": {
             "item_code": "VARCHAR(80) NOT NULL DEFAULT ''",
             "unit": "VARCHAR(30) NOT NULL DEFAULT 'pcs'",
             "taxable": "BOOLEAN NOT NULL DEFAULT 1",
             "sort_order": "INTEGER NOT NULL DEFAULT 0",
+            "menu_group": "VARCHAR(80) NOT NULL DEFAULT ''",
         },
         "payments": {
             "invoice_number": "VARCHAR(40) NOT NULL DEFAULT ''",
@@ -660,10 +719,24 @@ def check_csrf(request: Request, submitted: str | None) -> None:
         raise HTTPException(status_code=403, detail="Your form expired. Refresh the page and try again.")
 
 
+STAFF_ALLOWED_SECTIONS = (
+    "/dashboard", "/orders", "/billing", "/invoices", "/payments",
+    "/menu", "/rooms", "/reservations", "/customers", "/kots",
+    "/password/change",
+)
+
+
 def user_or_redirect(request: Request, db: Session) -> User:
     user = auth.current_user(request, db)
     if user.must_change_password and request.url.path != "/password/change":
         raise HTTPException(303, headers={"Location": "/password/change"})
+    if user.role != "admin":
+        path = request.url.path
+        if not any(path == section or path.startswith(f"{section}/") for section in STAFF_ALLOWED_SECTIONS):
+            raise HTTPException(
+                403,
+                "Staff accounts can only access the Operations and Finance sections.",
+            )
     return user
 
 
@@ -2746,7 +2819,7 @@ def _billing_page_data(db: Session) -> dict:
             select(Room).where(Room.active.is_(True)).order_by(Room.number)
         ).all() if not _is_demo_room(room)],
         "printer_logo_src": _printer_logo_source(settings),
-        "catalog": db.scalars(select(CatalogItem).where(CatalogItem.active.is_(True)).order_by(CatalogItem.category, CatalogItem.name)).all(),
+        "catalog": db.scalars(select(CatalogItem).where(CatalogItem.active.is_(True)).order_by(CatalogItem.category, CatalogItem.sort_order, CatalogItem.name)).all(),
         "guests": [guest for guest in db.scalars(
             select(Guest).order_by(Guest.name)
         ).all() if not _is_demo_guest(guest)],
@@ -2762,6 +2835,7 @@ def _billing_page_data(db: Session) -> dict:
         "payment_methods": _payment_methods(db),
         "occupied_stays": _occupied_stay_data(db),
         "draft_payload": None,
+        "draft_kots": [],
         "prefill_invoice_number": None,
     }
 
@@ -2979,6 +3053,82 @@ def _next_billing_number(db: Session) -> str:
             return candidate
 
 
+def _next_kot_number(db: Session) -> str:
+    prefix = f"KOT-{local_now():%Y%m%d}-"
+    count = db.scalar(select(func.count(Kot.id)).where(Kot.kot_number.like(f"{prefix}%"))) or 0
+    while True:
+        count += 1
+        candidate = f"{prefix}{count:04d}"
+        if not db.scalar(select(Kot.id).where(Kot.kot_number == candidate)):
+            return candidate
+
+
+def _kot_items(kot: Kot) -> list[dict]:
+    try:
+        data = json.loads(kot.items or "[]")
+    except (TypeError, ValueError):
+        return []
+    return [row for row in data if isinstance(row, dict)] if isinstance(data, list) else []
+
+
+def _kot_dict(kot: Kot) -> dict:
+    return {
+        "id": kot.id,
+        "kot_number": kot.kot_number,
+        "invoice_id": kot.invoice_id,
+        "table_number": kot.table_number,
+        "guest_id": kot.guest_id,
+        "guest_name": kot.guest_name or (kot.guest.full_name or kot.guest.name if kot.guest else "") or "Walk-in guest",
+        "items": _kot_items(kot),
+        "total": float(kot.total or 0),
+        "status": kot.status,
+        "date": local_datetime(kot.created_at, "%Y-%m-%d %H:%M") if kot.created_at else "",
+        "business_date": kot.business_date,
+    }
+
+
+def _clean_kot_items(raw) -> list[dict]:
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("Add at least one restaurant item to this KOT.")
+    if len(raw) > 200:
+        raise ValueError("A KOT can hold at most 200 items.")
+    cleaned = []
+    for index, row in enumerate(raw, start=1):
+        if not isinstance(row, dict):
+            raise ValueError("Invalid KOT item.")
+        particular = str(row.get("particular") or row.get("description") or "").strip()[:160]
+        if not particular:
+            raise ValueError("Each KOT item needs a particular.")
+        try:
+            qty = Decimal(str(row.get("qty", row.get("quantity", 1))))
+            rate = Decimal(str(row.get("rate", 0)))
+        except (InvalidOperation, ValueError, TypeError) as exc:
+            raise ValueError("KOT quantities and rates must be valid numbers.") from exc
+        _finite(qty, "KOT quantity")
+        _finite(rate, "KOT rate")
+        if qty <= 0 or qty > MAX_QUANTITY_INPUT:
+            raise ValueError(f"KOT quantity must be between 0 and {MAX_QUANTITY_INPUT}.")
+        if rate < 0 or rate > MAX_MONEY_INPUT:
+            raise ValueError(f"KOT rate must be between 0 and {MAX_MONEY_INPUT}.")
+        amount = (qty * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        cleaned.append({
+            "sn": index,
+            "particular": particular,
+            "qty": float(qty),
+            "rate": float(rate),
+            "amount": float(amount),
+            "key": str(row.get("key", ""))[:80],
+        })
+    return cleaned
+
+
+def _kot_guest(db: Session, guest_id) -> Guest | None:
+    raw = str(guest_id or "").strip()
+    if not raw.isdigit():
+        return None
+    return db.get(Guest, int(raw))
+
+
 @app.post("/billing/create/walkin")
 async def billing_create_walkin(request: Request, db: Session = Depends(get_db)):
     user = user_or_redirect(request, db)
@@ -3036,6 +3186,11 @@ def new_invoice_page(
             raise HTTPException(404, "Draft invoice not found.")
         _draft_access(draft, user)
         page_data["invoice_number"] = draft.invoice_number
+        page_data["draft_kots"] = [
+            _kot_dict(kot) for kot in db.scalars(
+                select(Kot).where(Kot.invoice_id == draft.id).order_by(Kot.id)
+            ).all()
+        ]
         page_data["draft_payload"] = {
             "id": draft.id,
             "guest_id": draft.guest_id,
@@ -3068,6 +3223,7 @@ def new_invoice_page(
                     "discount": float(item.discount_amount),
                     "taxable": item.taxable,
                     "category": item.category,
+                    "kot_id": item.kot_id,
                 }
                 for item in draft.items
             ],
@@ -3106,6 +3262,7 @@ def new_invoice_page(
                             "discount": float(item.discount_amount),
                             "taxable": item.taxable,
                             "category": item.category,
+                            "kot_id": item.kot_id,
                         }
                         for item in existing_invoice.items
                     ]
@@ -3219,6 +3376,8 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
         room_ids = []
         parsed = []
         lines = []
+        row_keys = []
+        row_kot_ids = []
         for row in rows:
             if not isinstance(row, dict):
                 raise ValueError("Invalid invoice item.")
@@ -3258,6 +3417,9 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
             )
             lines.append(line)
             parsed.append((line, room_id))
+            row_keys.append(str(row.get("key", ""))[:80])
+            raw_kot_id = str(row.get("kot_id", "") or "").strip()
+            row_kot_ids.append(int(raw_kot_id) if raw_kot_id.isdigit() else None)
         for room_id in room_ids:
             room = db.get(Room, room_id)
             if room is None:
@@ -3278,6 +3440,27 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
         action = str(form.get("action", "issue"))
         if action not in {"draft", "issue", "print", "pdf", "preview"}:
             raise ValueError("Choose a valid invoice action.")
+        try:
+            kot_pages_raw = json.loads(str(form.get("kots_data_json", "[]") or "[]"))
+        except (TypeError, ValueError):
+            kot_pages_raw = []
+        if not isinstance(kot_pages_raw, list):
+            raise ValueError("Invalid KOT data.")
+        if len(kot_pages_raw) > 50:
+            raise ValueError("Too many KOT pages on one invoice.")
+        kot_pages = []
+        for page in kot_pages_raw:
+            if not isinstance(page, dict):
+                continue
+            raw_kot_items = page.get("items")
+            if not isinstance(raw_kot_items, list) or not raw_kot_items:
+                continue
+            kot_pages.append({
+                "table_number": str(page.get("tableNo") or page.get("table_number") or "").strip()[:40],
+                "guest_id": str(page.get("guestId") or page.get("guest_id") or "").strip(),
+                "guest_name": str(page.get("guestName") or page.get("guest_name") or "").strip()[:160],
+                "items": _clean_kot_items(raw_kot_items),
+            })
         invoice_type = str(form.get("invoice_type", "Tax Invoice"))
         if invoice_type not in {"Tax Invoice", "Bill of Supply", "Proforma"}:
             raise ValueError("Choose Tax Invoice, Bill of Supply, or Proforma.")
@@ -3396,7 +3579,8 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
             db.add(guest)
             db.flush()
         guest.name = guest_name
-        guest.phone = str(form.get("guest_phone", "")).strip()[:40]
+        guest_phone_value = str(form.get("guest_phone", "")).strip()[:40]
+        guest.phone = guest_phone_value or None
         guest.email = str(form.get("guest_email", "")).strip()[:180]
         guest.address = str(form.get("guest_address", "")).strip()[:240]
         guest.pan_vat_number = str(form.get("guest_pan", "")).strip()[:80]
@@ -3452,7 +3636,7 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
         invoice.nights = nights
         invoice.bill_date = invoice_date.date().isoformat()
         invoice.guest_name = guest.name
-        invoice.guest_phone = guest.phone
+        invoice.guest_phone = guest.phone or ""
         invoice.guest_address = guest.address
         invoice.guest_pan = guest.pan_vat_number
         invoice.room_number = db.get(Room, room_ids[0]).number if room_ids else ""
@@ -3474,7 +3658,8 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
         invoice.received_by = str(form.get("received_by", "")).strip()[:80]
         invoice.user_id = user.id
         invoice.items.clear()
-        for line, _room_id in parsed:
+        created_items = []
+        for (line, _room_id), row_key, row_kot_id in zip(parsed, row_keys, row_kot_ids):
             line_total = Decimal(str(line.total))
             line_discount = Decimal(str(line.discount))
             line_totals = compute_totals(
@@ -3482,13 +3667,61 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
                 bill_type=bill_type,
             )
             line_vat = Decimal(str(line_totals.vat))
-            invoice.items.append(InvoiceItem(
+            item_row = InvoiceItem(
                 description=line.description, quantity=line.qty, rate=line.unit_price,
                 discount_amount=line_discount, vat_amount=line_vat,
                 amount=line_total - line_discount + line_vat,
                 taxable=line.taxable, category=line.category,
-            ))
+                kot_id=row_kot_id,
+            )
+            invoice.items.append(item_row)
+            created_items.append((item_row, row_key, row_kot_id))
         db.add(invoice)
+        db.flush()
+        for linked_kot_id in {kid for kid in row_kot_ids if kid}:
+            linked_kot = db.get(Kot, linked_kot_id)
+            if linked_kot is not None and linked_kot.invoice_id is None:
+                linked_kot.invoice_id = invoice.id
+        for page in kot_pages:
+            kot_guest = _kot_guest(db, page["guest_id"]) or guest
+            kot = Kot(
+                kot_number=_next_kot_number(db),
+                invoice_id=invoice.id,
+                table_number=page["table_number"],
+                guest_id=kot_guest.id if kot_guest else None,
+                guest_name=(
+                    (kot_guest.full_name or kot_guest.name) if kot_guest
+                    else (page["guest_name"] or guest.name)
+                ),
+                items=json.dumps(page["items"]),
+                total=sum((Decimal(str(row["amount"])) for row in page["items"]), Decimal("0.00")),
+                status="saved",
+                business_date=invoice_date.date().isoformat(),
+                created_at=local_now().astimezone(timezone.utc).replace(tzinfo=None),
+                user_id=user.id,
+            )
+            db.add(kot)
+            db.flush()
+            for kot_row in page["items"]:
+                key = kot_row.get("key")
+                target = next(
+                    (item_row for item_row, item_key, _kid in created_items
+                     if key and item_key == key),
+                    None,
+                )
+                if target is None:
+                    target = next(
+                        (item_row for item_row, _item_key, kid in created_items
+                         if kid is None and item_row.category in {"restaurant", "food"}
+                         and item_row.description == kot_row["particular"]
+                         and float(item_row.quantity) == kot_row["qty"]
+                         and float(item_row.rate) == kot_row["rate"]),
+                        None,
+                    )
+                if target is not None and target.kot_id is None:
+                    target.kot_id = kot.id
+            _audit(db, user, "kot.create", "kot", kot.kot_number,
+                   f"{page['table_number'] or 'Walk-in'} · {len(page['items'])} items")
         if action != "draft":
             # The invoice now carries the stay total; keep the room occupied
             # and let checkout settle this invoice instead of issuing a new one.
@@ -3529,8 +3762,8 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
         ), status_code=303)
     if action == "print":
         return RedirectResponse(toast_url(
-            f"/billing/invoices/{invoice.id}/print",
-            f"Invoice {invoice.invoice_number} printed.",
+            f"/billing/invoices/{invoice.id}/receipt",
+            f"Receipt {invoice.invoice_number} ready to print.",
             "success",
         ), status_code=303)
     if action == "pdf":
@@ -3543,6 +3776,123 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
         f"/invoices?q={invoice.invoice_number}",
         f"Invoice {invoice.invoice_number} created for {invoice.guest_name}.",
     ), status_code=303)
+
+
+@app.get("/kots", response_class=HTMLResponse)
+def kots_page(
+    request: Request, invoice_id: int | None = None, db: Session = Depends(get_db),
+):
+    user_or_redirect(request, db)
+    query = select(Kot).options(selectinload(Kot.guest)).order_by(Kot.created_at.desc(), Kot.id.desc())
+    if invoice_id is not None:
+        query = query.where(Kot.invoice_id == invoice_id)
+    kots = [_kot_dict(kot) for kot in db.scalars(query).all()]
+    return render(request, "kots.html", db, {
+        "kots": kots,
+        "invoice_id": invoice_id,
+        "total": round(sum(row["total"] for row in kots), 2),
+        "active_page": "kots",
+        "header_title": "Kitchen Order Tickets",
+    })
+
+
+@app.get("/kots/by-table")
+def kots_by_table(
+    request: Request, table: str = "", invoice_id: int | None = None,
+    db: Session = Depends(get_db),
+):
+    user_or_redirect(request, db)
+    query = select(Kot).options(selectinload(Kot.guest)).order_by(Kot.id)
+    if invoice_id is not None:
+        query = query.where(Kot.invoice_id == invoice_id)
+    elif table.strip() and table.strip().lower() not in {"all", "walk-in"}:
+        query = query.where(func.lower(Kot.table_number) == table.strip().lower())
+    return JSONResponse({"kots": [_kot_dict(kot) for kot in db.scalars(query).all()]})
+
+
+@app.post("/kots/api/save")
+async def kots_api_save(request: Request, db: Session = Depends(get_db)):
+    user = user_or_redirect(request, db)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "Invalid KOT payload.")
+    check_csrf(request, str(payload.get("csrf_token", "")))
+    items = _clean_kot_items(payload.get("items"))
+    total = sum((Decimal(str(row["amount"])) for row in items), Decimal("0.00"))
+
+    kot_id = str(payload.get("kot_id") or "").strip()
+    kot = None
+    if kot_id:
+        if not kot_id.isdigit():
+            raise HTTPException(422, "Invalid KOT.")
+        kot = db.get(Kot, int(kot_id))
+        if kot is None:
+            raise HTTPException(404, "KOT not found.")
+    invoice_id = str(payload.get("invoice_id") or "").strip()
+    invoice = None
+    if invoice_id:
+        if not invoice_id.isdigit():
+            raise HTTPException(422, "Invalid invoice for this KOT.")
+        invoice = db.get(Invoice, int(invoice_id))
+        if invoice is None or invoice.status == "void":
+            raise HTTPException(404, "Invoice not found for this KOT.")
+    guest = _kot_guest(db, payload.get("guest_id"))
+    guest_name = (guest.full_name or guest.name) if guest else str(payload.get("guest_name") or "").strip()[:160]
+    if kot is None:
+        kot = Kot(
+            kot_number=_next_kot_number(db),
+            created_at=local_now().astimezone(timezone.utc).replace(tzinfo=None),
+            user_id=user.id,
+        )
+        db.add(kot)
+    kot.table_number = str(payload.get("table_number") or "").strip()[:40]
+    kot.guest_id = guest.id if guest else None
+    kot.guest_name = guest_name
+    kot.items = json.dumps(items)
+    kot.total = total
+    kot.status = "saved"
+    kot.business_date = _business_date(local_now()).isoformat()
+    kot.updated_at = local_now().astimezone(timezone.utc).replace(tzinfo=None)
+    if invoice is not None:
+        kot.invoice_id = invoice.id
+    db.commit()
+    return JSONResponse({
+        "ok": True, "id": kot.id, "kot_number": kot.kot_number,
+        "total": float(kot.total or 0), "invoice_id": kot.invoice_id,
+    })
+
+
+@app.get("/kots/{kot_id}/view", response_class=HTMLResponse)
+def kot_view(request: Request, kot_id: int, db: Session = Depends(get_db)):
+    user_or_redirect(request, db)
+    kot = db.get(Kot, kot_id)
+    if kot is None:
+        raise HTTPException(404, "KOT not found.")
+    items = _kot_items(kot)
+    return render(request, "kot_view.html", db, {
+        "kot": kot, "items": items, "total": float(kot.total or 0),
+        "active_page": "kots", "header_title": f"KOT {kot.kot_number}",
+    })
+
+
+@app.get("/kots/{kot_id}/print", response_class=HTMLResponse)
+def kot_print(request: Request, kot_id: int, db: Session = Depends(get_db)):
+    user_or_redirect(request, db)
+    kot = db.get(Kot, kot_id)
+    if kot is None:
+        raise HTTPException(404, "KOT not found.")
+    settings = _billing_settings(db)
+    return render(request, "print_kot.html", db, {
+        "kot": kot,
+        "items": _kot_items(kot),
+        "total": float(kot.total or 0),
+        "kot_guest_name": kot.guest_name or (kot.guest.full_name or kot.guest.name if kot.guest else ""),
+        "hotel_settings": settings,
+        "today": local_now().strftime("%Y-%m-%d %H:%M"),
+    })
 
 
 @app.post("/billing/invoices/{invoice_id}/delete-draft")
@@ -3639,22 +3989,11 @@ def print_invoice_page(
     receipt: bool = False, db: Session = Depends(get_db),
 ):
     user_or_redirect(request, db)
-    if receipt:
-        invoice = _load_invoice_for_print(db, invoice_id)
-        settings = _billing_settings(db)
-        return render(request, "receipt.html", db, _receipt_context(invoice, settings))
     invoice = _load_invoice_for_print(db, invoice_id)
     settings = _billing_settings(db)
-    printer_config = _printer_config(settings)
-    return render(request, "print_invoice.html", db, {
-        "invoice": invoice,
-        "auto_print": not preview and printer_config["workflow"] == "direct",
-        "is_preview": preview,
-        "receipt_mode": False,
-        "hotel_settings": settings,
-        "printer_config": printer_config,
-        "printer_logo_src": _printer_logo_source(settings),
-    })
+    return render(request, "receipt.html", db, _receipt_context(
+        invoice, settings, auto_print=False if preview else None,
+    ))
 
 
 @app.get("/billing/invoices/{invoice_id}/pdf")
@@ -3663,9 +4002,9 @@ def invoice_pdf(request: Request, invoice_id: int, db: Session = Depends(get_db)
     invoice = db.scalar(select(Invoice).options(selectinload(Invoice.guest), selectinload(Invoice.room), selectinload(Invoice.items)).where(Invoice.id == invoice_id))
     if not invoice:
         raise HTTPException(404, "Invoice not found.")
+    settings = _billing_settings(db)
     try:
         from weasyprint import HTML
-        settings = _billing_settings(db)
         html = templates.get_template("print_invoice.html").render(
             request=request, invoice=invoice, auto_print=False,
             is_preview=False,
@@ -3675,8 +4014,11 @@ def invoice_pdf(request: Request, invoice_id: int, db: Session = Depends(get_db)
         )
         pdf = HTML(string=html, base_url=str(ROOT)).write_pdf()
     except Exception:
-        # Fallback to browser print page if WeasyPrint encounters an issue
-        return RedirectResponse(f"/billing/invoices/{invoice_id}/print?fallback=1", status_code=303)
+        # Browser-print fallback keeps the invoice layout available when PDF
+        # generation fails, without changing the receipt-only /print page.
+        return RedirectResponse(
+            f"/billing/invoices/{invoice_id}/invoice?fallback=1", status_code=303,
+        )
     _save_pdf_copy(pdf, "invoices", f"{invoice.invoice_number}.pdf")
     return Response(pdf, media_type="application/pdf", headers={
         "Content-Disposition": f'attachment; filename="{invoice.invoice_number}.pdf"',
@@ -3695,6 +4037,25 @@ def invoice_receipt(
     return render(request, "receipt.html", db, _receipt_context(
         invoice, settings, paper=paper, auto_print=False if preview else None,
     ))
+
+
+@app.get("/billing/invoices/{invoice_id}/invoice", response_class=HTMLResponse)
+def invoice_page(
+    request: Request, invoice_id: int, db: Session = Depends(get_db),
+):
+    """The full invoice layout, opened from the receipt's View Invoice action."""
+    user_or_redirect(request, db)
+    invoice = _load_invoice_for_print(db, invoice_id)
+    settings = _billing_settings(db)
+    return render(request, "print_invoice.html", db, {
+        "invoice": invoice,
+        "auto_print": False,
+        "is_preview": False,
+        "receipt_mode": False,
+        "hotel_settings": settings,
+        "printer_config": _printer_config(settings),
+        "printer_logo_src": _printer_logo_source(settings),
+    })
 
 
 @app.get("/billing/invoices/{invoice_id}/receipt.pdf")
@@ -4581,7 +4942,8 @@ def analysis_page(
 def _calendar_bins(db: Session, range_start_iso: str, range_end_iso: str, month_start: date, month_end: date) -> dict:
     """Per-business-day totals for a calendar range (covers adjacent days)."""
     empty_value = {"invoices": 0, "sales": 0.0, "payments": 0.0, "payment_count": 0,
-                   "checkins": 0, "checkouts": 0, "bookings": 0, "orders": 0, "guests": 0}
+                   "checkins": 0, "checkouts": 0, "bookings": 0, "orders": 0, "guests": 0,
+                   "rooms": 0}
     bins = {}
     cur = month_start
     while cur <= month_end:
@@ -4644,6 +5006,25 @@ def _calendar_bins(db: Session, range_start_iso: str, range_end_iso: str, month_
         day_iso = _business_date(created_at).isoformat()
         if day_iso in bins:
             bins[day_iso]["guests"] += 1
+
+    room_sets: dict[str, set[int]] = {iso: set() for iso in bins}
+    for stay in db.scalars(
+        select(Stay).where(
+            Stay.check_in < range_end_dt,
+            or_(Stay.check_out.is_(None), Stay.check_out >= range_start_dt),
+            Stay.status.in_(("checked_in", "checked_out")),
+        )
+    ).all():
+        first = max(_business_date(stay.check_in), month_start)
+        last = min(_business_date(stay.check_out) if stay.check_out else month_end, month_end)
+        day = first
+        while day <= last:
+            key = day.isoformat()
+            if key in room_sets:
+                room_sets[key].add(stay.room_id)
+            day += timedelta(days=1)
+    for key, room_ids in room_sets.items():
+        bins[key]["rooms"] = len(room_ids)
     return bins
 
 
@@ -4771,7 +5152,8 @@ def bins_to_grid(month_date: date, bins: dict) -> list[list[dict]]:
     rows = []
     cur = grid_start
     empty = {"invoices": 0, "sales": 0.0, "payments": 0.0, "payment_count": 0,
-             "checkins": 0, "checkouts": 0, "bookings": 0, "orders": 0, "guests": 0}
+             "checkins": 0, "checkouts": 0, "bookings": 0, "orders": 0, "guests": 0,
+             "rooms": 0}
     while cur <= grid_end:
         week_row = []
         for _ in range(7):
@@ -4782,6 +5164,43 @@ def bins_to_grid(month_date: date, bins: dict) -> list[list[dict]]:
             cur += timedelta(days=1)
         rows.append(week_row)
     return rows
+
+
+MENU_NOTES = {
+    ("Breakfast Set", "Simple Breakfast"): "Egg Any style, Breads Tost, Butter/Jam, Fruits & Tea",
+    ("Breakfast Set", "Organic Breakfast"): "Buckwheat Pancake with Aalu Matar, Boiled Egg, Fruits, Tea",
+    ("Breakfast Set", "Indian Breakfast"): "Puri Sabji / Aalu Paratha, Curd, Egg, Fruits and Tea",
+}
+
+
+def _menu_groups() -> list[dict]:
+    groups: list[dict] = []
+    index: dict[str, dict] = {}
+    for group, name, rate, unit in MENU_ITEMS:
+        entry = index.get(group)
+        if entry is None:
+            entry = {"no": len(groups) + 1, "name": group, "items": []}
+            index[group] = entry
+            groups.append(entry)
+        entry["items"].append({
+            "name": name,
+            "rate": rate,
+            "price": f"{rate:,}",
+            "unit": unit,
+            "note": MENU_NOTES.get((group, name), ""),
+        })
+    return groups
+
+
+@app.get("/menu", response_class=HTMLResponse)
+def menu_page(request: Request, db: Session = Depends(get_db)):
+    user_or_redirect(request, db)
+    settings = _billing_settings(db)
+    return render(request, "menu.html", db, {
+        "menu_groups": _menu_groups(),
+        "menu_item_count": len(MENU_ITEMS),
+        "hotel_settings": settings,
+    })
 
 
 @app.get("/catalog", response_class=HTMLResponse)
@@ -5075,6 +5494,233 @@ def _active_sessions_by_user(db: Session) -> dict[str, int]:
         .group_by(User.id)
     ).all()
     return {str(user_id): int(count) for user_id, count in rows}
+
+
+def _staff_tracking_range(start: str, end: str) -> tuple[date, date, datetime, datetime]:
+    today = local_now().date()
+    try:
+        start_date = date.fromisoformat(start.strip()) if start.strip() else today.replace(day=1)
+        end_date = date.fromisoformat(end.strip()) if end.strip() else today
+    except ValueError as exc:
+        raise HTTPException(422, "Enter a valid tracking date range.") from exc
+    if start_date > end_date:
+        raise HTTPException(422, "The tracking start date must be on or before the end date.")
+    start_dt = datetime.combine(start_date, time.min, BUSINESS_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    end_dt = datetime.combine(end_date + timedelta(days=1), time.min, BUSINESS_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    return start_date, end_date, start_dt, end_dt
+
+
+def _staff_duration_label(seconds: int) -> str:
+    minutes = max(0, int(seconds)) // 60
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+
+def _staff_tracking_data(db: Session, start_dt: datetime, end_dt: datetime) -> dict:
+    users = db.scalars(select(User).order_by(User.role, User.full_name, User.username)).all()
+    buckets: dict[int, dict] = {}
+    for person in users:
+        buckets[person.id] = {
+            "sessions": [], "stay_rows": [], "invoice_rows": [], "refunds": [],
+            "deleted_drafts": [], "audit_rows": [], "guest_ids": set(),
+            "sales": Decimal("0"), "discount": Decimal("0"), "collected": Decimal("0"),
+            "void_count": 0, "void_amount": Decimal("0"), "error_count": 0,
+            "error_amount": Decimal("0"), "session_seconds": 0,
+            "active_sessions": 0, "last_signin": None, "error_rows": [],
+        }
+
+    for record in db.scalars(
+        select(UserSession).where(
+            UserSession.created_at >= start_dt, UserSession.created_at < end_dt
+        ).order_by(UserSession.created_at.desc())
+    ).all():
+        bucket = buckets.get(record.user_id)
+        if bucket is None:
+            continue
+        ended_at = record.revoked_at or record.last_seen_at or record.created_at
+        seconds = max(0, int((ended_at - record.created_at).total_seconds()))
+        bucket["sessions"].append({
+            "session": record, "active": record.revoked_at is None,
+            "ended_at": ended_at, "duration_label": _staff_duration_label(seconds),
+        })
+        bucket["session_seconds"] += seconds
+        if record.revoked_at is None:
+            bucket["active_sessions"] += 1
+        if bucket["last_signin"] is None or record.created_at > bucket["last_signin"]:
+            bucket["last_signin"] = record.created_at
+
+    for stay in db.scalars(
+        select(Stay).options(selectinload(Stay.guest), selectinload(Stay.room)).where(
+            Stay.check_in >= start_dt, Stay.check_in < end_dt
+        ).order_by(Stay.check_in.desc())
+    ).all():
+        bucket = buckets.get(stay.user_id)
+        if bucket is None or _is_demo_guest(stay.guest):
+            continue
+        bucket["stay_rows"].append(stay)
+
+    for invoice in db.scalars(
+        select(Invoice).options(selectinload(Invoice.guest), selectinload(Invoice.room)).where(
+            Invoice.issue_date >= start_dt, Invoice.issue_date < end_dt
+        ).order_by(Invoice.issue_date.desc())
+    ).all():
+        if _is_demo_invoice(invoice):
+            continue
+        bucket = buckets.get(invoice.user_id)
+        if bucket is None or invoice.status == "draft":
+            continue
+        bucket["invoice_rows"].append(invoice)
+        if invoice.status in {"issued", "paid"}:
+            bucket["sales"] += Decimal(str(invoice.total or 0))
+            bucket["discount"] += (
+                Decimal(str(invoice.discount_amount or 0))
+                + Decimal(str(invoice.item_discount or 0))
+            )
+            if invoice.guest_id is not None:
+                bucket["guest_ids"].add(invoice.guest_id)
+        elif invoice.status == "void":
+            bucket["void_count"] += 1
+            bucket["void_amount"] += Decimal(str(invoice.total or 0))
+
+    for payment in db.scalars(
+        select(Payment).where(
+            Payment.paid_at >= start_dt, Payment.paid_at < end_dt
+        )
+    ).all():
+        bucket = buckets.get(payment.user_id)
+        if bucket is not None:
+            bucket["collected"] += Decimal(str(payment.amount or 0))
+
+    for refund in db.scalars(
+        select(Refund).where(
+            Refund.refunded_at >= start_dt, Refund.refunded_at < end_dt
+        ).order_by(Refund.refunded_at.desc())
+    ).all():
+        bucket = buckets.get(refund.user_id)
+        if bucket is not None:
+            bucket["refunds"].append(refund)
+
+    draft_deletions = []
+    for audit in db.scalars(
+        select(AuditLog).where(
+            AuditLog.created_at >= start_dt, AuditLog.created_at < end_dt
+        ).order_by(AuditLog.created_at.desc())
+    ).all():
+        bucket = buckets.get(audit.user_id)
+        if bucket is None:
+            continue
+        bucket["audit_rows"].append(audit)
+        if audit.action == "invoice.delete_draft":
+            draft_deletions.append(audit)
+
+    draft_creators: dict[str, int] = {}
+    draft_numbers = {audit.entity_id for audit in draft_deletions if audit.entity_id}
+    if draft_numbers:
+        rows = db.execute(
+            select(AuditLog.entity_id, AuditLog.user_id, AuditLog.created_at).where(
+                AuditLog.action == "invoice.draft",
+                AuditLog.entity_id.in_(draft_numbers),
+            ).order_by(AuditLog.created_at)
+        ).all()
+        for entity_id, creator_id, _created_at in rows:
+            if creator_id is not None and entity_id not in draft_creators:
+                draft_creators[entity_id] = creator_id
+    for audit in draft_deletions:
+        bucket = buckets.get(draft_creators.get(audit.entity_id, audit.user_id))
+        if bucket is not None:
+            bucket["deleted_drafts"].append(audit)
+
+    totals = {
+        "staff": len(users), "signins": 0, "active_sessions": 0,
+        "checkins": 0, "customers": 0, "sales": Decimal("0"),
+        "discount": Decimal("0"), "collected": Decimal("0"), "errors": 0,
+        "error_amount": Decimal("0"), "session_seconds": 0,
+    }
+    for bucket in buckets.values():
+        bucket["customers"] = len(bucket["guest_ids"])
+        bucket["error_count"] = (
+            bucket["void_count"] + len(bucket["deleted_drafts"]) + len(bucket["refunds"])
+        )
+        bucket["error_amount"] = bucket["void_amount"] + sum(
+            (Decimal(str(refund.amount or 0)) for refund in bucket["refunds"]),
+            Decimal("0"),
+        )
+        bucket["session_time"] = _staff_duration_label(bucket["session_seconds"])
+        bucket["audit_rows"] = bucket["audit_rows"][:500]
+        error_rows = []
+        for invoice in bucket["invoice_rows"]:
+            if invoice.status != "void":
+                continue
+            error_rows.append({
+                "when": invoice.issue_date, "type": "Voided invoice",
+                "reference": invoice.invoice_number,
+                "amount": Decimal(str(invoice.total or 0)),
+                "detail": invoice.guest_name or "",
+                "href": f"/billing/invoices/{invoice.id}/invoice",
+            })
+        for audit in bucket["deleted_drafts"]:
+            error_rows.append({
+                "when": audit.created_at, "type": "Deleted draft",
+                "reference": audit.entity_id or "Draft", "amount": None,
+                "detail": audit.detail, "href": "",
+            })
+        for refund in bucket["refunds"]:
+            error_rows.append({
+                "when": refund.refunded_at,
+                "type": "Refund" if refund.kind == "refund" else "Adjustment",
+                "reference": refund.invoice_number,
+                "amount": Decimal(str(refund.amount or 0)),
+                "detail": f"{refund.method} · {refund.reason}".strip(" ·"),
+                "href": f"/billing/invoices/{refund.invoice_id}/invoice" if refund.invoice_id else "",
+            })
+        error_rows.sort(key=lambda item: item["when"], reverse=True)
+        bucket["error_rows"] = error_rows
+
+        totals["signins"] += len(bucket["sessions"])
+        totals["active_sessions"] += bucket["active_sessions"]
+        totals["checkins"] += len(bucket["stay_rows"])
+        totals["customers"] += bucket["customers"]
+        totals["sales"] += bucket["sales"]
+        totals["discount"] += bucket["discount"]
+        totals["collected"] += bucket["collected"]
+        totals["errors"] += bucket["error_count"]
+        totals["error_amount"] += bucket["error_amount"]
+        totals["session_seconds"] += bucket["session_seconds"]
+    totals["session_time"] = _staff_duration_label(totals["session_seconds"])
+    return {"users": users, "buckets": buckets, "totals": totals}
+
+
+@app.get("/staff/tracking", response_class=HTMLResponse)
+def staff_tracking_page(
+    request: Request, start: str = "", end: str = "", db: Session = Depends(get_db),
+):
+    user = user_or_redirect(request, db)
+    if user.role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    start_date, end_date, start_dt, end_dt = _staff_tracking_range(start, end)
+    data = _staff_tracking_data(db, start_dt, end_dt)
+    return render(request, "staff_tracking.html", db, {
+        **data, "start": start_date.isoformat(), "end": end_date.isoformat(),
+    })
+
+
+@app.get("/staff/tracking/{staff_id}", response_class=HTMLResponse)
+def staff_tracking_detail(
+    request: Request, staff_id: int, start: str = "", end: str = "",
+    db: Session = Depends(get_db),
+):
+    user = user_or_redirect(request, db)
+    if user.role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    target = db.get(User, staff_id)
+    if target is None:
+        raise HTTPException(404, "Staff account not found.")
+    start_date, end_date, start_dt, end_dt = _staff_tracking_range(start, end)
+    data = _staff_tracking_data(db, start_dt, end_dt)
+    return render(request, "staff_tracking_detail.html", db, {
+        **data, "target": target, "bucket": data["buckets"][target.id],
+        "start": start_date.isoformat(), "end": end_date.isoformat(),
+    })
 
 
 @app.get("/staff/sessions", response_class=HTMLResponse)

@@ -354,6 +354,8 @@ i.ph, i[class^="ph-"], i[class*=" ph-"] { transform: none !important; rotate: 0d
 .calendar-day-other:hover { opacity:.9; }
 .calendar-has-indicator { width:.32rem; height:.32rem; border-radius:999px; background:linear-gradient(135deg,#D4B942,#B98A2B); box-shadow:0 0 0 3px rgba(212,185,66,.14); }
 .calendar-day-selected .calendar-has-indicator { box-shadow:0 0 0 3px rgba(255,255,255,.25); }
+.calendar-room-badge { display:inline-flex; align-items:center; border-radius:999px; background:rgba(125,155,122,.16); color:#2E5C3A; font-size:.58rem; font-weight:800; line-height:1; padding:.22rem .42rem; white-space:nowrap; letter-spacing:.02em; }
+.calendar-day-selected .calendar-room-badge { background:rgba(255,255,255,.22); color:var(--color-text-on-dark); }
 
 /* ---- Sales Analysis ---- */
 .an-kpis { display:grid; gap:1rem; grid-template-columns:repeat(4,minmax(0,1fr)); }

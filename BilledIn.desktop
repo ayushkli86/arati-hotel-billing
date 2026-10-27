@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=BilledIn
+GenericName=Hotel Billing
+Comment=Open Arati Hotel billing as a desktop app
+Exec=/home/ayushkli/Desktop/arati-hotel-billing/.venv-web/bin/python /home/ayushkli/Desktop/arati-hotel-billing/arati_desktop.py
+Path=/home/ayushkli/Desktop/arati-hotel-billing
+Icon=/home/ayushkli/Desktop/arati-hotel-billing/webapp/static/billedin-app-icon.png
+Terminal=false
+StartupNotify=true
+StartupWMClass=billedin
+Categories=Office;Finance;
+Keywords=billing;hotel;invoice;arati;billedin;

@@ -41,12 +41,13 @@
       <section><h2 class="sidebar-heading">ACCOUNT</h2><a href="/password/change" class="nav-link nav-active"><span class="nav-icon">{{ nav_icon('password') }}</span><span>Update password</span></a></section>
       {% else %}
       {% set groups = [
-        ('OPERATIONS', [('dashboard','Dashboard'),('orders','Order Bookings'),('billing','Billing'),('rooms','Rooms'),('customers','Customers')]),
+        ('OPERATIONS', [('dashboard','Dashboard'),('orders','Order Bookings'),('billing','Billing'),('menu','Menu'),('rooms','Rooms'),('customers','Customers')]),
         ('FINANCE', [('invoices','Invoices'),('payments','Payments')]),
         ('INSIGHTS', [('reports','Reports'),('calendar','Day Book'),('analysis','Sales Analysis')]),
         ('SYSTEM', [('catalog','Catalog'),('printer','Printer Settings'),('staff','Staff'),('settings','Hotel Settings')])
       ] %}
       {% for heading, items in groups %}
+      {% if current_user.role == 'admin' or heading in ('OPERATIONS', 'FINANCE') %}
       <section>
         <h2 class="sidebar-heading">{{ heading }}</h2>
         <div class="space-y-1.5">
@@ -59,6 +60,7 @@
           {% endfor %}
         </div>
       </section>
+      {% endif %}
       {% endfor %}
       {% endif %}
     </nav>
@@ -67,7 +69,7 @@
         <div class="flex items-center gap-3">
           <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold" style="background:var(--color-accent);color:var(--color-text-on-accent);box-shadow:0 0 0 1.5px rgba(232,213,163,.5);">{{ current_user.full_name[:1] or current_user.username[:1] }}</span>
           <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold" style="color:var(--color-text-on-dark);">{{ current_user.full_name or current_user.username }}</span><span class="mt-0.5 block truncate text-[10px] font-medium uppercase tracking-[.14em]" style="color:rgba(232,213,163,.6);">{{ current_user.role }}</span></span>
-          <a href="/settings" class="sidebar-icon-btn h-8 w-8" title="Hotel settings" aria-label="Hotel settings"><span class="nav-icon">{{ nav_icon('settings') }}</span></a>
+          {% if current_user.role == 'admin' %}<a href="/settings" class="sidebar-icon-btn h-8 w-8" title="Hotel settings" aria-label="Hotel settings"><span class="nav-icon">{{ nav_icon('settings') }}</span></a>{% endif %}
         </div>
         <form method="post" action="/logout" class="mt-3"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn-signout"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;">{{ nav_icon('signout') }}</span>Sign out</button></form>
       </div>
@@ -80,7 +82,7 @@
       <div class="flex items-center gap-3"><details class="relative"><summary class="cursor-pointer list-none rounded-lg border px-3 py-2 text-xs font-semibold" style="border-color:rgba(247,241,222,.25);background:rgba(247,241,222,.08);color:var(--color-text-on-dark);">{{ current_user.role|title }} <span style="color:rgba(247,241,222,.55);">▾</span></summary><div class="absolute right-0 top-11 z-40 w-52 rounded-xl border border-slate-200 bg-white p-3 shadow-xl"><p class="truncate text-sm font-bold text-slate-800">{{ current_user.full_name or current_user.username }}</p><p class="mt-0.5 text-xs capitalize text-slate-500">{{ current_user.role }}</p><form method="post" action="/logout" class="mt-3 border-t border-slate-100 pt-2"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="text-xs font-semibold text-slate-600 hover:text-slate-900">Sign out</button></form></div></details></div>
     </header>
     {% if not current_user.must_change_password %}<nav class="mobile-nav lg:hidden" aria-label="Main navigation">
-      {% for key, label, path in [('dashboard','Dashboard','/dashboard'),('orders','Orders','/orders'),('billing','Billing','/billing/create'),('rooms','Rooms','/rooms'),('invoices','Invoices','/invoices'),('payments','Payments','/payments'),('customers','Guests','/customers')] %}
+      {% for key, label, path in [('dashboard','Dashboard','/dashboard'),('orders','Orders','/orders'),('billing','Billing','/billing/create'),('menu','Menu','/menu'),('rooms','Rooms','/rooms'),('invoices','Invoices','/invoices'),('payments','Payments','/payments'),('customers','Guests','/customers')] %}
       <a href="{{ path }}" class="mobile-nav-link {% if active_page == key %}mobile-nav-active{% endif %}">{{ label }}</a>
       {% endfor %}
     </nav>{% endif %}
@@ -178,10 +180,13 @@
   try {
     var params = new URLSearchParams(window.location.search);
     if (params.has('toast')) {
+      var message = params.get('toast');
+      var type = params.get('toast_type') || 'success';
       params.delete('toast');
       params.delete('toast_type');
       var query = params.toString();
       history.replaceState(null, '', window.location.pathname + (query ? '?' + query : '') + window.location.hash);
+      window.showToast(message, type);
     }
   } catch (error) { /* history API is unavailable in a few embedded browsers */ }
 })();

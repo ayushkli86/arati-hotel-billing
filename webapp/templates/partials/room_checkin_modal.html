@@ -8,16 +8,19 @@
     {% if reservation and reservation.deposit > 0 %}<p class="mb-3 rounded-lg bg-[rgba(125,155,122,0.14)] p-2 text-xs text-[color:var(--accent-on-light)]">Reservation deposit recorded: {{ money(reservation.deposit) }}</p>{% endif %}
     <form hx-post="/rooms/{{ room.id }}/checkin" hx-target="#modal-root" hx-swap="innerHTML" class="space-y-4">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label class="block"><span class="field-label">Select existing guest</span><select name="guest_id" class="form-input"><option value="">Walk-in / new guest</option>
-        {% for guest in guests %}<option value="{{ guest.id }}" {% if (selected_guest_id and selected_guest_id == (guest.id|string)) or (not selected_guest_id and reservation and reservation.guest_id == guest.id) %}selected{% endif %}>{{ guest.name }}{% if guest.phone %} · {{ guest.phone }}{% endif %}</option>{% endfor %}
-      </select></label>
+      <input type="hidden" name="guest_id" value="">
+      <div class="mb-3">
+        <span class="field-label">Guest</span>
+        <div class="form-input bg-slate-50 font-medium text-slate-700" style="cursor:default">New guest</div>
+      </div>
       <div class="grid gap-x-4 gap-y-5 sm:grid-cols-2">
-        <label><span class="field-label">Guest name (for walk-in)</span><input name="guest_name" maxlength="160" class="form-input" value="{{ guest_name_val|default('') }}" placeholder="Guest name"></label>
-        <label><span class="field-label">Phone</span><input name="phone" maxlength="40" class="form-input" value="{{ phone_val|default('') }}" placeholder="98XXXXXXXX"></label>
-        <label><span class="field-label">Email</span><input name="email" type="email" maxlength="180" class="form-input" value="{{ email_val|default('') }}" placeholder="guest@example.com"></label>
-        <label class="sm:col-span-2"><span class="field-label">Address</span><input name="address" maxlength="240" class="form-input" value="{{ address_val|default('') }}" placeholder="Guest address"></label>
-        <label><span class="field-label">Check-in</span><input required type="datetime-local" name="check_in" value="{{ now_local }}" class="form-input"></label>
-        <label><span class="field-label">Check-out <span class="text-slate-400">(optional)</span></span><input type="datetime-local" name="check_out" value="{{ checkout_local }}" class="form-input"></label>
+        <label><span class="field-label"><i class="ph ph-user"></i>Guest name</span><input name="guest_name" maxlength="160" class="form-input" value="{{ guest_name_val|default('') }}" placeholder="Guest name" required></label>
+        <label><span class="field-label"><i class="ph ph-phone"></i>Phone</span><input name="phone" maxlength="40" class="form-input" value="{{ phone_val|default('') }}" placeholder="98XXXXXXXX"></label>
+        <label><span class="field-label"><i class="ph ph-envelope"></i>Email</span><input name="email" type="email" maxlength="180" class="form-input" value="{{ email_val|default('') }}" placeholder="guest@example.com"></label>
+        <label><span class="field-label"><i class="ph ph-id-card"></i>Citizenship No</span><input name="citizenship_no" maxlength="50" class="form-input" value="{{ citizenship_no_val|default('') }}" placeholder="Citizenship number"></label>
+        <label class="sm:col-span-2"><span class="field-label"><i class="ph ph-map-pin"></i>Address</span><input name="address" maxlength="240" class="form-input" value="{{ address_val|default('') }}" placeholder="Guest address"></label>
+        <label><span class="field-label"><i class="ph ph-calendar-blank"></i>Check-in</span><input required type="datetime-local" name="check_in" value="{{ now_local }}" class="form-input"></label>
+        <label><span class="field-label"><i class="ph ph-calendar-blank"></i>Check-out <span class="text-slate-400">(optional)</span></span><input type="datetime-local" name="check_out" value="{{ checkout_local }}" class="form-input"></label>
       </div>
       <div class="flex justify-end gap-2 border-t border-slate-100 pt-4">
         <button type="button" class="btn-secondary" @click="$el.closest('[role=dialog]').parentElement.remove()">Cancel</button>

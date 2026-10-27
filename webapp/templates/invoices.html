@@ -38,7 +38,7 @@
       <tbody>
         {% for invoice in invoices %}
         <tr class="{% if invoice.status == 'issued' and invoice.balance > 0 %}tr-outstanding{% endif %}">
-          <td><a href="/billing/invoices/{{ invoice.id }}/print" class="font-semibold text-[color:var(--accent-on-light)] hover:underline" title="View / print invoice">{{ invoice.invoice_number }}</a></td>
+          <td><a href="/billing/invoices/{{ invoice.id }}/print" class="font-semibold text-[color:var(--accent-on-light)] hover:underline" title="View / print receipt">{{ invoice.invoice_number }}</a></td>
           <td class="whitespace-nowrap text-slate-600">{{ local_datetime(invoice.issue_date, '%d %b %Y') }}</td>
           <td class="font-medium text-slate-800">{{ invoice.guest_name or invoice.guest.name }}</td>
           <td>{{ invoice.room_number or (invoice.room.number if invoice.room else '—') }}</td>
@@ -54,7 +54,7 @@
             <a href="/billing/invoices/{{ invoice.id }}/print" class="btn-amber !px-3 !py-1.5 !text-xs"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-eye"></i></span>View</a>
             {% endif %}
             <details class="row-menu ml-1 inline-block align-middle"><summary aria-label="More invoice actions">⋯</summary><div class="row-menu-panel">
-              {% if invoice.status != 'draft' %}<a href="/billing/invoices/{{ invoice.id }}/print" title="Print invoice"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-printer"></i></span> Print invoice</a><a href="/billing/invoices/{{ invoice.id }}/pdf" title="Download invoice PDF"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-download-simple"></i></span> Download PDF</a>{% endif %}
+              {% if invoice.status != 'draft' %}<a href="/billing/invoices/{{ invoice.id }}/pdf" title="Download invoice PDF"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-download-simple"></i></span> Download PDF</a>{% endif %}
               <a href="/billing/invoices/{{ invoice.id }}/receipt" title="Print thermal receipt"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-printer"></i></span> Print receipt</a>
               <a href="/billing/invoices/{{ invoice.id }}/receipt.pdf" title="Download receipt PDF"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-download-simple"></i></span> Receipt PDF</a>
               <a href="/invoices?guest_id={{ invoice.guest_id }}"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-clock-counter-clockwise"></i></span> Guest history</a>

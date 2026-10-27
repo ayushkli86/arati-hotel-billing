@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% set active_page='kots' %}{% block title %}Kitchen Order Tickets{% endblock %}{% block header_title %}Kitchen Order Tickets{% endblock %}{% block content %}
+<div class="page-heading">
+  <div class="flex items-center gap-3">
+    <span class="room-icon-chip" style="width:2.75rem;height:2.75rem;font-size:1.35rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-notepad"></i></span>
+    <div>
+      <p class="eyebrow">Front desk <span class="text-slate-500">/</span> KOT</p>
+      <h1 class="page-title">Kitchen Order Tickets</h1>
+      <p class="page-subtitle">{{ kots|length }} ticket{% if kots|length != 1 %}s{% endif %} · Rs. {{ '%.2f'|format(total|float) }}</p>
+    </div>
+  </div>
+  <div class="mt-4 flex flex-wrap items-center gap-2">
+    <a href="/billing/create" class="btn-primary"><i class="ph ph-plus"></i> New bill with KOT</a>
+    <a href="/kots" class="btn-secondary">All KOTs</a>
+  </div>
+</div>
+
+{% if kots %}
+<div class="mt-4 table-scroll">
+  <table class="data-table soft-table min-w-[860px]">
+    <thead><tr>
+      <th>K.O.T No.</th><th>Table</th><th>Guest</th><th>Date</th><th class="text-right">Items</th><th class="text-right">Total</th><th>Status</th><th class="text-right">Actions</th>
+    </tr></thead>
+    <tbody>
+      {% for kot in kots %}
+      <tr class="border-b border-slate-100 hover:bg-slate-50">
+        <td class="font-medium text-slate-800">{{ kot.kot_number }}</td>
+        <td class="text-slate-500">{{ kot.table_number or 'Walk-in' }}</td>
+        <td class="font-medium text-slate-800">{{ kot.guest_name }}</td>
+        <td class="text-slate-500">{{ kot.date }}</td>
+        <td class="text-right">{{ kot['items']|length }}</td>
+        <td class="text-right">Rs. {{ '%.2f'|format(kot.total|float) }}</td>
+        <td><span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase {{ 'bg-emerald-100 text-emerald-700' if kot.status == 'saved' else 'bg-amber-100 text-amber-700' }}">{{ kot.status }}</span></td>
+        <td class="text-right">
+          {% if kot.invoice_id %}<a class="btn-secondary text-xs px-2 py-1" href="/billing/create?draft_id={{ kot.invoice_id }}">Bill</a>{% endif %}
+          <a class="btn-amber text-xs px-2 py-1" href="/kots/{{ kot.id }}/view">View</a>
+          <a class="btn-primary text-xs px-2 py-1" href="/kots/{{ kot.id }}/print">Print</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="mt-4 panel p-8 text-center">
+  <p class="text-slate-600">No KOTs yet. Add restaurant items to a bill and save it — the kitchen ticket appears here automatically.</p>
+</div>
+{% endif %}
+{% endblock %}
