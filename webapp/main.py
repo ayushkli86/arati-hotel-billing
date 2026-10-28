@@ -1121,10 +1121,25 @@ def _room_board_data(db: Session) -> dict:
             status = "dirty"
         else:
             status = "available"
+        
+        # Calculate stay duration for occupied rooms
+        stay_duration = None
+        if stay and stay.check_in:
+            check_in_local = stay.check_in.replace(tzinfo=timezone.utc).astimezone(BUSINESS_TZ)
+            delta = now - check_in_local
+            total_minutes = int(delta.total_seconds() // 60)
+            hours = total_minutes // 60
+            minutes = total_minutes % 60
+            if hours > 0:
+                stay_duration = f"{hours}h {minutes}m"
+            else:
+                stay_duration = f"{minutes}m"
+
         rows.append({
             "room": room, "status": status, "stay": stay, "reservation": reservation,
             "guest": stay.guest if stay else reservation.guest if reservation else None,
             "balance": float(balances.get(room.id, 0) or 0),
+            "stay_duration": stay_duration,
         })
     counts = {name: sum(row["status"] == name for row in rows) for name in
               ("available", "occupied", "dirty", "reserved", "maintenance")}

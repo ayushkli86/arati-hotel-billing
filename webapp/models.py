@@ -56,6 +56,7 @@ class Room(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     number: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     type: Mapped[str] = mapped_column(String(50))
+    bed_type: Mapped[str] = mapped_column(String(50), default="")
     status: Mapped[str] = mapped_column(String(30), default="available", index=True)
     housekeeping_status: Mapped[str] = mapped_column(String(30), default="clean")
     floor: Mapped[str] = mapped_column(String(30), default="1")
