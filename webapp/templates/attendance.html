@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% set active_page = 'attendance' %}
+{% block title %}Staff Attendance{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">SYSTEM · ATTENDANCE</p>
+    <h1 class="page-title">Staff Attendance</h1>
+    <p class="page-subtitle">Track daily check-in and check-out times for all staff members.</p>
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    <a class="btn-secondary !px-3 !py-1.5 !text-xs" href="/staff">
+      <span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-users"></i></span>
+      Staff accounts
+    </a>
+    <a class="btn-secondary !px-3 !py-1.5 !text-xs" href="/staff/tracking">
+      <span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-chart-line-up"></i></span>
+      Staff tracking
+    </a>
+  </div>
+</div>
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Attendance Period</h2>
+      <p class="panel-subtitle">View attendance records for the selected date range.</p>
+    </div>
+  </div>
+  <form method="get" action="/attendance" class="flex flex-wrap items-end gap-3">
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-semibold text-slate-700">From</span>
+      <input class="form-input" type="date" name="start" value="{{ start }}">
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-semibold text-slate-700">To</span>
+      <input class="form-input" type="date" name="end" value="{{ end }}">
+    </label>
+    <button class="btn-primary" type="submit">Apply</button>
+    <a class="btn-secondary" href="/attendance">This month</a>
+  </form>
+</section>
+
+<div class="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+  <article class="metric-card-hero">
+    <p class="section-label">Present Today</p>
+    <p class="mt-2 text-2xl font-extrabold text-slate-900">{{ totals.present_today }}</p>
+    <p class="mt-1 text-xs text-slate-500">Checked in today</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">On Duty</p>
+    <p class="mt-2 text-xl font-extrabold text-[color:var(--color-primary)]">{{ totals.on_duty }}</p>
+    <p class="mt-1 text-xs text-slate-500">Currently checked in</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Total Records</p>
+    <p class="mt-2 text-xl font-extrabold text-slate-900">{{ totals.total_records }}</p>
+    <p class="mt-1 text-xs text-slate-500">Attendance entries in period</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Avg. Hours</p>
+    <p class="mt-2 text-xl font-extrabold soft-amber-text">{{ totals.avg_hours }}h</p>
+    <p class="mt-1 text-xs text-slate-500">Average daily hours</p>
+  </article>
+  <article class="metric-card">
+    <p class="section-label">Late Arrivals</p>
+    <p class="mt-2 text-xl font-extrabold text-red-700">{{ totals.late_count }}</p>
+    <p class="mt-1 text-xs text-slate-500">After 9:30 AM check-in</p>
+  </article>
+</div>
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Today's Attendance</h2>
+      <p class="panel-subtitle">Real-time status for the current business day.</p>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table min-w-[1000px]">
+      <thead>
+        <tr>
+          <th>Staff</th>
+          <th>Check-in</th>
+          <th>Check-out</th>
+          <th>Hours</th>
+          <th>Status</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in today_records %}
+        <tr class="{{ 'bg-emerald-50' if record.check_in and not record.check_out else '' }}">
+          <td>
+            <p class="font-semibold text-slate-800">{{ record.user.full_name or record.user.username }}</p>
+            <p class="text-xs text-slate-500">{{ record.user.role|title }} · {{ record.user.username }}</p>
+          </td>
+          <td class="whitespace-nowrap text-xs text-slate-600">
+            {% if record.check_in %}{{ local_datetime(record.check_in, "%H:%M") }}{% else %}—{% endif %}
+          </td>
+          <td class="whitespace-nowrap text-xs text-slate-600">
+            {% if record.check_out %}{{ local_datetime(record.check_out, "%H:%M") }}{% else %}—{% endif %}
+          </td>
+          <td class="whitespace-nowrap text-xs font-semibold tabular-nums">
+            {% if record.check_in and record.check_out %}
+              {{ ((record.check_out - record.check_in).total_seconds() / 3600)|round(2) }}h
+            {% elif record.check_in %}
+              {{ record.ongoing_hours|round(2) }}h (ongoing)
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if record.check_in and not record.check_out %}
+            <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">On Duty</span>
+            {% elif record.check_in and record.check_out %}
+            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">Completed</span>
+            {% else %}
+            <span class="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Absent</span>
+            {% endif %}
+          </td>
+          <td class="text-xs text-slate-500">{{ record.notes or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="py-8 text-center text-sm text-slate-500">No attendance records for today.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Attendance History</h2>
+      <p class="panel-subtitle">Complete attendance records for the selected period.</p>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table min-w-[1100px]">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Staff</th>
+          <th>Check-in</th>
+          <th>Check-out</th>
+          <th class="text-right">Hours</th>
+          <th>Status</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in records %}
+        <tr>
+          <td class="whitespace-nowrap text-xs text-slate-600">{{ record.business_date }}</td>
+          <td>
+            <p class="font-semibold text-slate-800">{{ record.user.full_name or record.user.username }}</p>
+            <p class="text-xs text-slate-500">{{ record.user.username }}</p>
+          </td>
+          <td class="whitespace-nowrap text-xs text-slate-600">
+            {% if record.check_in %}{{ local_datetime(record.check_in, "%H:%M") }}{% else %}—{% endif %}
+          </td>
+          <td class="whitespace-nowrap text-xs text-slate-600">
+            {% if record.check_out %}{{ local_datetime(record.check_out, "%H:%M") }}{% else %}—{% endif %}
+          </td>
+          <td class="text-right tabular-nums whitespace-nowrap text-xs font-semibold">
+            {% if record.check_in and record.check_out %}
+              {{ ((record.check_out - record.check_in).total_seconds() / 3600)|round(2) }}h
+            {% elif record.check_in %}
+              {{ record.ongoing_hours|round(2) }}h (ongoing)
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if record.check_in and not record.check_out %}
+            <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">On Duty</span>
+            {% elif record.check_in and record.check_out %}
+            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">Completed</span>
+            {% else %}
+            <span class="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Absent</span>
+            {% endif %}
+          </td>
+          <td class="text-xs text-slate-500">{{ record.notes or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="py-8 text-center text-sm text-slate-500">No attendance records in this period.</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th>Total</th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th class="text-right">{{ totals.total_hours|round(2) }}h</th>
+          <th></th>
+          <th></th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</section>
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Staff Summary</h2>
+      <p class="panel-subtitle">Attendance summary per staff member for the selected period.</p>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table min-w-[900px]">
+      <thead>
+        <tr>
+          <th>Staff</th>
+          <th class="text-right">Days Present</th>
+          <th class="text-right">Total Hours</th>
+          <th class="text-right">Avg Hours/Day</th>
+          <th class="text-right">Late Arrivals</th>
+          <th class="text-right">Early Departures</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user_id, summary in staff_summaries.items() %}
+        {% set user = users_by_id[user_id] %}
+        <tr>
+          <td>
+            <p class="font-semibold text-slate-800">{{ user.full_name or user.username }}</p>
+            <p class="text-xs text-slate-500">{{ user.username }}</p>
+          </td>
+          <td class="text-right tabular-nums">{{ summary.days_present }}</td>
+          <td class="text-right tabular-nums font-semibold">{{ summary.total_hours|round(2) }}h</td>
+          <td class="text-right tabular-nums">{{ summary.avg_hours|round(2) }}h</td>
+          <td class="text-right tabular-nums">
+            {% if summary.late_count > 0 %}
+            <span class="font-semibold text-red-700">{{ summary.late_count }}</span>
+            {% else %}
+            <span class="text-slate-400">0</span>
+            {% endif %}
+          </td>
+          <td class="text-right tabular-nums">
+            {% if summary.early_departures > 0 %}
+            <span class="font-semibold text-amber-700">{{ summary.early_departures }}</span>
+            {% else %}
+            <span class="text-slate-400">0</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="py-8 text-center text-sm text-slate-500">No staff accounts found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

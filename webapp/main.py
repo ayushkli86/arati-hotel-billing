@@ -21,10 +21,11 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.exceptions import RequestValidationError
 from markupsafe import escape as html_escape
 from fastapi.responses import (
-    FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response,
+    FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+import httpx
 from sqlalchemy import func, inspect, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -43,7 +44,7 @@ from .seed_menu import MENU as MENU_ITEMS
 from .models import (
     AuditLog, CatalogItem, DailyReport, Guest, HotelSetting, Invoice, InvoiceItem,
     Kot, Order, Payment, Refund, Reservation, Room, RoomCharge, Stay, User, UserSession,
-    WhatsAppConversation, WhatsAppMessage,
+    WhatsAppConversation, WhatsAppMessage, StaffAttendance,
 )
 from .services import guest_service, invoice_service, payment_service, room_service, stay_service
 from zoneinfo import ZoneInfo
@@ -2390,8 +2391,7 @@ def orders_page(
     sim_phone: str = "", db: Session = Depends(get_db),
 ):
     user_or_redirect(request, db)
-    return render(request, "orders.html", db,
-                  _orders_context(request, db, status, kind, q, sim_phone))
+    return render(request, "coming_soon.html", db)
 
 
 @app.get("/orders/{order_id}", response_class=HTMLResponse)
@@ -5972,6 +5972,224 @@ def delete_staff_account(
     return RedirectResponse(toast_url("/staff?saved=deleted", "Staff account removed.", "warning"), status_code=303)
 
 
+# --- Attendance routes --------------------------------------------------------
+
+def _attendance_range(start: str, end: str) -> tuple[date, date, datetime, datetime]:
+    today = local_now().date()
+    try:
+        start_date = date.fromisoformat(start.strip()) if start.strip() else today.replace(day=1)
+        end_date = date.fromisoformat(end.strip()) if end.strip() else today
+    except ValueError as exc:
+        raise HTTPException(422, "Enter a valid attendance date range.") from exc
+    if start_date > end_date:
+        raise HTTPException(422, "The attendance start date must be on or before the end date.")
+    start_dt = datetime.combine(start_date, time.min, BUSINESS_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    end_dt = datetime.combine(end_date + timedelta(days=1), time.min, BUSINESS_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    return start_date, end_date, start_dt, end_dt
+
+
+def _attendance_data(db: Session, start_dt: datetime, end_dt: datetime) -> dict:
+    """Get attendance records and compute summaries for the given period."""
+    # Get all active staff
+    users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.role, User.full_name, User.username)).all()
+    users_by_id = {u.id: u for u in users}
+
+    # Get attendance records in the period
+    records = db.scalars(
+        select(StaffAttendance).options(selectinload(StaffAttendance.user)).where(
+            StaffAttendance.created_at >= start_dt, StaffAttendance.created_at < end_dt
+        ).order_by(StaffAttendance.business_date.desc(), StaffAttendance.check_in.desc())
+    ).all()
+
+    # Build today's records (current business day)
+    today_str = local_now().date().isoformat()
+    today_records = [r for r in records if r.business_date == today_str]
+
+    # Current time in UTC (naive) for ongoing session calculations
+    now_utc = models.utcnow()
+
+    # Add ongoing_hours to records with check_in but no check_out
+    for r in records:
+        if r.check_in and not r.check_out:
+            r.ongoing_hours = (now_utc - r.check_in).total_seconds() / 3600
+
+    # Compute totals
+    total_records = len(records)
+    present_today = len([r for r in today_records if r.check_in is not None])
+    on_duty = len([r for r in today_records if r.check_in is not None and r.check_out is None])
+
+    # Late count (check-in after 9:30 AM)
+    late_count = 0
+    total_hours = Decimal("0")
+    for r in records:
+        if r.check_in and r.check_out:
+            hours = (r.check_out - r.check_in).total_seconds() / 3600
+            total_hours += Decimal(str(hours))
+            check_in_local = r.check_in.replace(tzinfo=timezone.utc).astimezone(BUSINESS_TZ)
+            if check_in_local.time() > time(9, 30):
+                late_count += 1
+        elif r.check_in and not r.check_out:
+            # Ongoing session - both are naive UTC
+            hours = (now_utc - r.check_in).total_seconds() / 3600
+            total_hours += Decimal(str(hours))
+            check_in_local = r.check_in.replace(tzinfo=timezone.utc).astimezone(BUSINESS_TZ)
+            if check_in_local.time() > time(9, 30):
+                late_count += 1
+
+    avg_hours = float(total_hours / max(1, len([r for r in records if r.check_in and r.check_out]))) if records else 0
+
+    # Staff summaries
+    staff_summaries = {}
+    for user in users:
+        user_records = [r for r in records if r.user_id == user.id]
+        days_present = len([r for r in user_records if r.check_in is not None])
+        completed_records = [r for r in user_records if r.check_in is not None and r.check_out is not None]
+        total_user_hours = sum(
+            Decimal(str((r.check_out - r.check_in).total_seconds() / 3600))
+            for r in completed_records
+        )
+        ongoing_records = [r for r in user_records if r.check_in is not None and r.check_out is None]
+        for r in ongoing_records:
+            total_user_hours += Decimal(str((now_utc - r.check_in).total_seconds() / 3600))
+
+        avg_user_hours = float(total_user_hours / max(1, len(completed_records))) if completed_records else 0
+
+        late_user = sum(
+            1 for r in user_records
+            if r.check_in and r.check_in.replace(tzinfo=timezone.utc).astimezone(BUSINESS_TZ).time() > time(9, 30)
+        )
+        early_departures = sum(
+            1 for r in user_records
+            if r.check_out and r.check_out.replace(tzinfo=timezone.utc).astimezone(BUSINESS_TZ).time() < time(17, 0)
+        )
+
+        staff_summaries[user.id] = {
+            "days_present": days_present,
+            "total_hours": float(total_user_hours),
+            "avg_hours": avg_user_hours,
+            "late_count": late_user,
+            "early_departures": early_departures,
+        }
+
+    return {
+        "users": users,
+        "users_by_id": users_by_id,
+        "records": records,
+        "today_records": today_records,
+        "staff_summaries": staff_summaries,
+        "totals": {
+            "present_today": present_today,
+            "on_duty": on_duty,
+            "total_records": total_records,
+            "avg_hours": round(avg_hours, 2),
+            "late_count": late_count,
+            "total_hours": float(total_hours),
+        },
+    }
+
+
+@app.get("/attendance", response_class=HTMLResponse)
+def attendance_page(
+    request: Request, start: str = "", end: str = "", db: Session = Depends(get_db),
+):
+    user = user_or_redirect(request, db)
+    if user.role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    start_date, end_date, start_dt, end_dt = _attendance_range(start, end)
+    data = _attendance_data(db, start_dt, end_dt)
+    return render(request, "attendance.html", db, {
+        **data, "start": start_date.isoformat(), "end": end_date.isoformat(),
+    })
+
+
+@app.post("/attendance/check-in")
+def attendance_check_in(
+    request: Request,
+    csrf_token: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = user_or_redirect(request, db)
+    check_csrf(request, csrf_token)
+
+    today_str = local_now().date().isoformat()
+    now = models.utcnow()
+
+    # Check if already checked in today
+    existing = db.scalar(
+        select(StaffAttendance).where(
+            StaffAttendance.user_id == user.id,
+            StaffAttendance.business_date == today_str,
+        )
+    )
+    if existing and existing.check_in is not None:
+        return RedirectResponse(
+            toast_url("/attendance", "You are already checked in today.", "warning"),
+            status_code=303,
+        )
+
+    if existing:
+        existing.check_in = now
+        existing.check_in_ip = request.client.host if request.client else ""
+        existing.check_in_user_agent = request.headers.get("user-agent", "")[:512]
+        existing.notes = notes.strip() or existing.notes
+        existing.updated_at = now
+    else:
+        db.add(StaffAttendance(
+            user_id=user.id,
+            business_date=today_str,
+            check_in=now,
+            check_in_ip=request.client.host if request.client else "",
+            check_in_user_agent=request.headers.get("user-agent", "")[:512],
+            notes=notes.strip(),
+        ))
+
+    _audit(db, user, "attendance.check_in", "attendance", today_str, f"Checked in at {now:%H:%M}")
+    db.commit()
+    return RedirectResponse(toast_url("/attendance", "Checked in successfully.", "success"), status_code=303)
+
+
+@app.post("/attendance/check-out")
+def attendance_check_out(
+    request: Request,
+    csrf_token: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = user_or_redirect(request, db)
+    check_csrf(request, csrf_token)
+
+    today_str = local_now().date().isoformat()
+    now = models.utcnow()
+
+    record = db.scalar(
+        select(StaffAttendance).where(
+            StaffAttendance.user_id == user.id,
+            StaffAttendance.business_date == today_str,
+        )
+    )
+    if not record or record.check_in is None:
+        return RedirectResponse(
+            toast_url("/attendance", "You must check in first.", "error"),
+            status_code=303,
+        )
+    if record.check_out is not None:
+        return RedirectResponse(
+            toast_url("/attendance", "You are already checked out today.", "warning"),
+            status_code=303,
+        )
+
+    record.check_out = now
+    record.check_out_ip = request.client.host if request.client else ""
+    record.check_out_user_agent = request.headers.get("user-agent", "")[:512]
+    record.notes = (record.notes + " | " if record.notes else "") + f"Check-out: {notes.strip()}" if notes.strip() else record.notes
+    record.updated_at = now
+
+    _audit(db, user, "attendance.check_out", "attendance", today_str, f"Checked out at {now:%H:%M}")
+    db.commit()
+    return RedirectResponse(toast_url("/attendance", "Checked out successfully.", "success"), status_code=303)
+
+
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, db: Session = Depends(get_db)):
     user = user_or_redirect(request, db)
@@ -6073,6 +6291,113 @@ async def settings_save(request: Request, db: Session = Depends(get_db)):
             "error": str(exc),
             "saved": False,
         }, status_code=422)
+
+
+# Website admin proxy
+_WEBSITE_ADMIN_TOKEN = None
+_WEBSITE_ADMIN_TOKEN_LOCK = threading.Lock()
+
+
+async def _get_website_admin_token():
+    global _WEBSITE_ADMIN_TOKEN
+    with _WEBSITE_ADMIN_TOKEN_LOCK:
+        if _WEBSITE_ADMIN_TOKEN:
+            return _WEBSITE_ADMIN_TOKEN
+        email = os.getenv("ARATI_WEBSITE_ADMIN_EMAIL", "aratiuser1@gmail.com").strip()
+        password = os.getenv("ARATI_WEBSITE_ADMIN_PASSWORD", "SecurePass$#20255#4@%9")
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post("https://aratihotel.com.np/api/login", json={"email": email, "password": password})
+                if resp.status_code == 200:
+                    data = resp.json()
+                    _WEBSITE_ADMIN_TOKEN = data.get("token")
+                    return _WEBSITE_ADMIN_TOKEN
+        except Exception as e:
+            _log.exception("Failed to login to website admin")
+        return None
+
+
+@app.get("/website-admin", response_class=HTMLResponse)
+def website_admin(request: Request, db: Session = Depends(get_db)):
+    user_or_redirect(request, db)
+    user = db.get(User, request.session.get("user_id"))
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    return RedirectResponse(url="/website-admin/enquiries", status_code=303)
+
+
+@app.get("/website-admin/enquiries", response_class=HTMLResponse)
+def website_admin_enquiries(request: Request, db: Session = Depends(get_db)):
+    user_or_redirect(request, db)
+    user = db.get(User, request.session.get("user_id"))
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    return render(request, "website_admin.html", db)
+
+
+@app.api_route("/website-admin-proxy/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+@app.api_route("/website-admin-proxy", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+async def website_admin_proxy(request: Request, path: str = "", db: Session = Depends(get_db)):
+    if request.method == "OPTIONS":
+        return Response(status_code=200)
+    user_or_redirect(request, db)
+    user = db.get(User, request.session.get("user_id"))
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    
+    token = await _get_website_admin_token()
+    if not token:
+        raise HTTPException(status_code=502, detail="Failed to authenticate with website admin")
+    
+    # Build target URL
+    if not path:
+        target_url = "https://aratihotel.com.np/admin-dashboard"
+    elif path.startswith("http"):
+        target_url = path
+    else:
+        target_url = f"https://aratihotel.com.np/{path}"
+    if request.url.query:
+        target_url += "?" + request.url.query
+    
+    headers = {}
+    for k, v in request.headers.items():
+        if k.lower() in ('host', 'content-length', 'connection', 'accept-encoding'):
+            continue
+        headers[k] = v
+    headers['Authorization'] = f'Bearer {token}'
+    headers['Host'] = 'aratihotel.com.np'
+    
+    body = await request.body()
+    
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client:
+        try:
+            resp = await client.request(
+                method=request.method,
+                url=target_url,
+                headers=headers,
+                content=body,
+            )
+            response_headers = {}
+            for k, v in resp.headers.items():
+                kl = k.lower()
+                if kl in ('content-encoding', 'content-length', 'transfer-encoding', 'connection'):
+                    continue
+                if kl in ('x-frame-options'):
+                    continue
+                if kl == 'location':
+                    # Rewrite redirects to go through proxy if they go to aratihotel.com.np
+                    loc = v
+                    if loc.startswith('https://aratihotel.com.np/'):
+                        loc = '/website-admin-proxy/' + loc.replace('https://aratihotel.com.np/', '')
+                    elif loc.startswith('/'):
+                        loc = '/website-admin-proxy' + loc
+                    response_headers[k] = loc
+                    continue
+                response_headers[k] = v
+            return Response(content=resp.content, status_code=resp.status_code, headers=response_headers, media_type=resp.headers.get('content-type'))
+        except Exception as e:
+            _log.exception("Proxy error")
+            raise HTTPException(status_code=502, detail="Proxy error")
 
 
 @app.get("/healthz")

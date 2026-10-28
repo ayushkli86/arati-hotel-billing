@@ -481,3 +481,37 @@ User.sessions: Mapped[list[UserSession]] = relationship(
     "UserSession", back_populates="user", cascade="all, delete-orphan",
     foreign_keys="UserSession.user_id",
 )
+
+
+class StaffAttendance(Base):
+    """Daily staff attendance record for check-in/check-out tracking.
+
+    Each record represents one day of attendance for a staff member.
+    Staff check in when they arrive and check out when they leave.
+    """
+
+    __tablename__ = "staff_attendance"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    business_date: Mapped[str] = mapped_column(String(20), default="", index=True)
+    check_in: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    check_out: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    check_in_ip: Mapped[str] = mapped_column(String(45), default="")
+    check_out_ip: Mapped[str] = mapped_column(String(45), default="")
+    check_in_user_agent: Mapped[str] = mapped_column(String(512), default="")
+    check_out_user_agent: Mapped[str] = mapped_column(String(512), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "business_date", name="uq_staff_attendance_user_date"),
+    )
+
+
+User.attendance_records: Mapped[list["StaffAttendance"]] = relationship(
+    "StaffAttendance", back_populates="user", cascade="all, delete-orphan",
+    foreign_keys="StaffAttendance.user_id",
+)

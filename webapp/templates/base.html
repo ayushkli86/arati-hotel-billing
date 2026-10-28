@@ -44,7 +44,7 @@
         ('OPERATIONS', [('dashboard','Dashboard'),('orders','Order Bookings'),('billing','Billing'),('menu','Menu'),('rooms','Rooms'),('customers','Customers')]),
         ('FINANCE', [('invoices','Invoices'),('payments','Payments')]),
         ('INSIGHTS', [('reports','Reports'),('calendar','Day Book'),('analysis','Sales Analysis')]),
-        ('SYSTEM', [('catalog','Catalog'),('printer','Printer Settings'),('staff','Staff'),('settings','Hotel Settings')])
+        ('SYSTEM', [('catalog','Catalog'),('printer','Printer Settings'),('staff','Staff'),('attendance','Attendance'),('settings','Hotel Settings')])
       ] %}
       {% for heading, items in groups %}
       {% if current_user.role == 'admin' or heading in ('OPERATIONS', 'FINANCE') %}
@@ -62,6 +62,16 @@
       </section>
       {% endif %}
       {% endfor %}
+      {% if current_user.role == 'admin' %}
+      <section>
+        <h2 class="sidebar-heading">EXTERNAL</h2>
+        <div class="space-y-1.5">
+          <a href="/website-admin/enquiries" class="nav-link {% if active_page == 'website_admin' %}nav-active{% endif %}">
+            <span class="nav-icon">{{ nav_icon('settings') }}</span><span>Website Admin</span>
+          </a>
+        </div>
+      </section>
+      {% endif %}
       {% endif %}
     </nav>
     <div class="border-t p-3" style="border-color:rgba(232,213,163,.16);">
