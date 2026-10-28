@@ -1457,21 +1457,123 @@ async def room_checkin(request: Request, room_id: int, db: Session = Depends(get
         }, status_code=200)
 
 
+def _get_guest_active_stays(db: Session, guest_id: int) -> list[Stay]:
+    """Get all checked-in stays for a guest, ordered by check_in (first room first)."""
+    return db.scalars(
+        select(Stay).where(
+            Stay.guest_id == guest_id, Stay.status == "checked_in"
+        ).order_by(Stay.check_in)
+    ).all()
+
+
+def _combine_guest_folios(db: Session, stays: list[Stay]) -> dict:
+    """Combine multiple stays for the same guest into a single folio."""
+    if not stays:
+        return {"room": None, "charges": [], "lines": [], "nights": 0, "totals": None, "stays": []}
+    
+    all_charges = []
+    all_lines = []
+    total_nights = 0
+    first_stay = stays[0]
+    first_room = db.get(Room, first_stay.room_id)
+    
+    # Collect all charges from all stays
+    for stay in stays:
+        room = db.get(Room, stay.room_id)
+        charges = db.scalars(
+            select(RoomCharge).where(RoomCharge.stay_id == stay.id)
+            .order_by(RoomCharge.charge_date, RoomCharge.id)
+        ).all()
+        all_charges.extend(charges)
+        
+        departure = stay.expected_checkout or stay.check_out
+        nights = 1
+        if departure:
+            nights = max(1, (_business_date(departure) - _business_date(stay.check_in)).days)
+        nights += sum(
+            1 for charge in charges
+            if charge.category == "room" and charge.description.startswith("Extra night")
+        )
+        total_nights += nights
+        
+        # Room line for this stay
+        all_lines.append(Line(
+            description=f"Room {room.number} — {nights} night(s)",
+            qty=float(nights),
+            unit_price=float(stay.nightly_rate or room.nightly_rate),
+            category="room",
+        ))
+        
+        # Additional charges for this stay
+        for charge in charges:
+            all_lines.append(Line(
+                description=charge.description,
+                qty=float(charge.quantity),
+                unit_price=float(charge.unit_price),
+                category=charge.category,
+            ))
+    
+    settings = _billing_settings(db)
+    try:
+        service_charge_rate = float(settings.get("service_charge_rate", "10"))
+        vat_rate = float(settings.get("vat_rate", "13"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(500, "Hotel billing rates are invalid. Update Hotel Settings.") from exc
+    
+    totals = compute_totals(
+        all_lines, service_charge_rate=service_charge_rate,
+        vat_rate=vat_rate, bill_type="tax",
+    )
+    
+    return {
+        "room": first_room,
+        "charges": all_charges,
+        "lines": all_lines,
+        "nights": total_nights,
+        "totals": totals,
+        "stays": stays,
+    }
+
+
 @app.get("/rooms/{room_id}/checkout", response_class=HTMLResponse)
 def room_checkout_modal(request: Request, room_id: int, db: Session = Depends(get_db)):
     user_or_redirect(request, db)
     row = next((row for row in _room_board_data(db)["room_rows"] if row["room"].id == room_id), None)
     if not row or not row["stay"]:
         raise HTTPException(404, "No active stay found for this room.")
-    folio = _stay_folio(db, row["stay"])
+    
+    stay = row["stay"]
+    
+    # Find all active stays for this guest
+    guest_stays = _get_guest_active_stays(db, stay.guest_id) if stay.guest_id else [stay]
+    is_multi_room = len(guest_stays) > 1
+    
+    # Combine folios for all rooms
+    combined_folio = _combine_guest_folios(db, guest_stays)
+    
+    # Check if any stay has an existing invoice
     invoiced = None
-    if row["stay"].invoice_number:
+    if stay.invoice_number:
         invoiced = db.scalar(
-            select(Invoice).where(Invoice.invoice_number == row["stay"].invoice_number)
+            select(Invoice).where(Invoice.invoice_number == stay.invoice_number)
         )
+    # Also check other stays
+    if not invoiced:
+        for s in guest_stays:
+            if s.invoice_number and s.invoice_number != stay.invoice_number:
+                invoiced = db.scalar(
+                    select(Invoice).where(Invoice.invoice_number == s.invoice_number)
+                )
+                if invoiced:
+                    break
+    
     return render(request, "partials/room_checkout_modal.html", db, {
-        "row": row, "folio": folio, "payment_methods": _payment_methods(db),
+        "row": row,
+        "folio": combined_folio,
+        "payment_methods": _payment_methods(db),
         "invoiced_invoice": invoiced,
+        "is_multi_room": is_multi_room,
+        "guest_stays": guest_stays,
     })
 
 
@@ -1482,22 +1584,36 @@ def room_checkout(
     db: Session = Depends(get_db),
 ):
     user = user_or_redirect(request, db)
-    invoiced_invoice = None
     try:
         check_csrf(request, csrf_token)
         room = db.get(Room, room_id)
         stay = db.scalar(select(Stay).where(Stay.room_id == room_id, Stay.status == "checked_in"))
         if not room or not stay:
             raise ValueError("No active stay found for this room.")
-        if stay.invoice_number:
-            invoiced_invoice = db.scalar(
-                select(Invoice).where(Invoice.invoice_number == stay.invoice_number)
-            )
-            if invoiced_invoice is None:
-                raise ValueError(
-                    f"This stay was already invoiced as {stay.invoice_number} "
-                    "but the invoice could not be found."
+        
+        # Find all active stays for this guest
+        guest_stays = _get_guest_active_stays(db, stay.guest_id) if stay.guest_id else [stay]
+        is_multi_room = len(guest_stays) > 1
+        
+        # Check if any stay has an existing invoice
+        invoiced_invoice = None
+        for s in guest_stays:
+            if s.invoice_number:
+                invoiced_invoice = db.scalar(
+                    select(Invoice).where(Invoice.invoice_number == s.invoice_number)
                 )
+                if invoiced_invoice:
+                    break
+            if invoiced_invoice:
+                break
+        
+        if invoiced_invoice is not None:
+            # If there's an existing invoice, we need to handle carefully
+            # For now, just check out the single room that triggered this
+            # (multi-room with existing invoices is complex)
+            if is_multi_room:
+                raise ValueError("Cannot check out multiple rooms when one has an existing invoice. Check out rooms individually.")
+        
         try:
             paid_value = Decimal(amount_paid or "0")
         except InvalidOperation as exc:
@@ -1506,8 +1622,10 @@ def room_checkout(
             raise ValueError("Amount received cannot be negative.")
         if payment_method not in _payment_methods(db):
             raise ValueError("Choose a valid payment method.")
-
-        folio = _stay_folio(db, stay)
+        
+        # Combine folios for all stays
+        combined_folio = _combine_guest_folios(db, guest_stays)
+        
         if invoiced_invoice is not None:
             balance = (
                 Decimal(str(invoiced_invoice.balance)) if invoiced_invoice.balance is not None
@@ -1519,21 +1637,24 @@ def room_checkout(
                 )
         else:
             totals = compute_totals(
-                folio["lines"],
-                service_charge_rate=folio["totals"].service_charge_rate,
-                vat_rate=folio["totals"].vat_rate,
+                combined_folio["lines"],
+                service_charge_rate=combined_folio["totals"].service_charge_rate,
+                vat_rate=combined_folio["totals"].vat_rate,
                 paid=float(paid_value),
                 bill_type="tax",
             )
             if paid_value > Decimal(str(totals.total)):
                 raise ValueError("Amount received cannot exceed the folio total.")
+        
         if stay.guest_id is None or db.get(Guest, stay.guest_id) is None:
             raise ValueError("The active stay has no valid guest record.")
         guest = db.get(Guest, stay.guest_id)
         now = local_now()
         issue_date = now.astimezone(timezone.utc).replace(tzinfo=None)
         settings = _billing_settings(db)
+        
         if invoiced_invoice is None:
+            # Create single invoice for all rooms
             invoice = Invoice(
                 is_draft=False,
                 invoice_number=_next_billing_number(db), guest_id=guest.id, room_id=room.id,
@@ -1555,17 +1676,18 @@ def room_checkout(
                 language=settings.get("invoice_language", "en"),
                 copy_type=settings.get("invoice_copy", "Customer Copy"),
                 payment_terms=settings.get("payment_terms", "Payment due on presentation."),
-                notes=f"Room {room.number} folio", payment_method=payment_method,
+                notes=f"Combined folio for {len(guest_stays)} room(s)" if is_multi_room else f"Room {room.number} folio",
+                payment_method=payment_method,
                 prepared_by=user.username, guest_name=stay.guest_name or guest.name,
                 guest_phone=stay.guest_phone or guest.phone,
                 guest_address=stay.guest_address or guest.address,
                 guest_pan=stay.guest_pan or guest.pan_vat_number,
                 room_number=room.number, bill_date=now.date().isoformat(),
-                nights=folio["nights"], check_in=stay.check_in,
+                nights=combined_folio["nights"], check_in=stay.check_in,
                 check_out=stay.expected_checkout or stay.check_out, user_id=user.id,
             )
             invoice.guest = guest
-            for line in folio["lines"]:
+            for line in combined_folio["lines"]:
                 line_vat = compute_totals(
                     [line], service_charge_rate=0,
                     vat_rate=totals.vat_rate, bill_type="tax",
@@ -1578,32 +1700,64 @@ def room_checkout(
                 ))
                 db.add(invoice)
                 db.flush()
-        stay.status = "checked_out"
-        stay.check_out = issue_date
-        stay.nights = folio["nights"]
-        stay.invoice_number = (invoiced_invoice or invoice).invoice_number
-        stay.room_number = room.number
-        room.status = "dirty"
-        room.housekeeping_status = "dirty"
-        if stay.reservation_id:
-            reservation = db.get(Reservation, stay.reservation_id)
-            if reservation and reservation.status == "checked_in":
-                reservation.status = "checked_out"
-        if invoiced_invoice is None:
-            for charge in folio["charges"]:
+            
+            # Check out ALL stays for this guest
+            for s in guest_stays:
+                s.status = "checked_out"
+                s.check_out = issue_date
+                s.nights = next(
+                    (stay_nights for stay_nights in [combined_folio["nights"]] if s == guest_stays[0]),
+                    0
+                )
+                # Calculate nights for this specific stay
+                dep = s.expected_checkout or s.check_out
+                s_nights = 1
+                if dep:
+                    s_nights = max(1, (_business_date(dep) - _business_date(s.check_in)).days)
+                s_nights += sum(
+                    1 for charge in combined_folio["charges"]
+                    if charge.stay_id == s.id and charge.category == "room" and charge.description.startswith("Extra night")
+                )
+                s.nights = s_nights
+                s.invoice_number = invoice.invoice_number
+                s.room_number = db.get(Room, s.room_id).number if db.get(Room, s.room_id) else ""
+                
+                # Mark room as dirty
+                r = db.get(Room, s.room_id)
+                if r:
+                    r.status = "dirty"
+                    r.housekeeping_status = "dirty"
+                
+                # Update reservation if exists
+                if s.reservation_id:
+                    reservation = db.get(Reservation, s.reservation_id)
+                    if reservation and reservation.status == "checked_in":
+                        reservation.status = "checked_out"
+            
+            # Link all charges to the invoice
+            for charge in combined_folio["charges"]:
                 charge.invoice_number = invoice.invoice_number
+            
             if totals.paid > 0:
                 db.add(Payment(
                     invoice=invoice, amount=Decimal(str(totals.paid)),
                     method=payment_method, received_by=user.username,
-                    note=f"Room {room.number} checkout",
+                    note=f"Checkout {len(guest_stays)} room(s) for {guest.name}",
                     invoice_number=invoice.invoice_number,
                     business_date=now.date().isoformat(), user_id=user.id,
                 ))
         else:
-            # The stay was already invoiced from Billing (e.g. an occupied room
-            # billed mid-stay): only settle the outstanding balance — never
-            # issue a second invoice.
+            # Existing invoice case - just check out this one room
+            stay = guest_stays[0]
+            stay.status = "checked_out"
+            stay.check_out = issue_date
+            stay.nights = combined_folio["nights"]
+            room.status = "dirty"
+            room.housekeeping_status = "dirty"
+            if stay.reservation_id:
+                reservation = db.get(Reservation, stay.reservation_id)
+                if reservation and reservation.status == "checked_in":
+                    reservation.status = "checked_out"
             if paid_value > 0:
                 invoiced_invoice.paid_amount = (
                     Decimal(str(invoiced_invoice.paid_amount)) + paid_value
@@ -1619,14 +1773,16 @@ def room_checkout(
                     invoice_number=invoiced_invoice.invoice_number,
                     business_date=now.date().isoformat(), user_id=user.id,
                 ))
-            stay.nights = folio["nights"] if folio["nights"] else stay.nights
-            _audit(db, user, "stay.check_out", "stay", str(stay.id),
-                   f"room {room.number} checked out against invoice {invoiced_invoice.invoice_number}")
-            db.commit()
-            return _room_action_response(f'Room {room.number} settled against {invoiced_invoice.invoice_number}.')
-        _audit(db, user, "stay.check_out", "stay", str(stay.id), f"room {room.number} invoiced as {invoice.invoice_number}")
+        
+        _audit(db, user, "stay.check_out", "stay", str(stay.id),
+               f"checked out {len(guest_stays)} room(s) for {guest.name}, invoiced as {invoice.invoice_number if invoiced_invoice is None else invoiced_invoice.invoice_number}")
         db.commit()
-        return _room_action_response(f'Room {room.number} checked out.' if not invoiced_invoice else f'Room {room.number} settled against {invoiced_invoice.invoice_number}.')
+        
+        if is_multi_room:
+            return _room_action_response(f'Checked out {len(guest_stays)} rooms for {guest.name}. Combined invoice: {invoice.invoice_number if invoiced_invoice is None else invoiced_invoice.invoice_number}.')
+        else:
+            return _room_action_response(f'Room {room.number} checked out.' if not invoiced_invoice else f'Room {room.number} settled against {invoiced_invoice.invoice_number}.')
+    
     except HTTPException as exc:
         db.rollback()
         if exc.status_code != 422:
@@ -1634,11 +1790,15 @@ def room_checkout(
         error_msg = exc.detail
         row = next((r for r in _room_board_data(db)["room_rows"] if r["room"].id == room_id), None)
         if row and row["stay"]:
+            guest_stays = _get_guest_active_stays(db, row["stay"].guest_id) if row["stay"].guest_id else [row["stay"]]
+            combined_folio = _combine_guest_folios(db, guest_stays)
             return render(request, "partials/room_checkout_modal.html", db, {
-                "row": row, "folio": _stay_folio(db, row["stay"]), "error": error_msg,
+                "row": row, "folio": combined_folio, "error": error_msg,
                 "payment_methods": _payment_methods(db),
                 "payment_method_val": payment_method,
                 "invoiced_invoice": invoiced_invoice,
+                "is_multi_room": len(guest_stays) > 1,
+                "guest_stays": guest_stays,
             }, status_code=200)
         raise
     except ValueError as exc:
