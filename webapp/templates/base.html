@@ -41,7 +41,7 @@
       <section><h2 class="sidebar-heading">ACCOUNT</h2><a href="/password/change" class="nav-link nav-active"><span class="nav-icon">{{ nav_icon('password') }}</span><span>Update password</span></a></section>
       {% else %}
       {% set groups = [
-        ('OPERATIONS', [('dashboard','Dashboard'),('orders','Order Bookings'),('billing','Billing'),('menu','Menu'),('rooms','Rooms'),('customers','Customers')]),
+        ('OPERATIONS', [('dashboard','Dashboard'),('orders','Order Bookings'),('billing','Billing'),('menu','Menu'),('rooms','Rooms'),('customers','Customers'),('my_attendance','My Attendance')]),
         ('FINANCE', [('invoices','Invoices'),('payments','Payments')]),
         ('INSIGHTS', [('reports','Reports'),('calendar','Day Book'),('analysis','Sales Analysis')]),
         ('SYSTEM', [('catalog','Catalog'),('printer','Printer Settings'),('staff','Staff'),('attendance','Attendance'),('settings','Hotel Settings')])
@@ -52,7 +52,7 @@
         <h2 class="sidebar-heading">{{ heading }}</h2>
         <div class="space-y-1.5">
           {% for key, label in items %}
-          {% if key not in ('staff', 'settings', 'analysis') or current_user.role == 'admin' %}
+          {% if key not in ('staff', 'settings', 'analysis', 'attendance') or current_user.role == 'admin' %}
           <a href="{{ {'billing': '/billing/create', 'orders': '/orders'}.get(key, '/' + key) }}" class="nav-link {% if active_page == key %}nav-active{% endif %}">
             <span class="nav-icon">{{ nav_icon(key) }}</span><span>{{ label }}</span>
           </a>

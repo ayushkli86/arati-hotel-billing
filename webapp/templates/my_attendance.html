@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% set active_page = 'my_attendance' %}
+{% block title %}My Attendance{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">STAFF · ATTENDANCE</p>
+    <h1 class="page-title">My Attendance</h1>
+    <p class="page-subtitle">Check in, check out, and view your attendance history.</p>
+  </div>
+</div>
+
+{% set today_str = local_now().date().isoformat() %}
+{% set today_record = attendance_records|selectattr('business_date', 'equalto', today_str)|first %}
+{% set is_checked_in = today_record and today_record.check_in is not none %}
+{% set is_checked_out = today_record and today_record.check_out is not none %}
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Today's Status</h2>
+      <p class="panel-subtitle">{{ local_now().strftime('%A, %d %B %Y') }}</p>
+    </div>
+  </div>
+  <div class="grid gap-4 sm:grid-cols-3">
+    <article class="metric-card {% if is_checked_in and not is_checked_out %}border-emerald-300{% endif %}">
+      <p class="section-label">Status</p>
+      <p class="mt-2 text-2xl font-extrabold {% if is_checked_in and not is_checked_out %}text-emerald-700{% elif is_checked_out %}text-slate-700{% else %}text-amber-700{% endif %}">
+        {% if is_checked_in and not is_checked_out %}On Duty
+        {% elif is_checked_out %}Checked Out
+        {% else %}Not Checked In{% endif %}
+      </p>
+      {% if is_checked_in and not is_checked_out %}
+      <p class="mt-1 text-xs text-emerald-600">Checked in at {{ local_datetime(today_record.check_in, "%H:%M") }}</p>
+      {% elif is_checked_out %}
+      <p class="mt-1 text-xs text-slate-500">Checked in at {{ local_datetime(today_record.check_in, "%H:%M") }} · Out at {{ local_datetime(today_record.check_out, "%H:%M") }}</p>
+      {% endif %}
+    </article>
+    <article class="metric-card">
+      <p class="section-label">Today's Hours</p>
+      <p class="mt-2 text-2xl font-extrabold text-slate-900">
+        {% if today_record and today_record.check_in %}
+          {% if today_record.check_out %}
+            {{ ((today_record.check_out - today_record.check_in).total_seconds() / 3600)|round(2) }}h
+          {% else %}
+            {{ today_record.ongoing_hours|round(2) }}h (ongoing)
+          {% endif %}
+        {% else %}
+          0h
+        {% endif %}
+      </p>
+    </article>
+    <article class="metric-card">
+      <p class="section-label">This Month</p>
+      <p class="mt-2 text-2xl font-extrabold soft-amber-text">{{ month_summary.total_hours|round(2) }}h</p>
+      <p class="mt-1 text-xs text-slate-500">{{ month_summary.days_present }} days present</p>
+    </article>
+  </div>
+</section>
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Actions</h2>
+    </div>
+  </div>
+  <form method="post" action="/attendance/check-in" class="flex flex-wrap gap-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="notes" value="Check in via My Attendance">
+    {% if not is_checked_in %}
+    <button class="btn-primary text-lg px-6 py-3" type="submit">
+      <i class="ph ph-sign-in mr-2"></i> Check In
+    </button>
+    {% else %}
+    <button class="btn-secondary text-lg px-6 py-3" disabled>
+      <i class="ph ph-check-circle mr-2"></i> Already Checked In
+    </button>
+    {% endif %}
+  </form>
+  <form method="post" action="/attendance/check-out" class="flex flex-wrap gap-3 mt-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="notes" value="Check out via My Attendance">
+    {% if is_checked_in and not is_checked_out %}
+    <button class="btn-danger text-lg px-6 py-3" type="submit">
+      <i class="ph ph-sign-out mr-2"></i> Check Out
+    </button>
+    {% elif is_checked_out %}
+    <button class="btn-secondary text-lg px-6 py-3" disabled>
+      <i class="ph ph-check-circle mr-2"></i> Already Checked Out
+    {% else %}
+    <button class="btn-secondary text-lg px-6 py-3" disabled>
+      <i class="ph ph-sign-out mr-2"></i> Check In First
+    </button>
+    {% endif %}
+  </form>
+</section>
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Attendance History</h2>
+      <p class="panel-subtitle">Your attendance records for this month.</p>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table min-w-[800px]">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Check-in</th>
+          <th>Check-out</th>
+          <th class="text-right">Hours</th>
+          <th>Status</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in attendance_records %}
+        <tr class="{{ 'bg-emerald-50' if record.business_date == today_str and record.check_in and not record.check_out else '' }}">
+          <td class="whitespace-nowrap text-xs text-slate-600">{{ record.business_date }}</td>
+          <td class="whitespace-nowrap text-xs text-slate-600">
+            {% if record.check_in %}{{ local_datetime(record.check_in, "%H:%M") }}{% else %}—{% endif %}
+          </td>
+          <td class="whitespace-nowrap text-xs text-slate-600">
+            {% if record.check_out %}{{ local_datetime(record.check_out, "%H:%M") }}{% else %}—{% endif %}
+          </td>
+          <td class="text-right tabular-nums whitespace-nowrap text-xs font-semibold">
+            {% if record.check_in and record.check_out %}
+              {{ ((record.check_out - record.check_in).total_seconds() / 3600)|round(2) }}h
+            {% elif record.check_in %}
+              {{ record.ongoing_hours|round(2) }}h (ongoing)
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if record.check_in and not record.check_out %}
+            <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">On Duty</span>
+            {% elif record.check_in and record.check_out %}
+            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">Completed</span>
+            {% else %}
+            <span class="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Absent</span>
+            {% endif %}
+          </td>
+          <td class="text-xs text-slate-500">{{ record.notes or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="py-8 text-center text-sm text-slate-500">No attendance records this month.</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th>Total</th>
+          <th></th>
+          <th></th>
+          <th class="text-right">{{ month_summary.total_hours|round(2) }}h</th>
+          <th></th>
+          <th></th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</section>
+
+<section class="panel mb-5">
+  <div class="panel-heading">
+    <div>
+      <h2 class="panel-title">Month Summary</h2>
+      <p class="panel-subtitle">Your attendance statistics for the current month.</p>
+    </div>
+  </div>
+  <div class="grid gap-4 sm:grid-cols-4">
+    <article class="metric-card">
+      <p class="section-label">Days Present</p>
+      <p class="mt-2 text-2xl font-extrabold text-slate-900">{{ month_summary.days_present }}</p>
+    </article>
+    <article class="metric-card">
+      <p class="section-label">Total Hours</p>
+      <p class="mt-2 text-2xl font-extrabold soft-amber-text">{{ month_summary.total_hours|round(2) }}h</p>
+    </article>
+    <article class="metric-card">
+      <p class="section-label">Avg Hours/Day</p>
+      <p class="mt-2 text-2xl font-extrabold text-slate-900">{{ month_summary.avg_hours|round(2) }}h</p>
+    </article>
+    <article class="metric-card">
+      <p class="section-label">Late Arrivals</p>
+      <p class="mt-2 text-2xl font-extrabold {% if month_summary.late_count > 0 %}text-red-700{% else %}text-slate-900{% endif %}">{{ month_summary.late_count }}</p>
+    </article>
+  </div>
+</section>
+{% endblock %}

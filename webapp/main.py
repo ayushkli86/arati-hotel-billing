@@ -210,6 +210,7 @@ def local_datetime(value: datetime | None, fmt: str = "%d %b · %H:%M") -> str:
 
 
 templates.env.globals["local_datetime"] = local_datetime
+templates.env.globals["local_now"] = local_now
 
 PAYMENT_METHODS = ("Cash", "Card", "eSewa", "Khalti", "Fonepay", "Bank Transfer", "Room Credit")
 REFUND_REASONS = (
@@ -6261,6 +6262,73 @@ def _attendance_data(db: Session, start_dt: datetime, end_dt: datetime) -> dict:
             "total_hours": float(total_hours),
         },
     }
+
+
+@app.get("/my-attendance", response_class=HTMLResponse)
+def my_attendance_page(
+    request: Request, db: Session = Depends(get_db),
+):
+    user = user_or_redirect(request, db)
+    
+    # Get current month range
+    today = local_now().date()
+    start_date = today.replace(day=1)
+    if start_date.month == 12:
+        end_date = start_date.replace(year=start_date.year + 1, month=1, day=1) - timedelta(days=1)
+    else:
+        end_date = start_date.replace(month=start_date.month + 1, day=1) - timedelta(days=1)
+    
+    start_dt = datetime.combine(start_date, time.min, BUSINESS_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    end_dt = datetime.combine(end_date + timedelta(days=1), time.min, BUSINESS_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    
+    # Get attendance records for this user this month
+    records = db.scalars(
+        select(StaffAttendance).where(
+            StaffAttendance.user_id == user.id,
+            StaffAttendance.created_at >= start_dt, StaffAttendance.created_at < end_dt
+        ).order_by(StaffAttendance.business_date.desc())
+    ).all()
+    
+    # Add ongoing_hours
+    now_utc = models.utcnow()
+    for r in records:
+        if r.check_in and not r.check_out:
+            r.ongoing_hours = (now_utc - r.check_in).total_seconds() / 3600
+    
+    # Compute month summary
+    today_str = today.isoformat()
+    today_record = next((r for r in records if r.business_date == today_str), None)
+    is_checked_in = today_record and today_record.check_in is not None
+    is_checked_out = today_record and today_record.check_out is not None
+    
+    days_present = len([r for r in records if r.check_in is not None])
+    completed = [r for r in records if r.check_in and r.check_out]
+    ongoing = [r for r in records if r.check_in and not r.check_out]
+    
+    total_hours = sum(Decimal(str((r.check_out - r.check_in).total_seconds() / 3600)) for r in completed)
+    for r in ongoing:
+        total_hours += Decimal(str((now_utc - r.check_in).total_seconds() / 3600))
+    
+    avg_hours = float(total_hours / max(1, len(completed))) if completed else 0
+    late_count = sum(
+        1 for r in records
+        if r.check_in and r.check_in.replace(tzinfo=timezone.utc).astimezone(BUSINESS_TZ).time() > time(9, 30)
+    )
+    
+    month_summary = {
+        "days_present": days_present,
+        "total_hours": float(total_hours),
+        "avg_hours": avg_hours,
+        "late_count": late_count,
+    }
+    
+    return render(request, "my_attendance.html", db, {
+        "attendance_records": records,
+        "today_record": today_record,
+        "is_checked_in": is_checked_in,
+        "is_checked_out": is_checked_out,
+        "month_summary": month_summary,
+    })
 
 
 @app.get("/attendance", response_class=HTMLResponse)
