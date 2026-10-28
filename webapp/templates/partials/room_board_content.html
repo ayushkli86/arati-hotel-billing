@@ -19,7 +19,6 @@
     {% if row.stay_duration %}
     <p class="text-xs font-semibold text-emerald-700 flex items-center gap-1"><i class="ph ph-clock"></i> Stay: {{ row.stay_duration }}</p>
     {% endif %}
-    <p class="font-semibold {% if row.balance > 0 %}soft-amber-text{% else %}text-slate-500{% endif %}">Balance: {{ money(row.balance) }}</p>
   {% elif row.status == 'dirty' %}
     <p class="text-amber-800">Waiting for housekeeping.</p>
     <p class="mt-1 text-slate-500">Clean the room to make it bookable again.</p>
