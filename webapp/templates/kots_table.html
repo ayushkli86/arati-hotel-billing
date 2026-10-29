@@ -1,0 +1,56 @@
+{% extends "base.html" %}{% set active_page='kots' %}{% block title %}KOT for Table {{ table_number }}{% endblock %}{% block header_title %}KOT for Table {{ table_number }}{% endblock %}{% block content %}
+<div class="page-heading"><div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.75rem;height:2.75rem;font-size:1.35rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-receipt"></i></span><div><p class="eyebrow">Front desk <span class="text-slate-500">/</span> KOT</p><h1 class="page-title">KOT for Table {{ table_number }}</h1><p class="page-subtitle">Table-wise kitchen orders</p></div></div>
+<div class="mt-4 flex items-center gap-2">
+  <a href="/kots" class="btn-secondary">All KOTs</a>
+  <a href="/billing/create" class="btn-primary">Open Billing</a>
+</div>
+{% if kots %}
+<div class="mt-4 table-scroll">
+  <table class="data-table soft-table min-w-[860px]">
+    <thead><tr>
+      <th><span class="inline-flex items-center gap-1.5"><i class="ph ph-notepad"></i>K.O.T No.</span></th>
+      <th><span class="inline-flex items-center gap-1.5"><i class="ph ph-calendar"></i>Date</span></th>
+      <th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user"></i>Guest</span></th>
+      <th><span class="inline-flex items-center gap-1.5"><i class="ph ph-coffee"></i>Items</span></th>
+      <th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-calculator"></i>Total</span></th>
+      <th><span class="inline-flex items-center gap-1.5"><i class="ph ph-download"></i>Status</span></th>
+      <th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-eye"></i>View</span></th>
+      <th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-printer"></i>Print</span></th>
+    </thead>
+    <tbody>
+      {% for kot in kots %}
+      <tr class="border-b border-slate-100 hover:bg-slate-50">
+        <td class="font-medium text-slate-800">{{ kot.kot_number }}</td>
+        <td class="text-slate-500">{{ kot.date }}</td>
+        <td class="font-medium text-slate-800">{{ kot.guest.name if kot.guest else 'Walk-in' }}</td>
+        <td>{% set kot_items = kot.items|from_json if kot.items else [] %}{{ kot_items|length }}</td>
+        <td class="text-right">{{ '%.2f'|format(kot_items|sum(attribute='amount')) }}</td>
+        <td><span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase {{ 'bg-amber-100 text-amber-700' if kot.status == 'open' else 'bg-slate-100 text-slate-400' }}">{{ kot.status }}</span></td>
+        <td class="text-right"><a class="btn-amber text-xs px-2 py-1" href="/kots/{{ kot.id }}/view">View</a></td>
+        <td class="text-right"><a class="btn-primary text-xs px-2 py-1" href="/kots/{{ kot.id }}/print">Print</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="mt-4">
+  <h3>K.O.T Items Summary</h3>
+  {% for kot in kots %}
+  <div class="p-3 bg-slate-50 rounded mb-3">
+    <p class="font-medium text-slate-800">
+      {{ kot.kot_number }}
+      — {{ kot.date }}
+      <span class="text-xs text-slate-500">({{ 'Table ' + kot.table_number if kot.table_number else 'Walk-in' }})</span>
+    </p>
+    {% for item in (kot.items|from_json if kot.items else []) %}
+    <div class="text-xs text-slate-600 mt-1">
+      <span>{{ item.get('particular', 'Item') }}</span> × <span>{{ item.get('qty', 1) }}</span> @ Rs. <span>{{ '%.2f'|format(item.get('rate', 0)|float) }}</span> = Rs. <span>{{ '%.2f'|format(item.get('amount', 0)|float) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="mt-4 p-4 bg-slate-50 rounded"><p class="text-sm text-slate-600">No KOTs saved for Table {{ table_number }} yet. Create one from the <a class="text-emerald-700 underline" href="/billing/create">Billing</a> screen.</p></div>
+{% endif %}
+{% endblock %}

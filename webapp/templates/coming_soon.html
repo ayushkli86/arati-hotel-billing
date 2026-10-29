@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% set active_page = 'orders' %}
+{% block title %}Order Bookings{% endblock %}
+{% block header_title %}Order Bookings{% endblock %}
+{% block content %}
+<div class="flex min-h-[calc(100vh-10rem)] items-center justify-center">
+  <section class="panel w-full max-w-2xl text-center">
+    <span class="mx-auto grid h-16 w-16 place-items-center rounded-full" style="background:rgba(212,192,138,.28);color:#8A6A14;">
+      <i class="ph ph-rocket-launch" style="font-size:1.8rem;"></i>
+    </span>
+    <p class="eyebrow mt-5">COMING SOON</p>
+    <h1 class="page-title mt-2">Order Bookings</h1>
+    <p class="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-600">We are putting the finishing touches on the order booking workflow. It will be available soon.</p>
+    <div class="mx-auto mt-5 max-w-lg rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+      This feature is coming soon. Contact the developer for more details.
+    </div>
+    <a href="/dashboard" class="btn-primary mt-6"><i class="ph ph-arrow-left"></i>Back to Dashboard</a>
+  </section>
+</div>
+{% endblock %}

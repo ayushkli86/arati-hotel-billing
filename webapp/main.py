@@ -1340,6 +1340,7 @@ async def room_checkin(request: Request, room_id: int, db: Session = Depends(get
         guest_email = str(form.get("email", "")).strip()[:180]
         guest_address = str(form.get("address", "")).strip()
         guest_pan = str(form.get("pan_vat", "")).strip() or str(form.get("guest_pan", "")).strip()
+        guest_citizenship = str(form.get("citizenship_no", "")).strip()
         if not guest_name and reservation:
             guest_name = reservation.guest_name or (guest.name if guest else "")
         if not guest_phone and reservation:
@@ -1361,6 +1362,8 @@ async def room_checkin(request: Request, room_id: int, db: Session = Depends(get
             email=guest_email or (guest.email if guest else ""),
             address=guest_address or (guest.address if guest else ""),
             pan_vat=guest_pan or (getattr(guest, "pan_vat_number", "") if guest else ""),
+            id_type="Citizenship" if guest_citizenship else (guest.id_type if guest else ""),
+            id_number=guest_citizenship or (guest.id_number if guest else ""),
             customer_type=(guest.customer_type if guest else "individual") or "individual",
         )
 
@@ -1440,6 +1443,7 @@ async def room_checkin(request: Request, room_id: int, db: Session = Depends(get
             "phone_val": str(form.get("phone", "")),
             "email_val": str(form.get("email", "")),
             "address_val": str(form.get("address", "")),
+            "citizenship_no_val": str(form.get("citizenship_no", "")),
             "selected_guest_id": str(form.get("guest_id", "")),
         }, status_code=200)
     except ValueError as exc:
@@ -1454,6 +1458,7 @@ async def room_checkin(request: Request, room_id: int, db: Session = Depends(get
             "phone_val": str(form.get("phone", "")),
             "email_val": str(form.get("email", "")),
             "address_val": str(form.get("address", "")),
+            "citizenship_no_val": str(form.get("citizenship_no", "")),
             "selected_guest_id": str(form.get("guest_id", "")),
         }, status_code=200)
 

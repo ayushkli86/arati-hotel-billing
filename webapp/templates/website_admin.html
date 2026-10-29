@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% set active_page = 'website_admin' %}
+{% block title %}Website Admin{% endblock %}
+{% block header_title %}Website Admin{% endblock %}
+{% block content %}
+<div class="panel overflow-hidden" style="height: calc(100vh - 10rem);">
+  <iframe 
+    id="website-admin-iframe"
+    src="/website-admin-proxy/admin-dashboard" 
+    width="100%" 
+    height="100%" 
+    frameborder="0"
+    allowfullscreen
+    sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads">
+  </iframe>
+</div>
+{% endblock %}
