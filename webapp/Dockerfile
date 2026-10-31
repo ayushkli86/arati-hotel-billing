@@ -11,20 +11,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Set working directory to parent of webapp
 WORKDIR /app
 
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY webapp/requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy webapp source code
-COPY . .
+COPY webapp/ ./webapp/
 
 # Expose port
 EXPOSE 8080
 
-# Start command - use python -m to properly handle relative imports
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Start command - use module path for proper relative imports
+CMD ["python", "-m", "uvicorn", "webapp.main:app", "--host", "0.0.0.0", "--port", "8080"]
