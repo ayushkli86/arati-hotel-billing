@@ -11,8 +11,16 @@ services:
         && pip install -r webapp/requirements.txt
     startCommand: cd webapp && uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: ARATI_WEB_SECRET
+        value: "53363be62374b727bc1a7fd69721fff629ec0cdc80ff8abfc8b090e1c4831f60"
       - key: ARATI_WEB_DATABASE_URL
         value: sqlite:///data/arati_web.db
+      - key: ARATI_WEB_HTTPS
+        value: "1"
+      - key: ARATI_WEB_DAILY_CLOSE_ENABLED
+        value: "1"
+      - key: ARATI_WEB_REPORT_DIRECTORY
+        value: /opt/render/project/src/data/reports
       - key: PYTHON_VERSION
         value: "3.11.10"
     disk:
