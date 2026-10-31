@@ -1,4 +1,5 @@
 # Dockerfile for Arati Hotel Webapp on Render
+# Build context: ./webapp (set via rootDir in Render)
 FROM python:3.11-slim
 
 # Install system dependencies for WeasyPrint (Debian 13 Trixie package names)
@@ -11,17 +12,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory to parent of webapp
+# Set working directory
 WORKDIR /app
 
 # Copy requirements first for better caching
-COPY webapp/requirements.txt .
+COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy webapp source code
-COPY webapp/ ./webapp/
+# Copy webapp source code (build context IS webapp, so copy .)
+COPY . .
 
 # Expose port
 EXPOSE 8080
