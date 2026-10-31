@@ -2,6 +2,7 @@ services:
   - type: web
     name: arati-webapp
     env: python
+    pythonVersion: "3.11"
     plan: free
     buildCommand: |
       apt-get update && apt-get install -y \
@@ -12,6 +13,8 @@ services:
     envVars:
       - key: ARATI_WEB_DATABASE_URL
         value: sqlite:///data/arati_web.db
+      - key: PYTHON_VERSION
+        value: "3.11.10"
     disk:
       name: data
       mountPath: /opt/render/project/src/data
