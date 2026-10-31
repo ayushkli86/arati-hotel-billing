@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:multicast_dns/multicast_dns.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +19,162 @@ const String kServerUrl = String.fromEnvironment('SERVER_URL');
 /// mDNS service advertised by `arati-mdns.service` on the hotel server.
 const String kServerService = '_arati-kot._tcp.local';
 const int kServerPort = 8000;
+
+/// System-tray alerts when a new order (KOT) reaches this device.
+class NotificationService {
+  NotificationService._();
+
+  static final NotificationService instance = NotificationService._();
+
+  static const String _channelId = 'arati_orders_v2';
+  static const String _channelName = 'Arati order alerts';
+  static const String _channelDescription =
+      'Plays the Arati order bell when a new order (KOT) is placed';
+  static const RawResourceAndroidNotificationSound _sound =
+      RawResourceAndroidNotificationSound('arati_alert');
+  static final Int64List _vibration =
+      Int64List.fromList([0, 400, 180, 400, 180, 900]);
+
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
+  final Set<int> _shown = {};
+  bool _ready = false;
+
+  Future<void> init() async {
+    const android = AndroidInitializationSettings('ic_arati_order');
+    const darwin = DarwinInitializationSettings();
+    const settings = InitializationSettings(
+      android: android,
+      iOS: darwin,
+      macOS: darwin,
+    );
+    try {
+      await _plugin.initialize(settings: settings);
+      if (Platform.isAndroid) {
+        final implementation = _plugin
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>();
+        final channel = AndroidNotificationChannel(
+          _channelId,
+          _channelName,
+          description: _channelDescription,
+          importance: Importance.max,
+          playSound: true,
+          sound: _sound,
+          enableVibration: true,
+          vibrationPattern: _vibration,
+        );
+        await implementation?.deleteNotificationChannel(
+          channelId: 'arati_orders',
+        );
+        await implementation?.createNotificationChannel(channel);
+      }
+      _ready = true;
+    } catch (_) {
+      _ready = false;
+    }
+  }
+
+  Future<void> requestPermission() async {
+    if (!_ready) return;
+    try {
+      if (Platform.isAndroid) {
+        await _plugin
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>()
+            ?.requestNotificationsPermission();
+      } else if (Platform.isIOS) {
+        await _plugin
+            .resolvePlatformSpecificImplementation<
+                IOSFlutterLocalNotificationsPlugin>()
+            ?.requestPermissions(alert: true, badge: true, sound: true);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> showNewOrders(List<Map<String, dynamic>> kots) async {
+    if (!_ready || kots.isEmpty) return;
+    final fresh = <Map<String, dynamic>>[];
+    for (final kot in kots) {
+      final id = kot['id'];
+      if (id is int && _shown.add(id)) fresh.add(kot);
+    }
+    if (fresh.isEmpty) return;
+
+    final details = _details();
+
+    if (fresh.length == 1) {
+      final kot = fresh.single;
+      final id = kot['id'] as int;
+      await _plugin.show(
+        id: id,
+        title: 'New order ${_kotNumber(kot)}',
+        body: _kotSummary(kot),
+        notificationDetails: details,
+        payload: _kotNumber(kot),
+      );
+      return;
+    }
+
+    final lines = fresh.take(6).map((kot) {
+      return '${_kotNumber(kot)} · ${_kotSummary(kot)}';
+    }).join('\n');
+    final title = '${fresh.length} new orders';
+    await _plugin.show(
+      id: 900000 + fresh.length,
+      title: title,
+      body: lines,
+      notificationDetails: _details(
+        style: BigTextStyleInformation(lines, contentTitle: title),
+      ),
+      payload: title,
+    );
+  }
+
+  static NotificationDetails _details({StyleInformation? style}) {
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: _channelDescription,
+        importance: Importance.max,
+        priority: Priority.high,
+        playSound: true,
+        sound: _sound,
+        enableVibration: true,
+        vibrationPattern: _vibration,
+        category: AndroidNotificationCategory.message,
+        icon: 'ic_arati_order',
+        styleInformation: style,
+      ),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+      macOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentSound: true,
+      ),
+    );
+  }
+
+  static String _kotNumber(Map<String, dynamic> kot) =>
+      '${kot['kot_number'] ?? 'KOT'}';
+
+  static String _kotSummary(Map<String, dynamic> kot) {
+    final room = '${kot['room_number'] ?? ''}'.trim();
+    final table = '${kot['table_number'] ?? ''}'.trim();
+    final where = room.isNotEmpty
+        ? 'Room $room'
+        : (table.isNotEmpty ? 'Table $table' : 'Walk-in');
+    final items = kot['items'];
+    final count = items is List ? items.length : 0;
+    final total = kot['total'];
+    final amount = total is num ? ' · Rs ${total.toStringAsFixed(0)}' : '';
+    return '$where · $count item${count == 1 ? '' : 's'}$amount';
+  }
+}
 
 /// Finds the hotel server even when the router hands out a different IP.
 class ServerConfig {
@@ -191,7 +349,9 @@ class ServerConfig {
   }
 }
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.instance.init();
   runApp(const AratiKOTApp());
 }
 
@@ -876,10 +1036,14 @@ class _KOTScreenState extends State<KOTScreen> {
   bool _walkIn = false;
   int? _selectedRoomId;
   Timer? _pollTimer;
+  final Set<int> _knownKotIds = {};
+  final Set<String> _ignoreKotNumbers = {};
+  bool _trackingKots = false;
 
   @override
   void initState() {
     super.initState();
+    unawaited(NotificationService.instance.requestPermission());
     _loadData();
     // The kitchen board keeps itself fresh even when another phone cuts a KOT.
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _refreshKots());
@@ -926,6 +1090,7 @@ class _KOTScreenState extends State<KOTScreen> {
           _selectedRoomId = null;
         }
       });
+      _trackKots(results[2]);
     } on SessionExpired {
       if (mounted) widget.onSessionExpired();
     } on ApiFailure catch (failure) {
@@ -945,6 +1110,30 @@ class _KOTScreenState extends State<KOTScreen> {
     }
   }
 
+  /// Remembers which tickets this device has seen and alerts the first time a
+  /// new one arrives. The first successful load only seeds the list.
+  void _trackKots(List<Map<String, dynamic>> rows) {
+    if (!_trackingKots) {
+      for (final kot in rows) {
+        final id = kot['id'];
+        if (id is int) _knownKotIds.add(id);
+      }
+      _trackingKots = true;
+      return;
+    }
+    final fresh = <Map<String, dynamic>>[];
+    for (final kot in rows) {
+      final id = kot['id'];
+      if (id is! int || !_knownKotIds.add(id)) continue;
+      final number = '${kot['kot_number'] ?? ''}';
+      if (number.isNotEmpty && _ignoreKotNumbers.remove(number)) continue;
+      fresh.add(kot);
+    }
+    if (fresh.isNotEmpty) {
+      unawaited(NotificationService.instance.showNewOrders(fresh));
+    }
+  }
+
   Future<void> _refreshKots() async {
     try {
       final rows = await widget.api.fetchOpenKots();
@@ -955,6 +1144,7 @@ class _KOTScreenState extends State<KOTScreen> {
           ..addAll(rows);
         _isConnected = true;
       });
+      _trackKots(rows);
     } on SessionExpired {
       if (mounted) widget.onSessionExpired();
     } on ApiFailure catch (failure) {
@@ -1016,6 +1206,7 @@ class _KOTScreenState extends State<KOTScreen> {
                 })
             .toList(),
       );
+      if (kotNumber.isNotEmpty) _ignoreKotNumbers.add(kotNumber);
       if (!mounted) return;
       setState(() {
         _isSending = false;
