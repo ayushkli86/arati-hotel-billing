@@ -26,5 +26,5 @@ COPY . .
 # Expose port
 EXPOSE 8080
 
-# Start command
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Start command - use python -m to properly handle relative imports
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
