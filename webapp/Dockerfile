@@ -15,17 +15,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set working directory
 WORKDIR /app
 
-# Copy requirements first for better caching
-COPY requirements.txt .
+# Copy webapp as a package (so webapp.main works)
+COPY . ./webapp/
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy webapp source code (build context IS webapp, so copy .)
-COPY . .
+RUN pip install --no-cache-dir -r webapp/requirements.txt
 
 # Expose port
 EXPOSE 8080
 
-# Start command - use module path for proper relative imports
+# Start command - use webapp.main module path
 CMD ["python", "-m", "uvicorn", "webapp.main:app", "--host", "0.0.0.0", "--port", "8080"]
