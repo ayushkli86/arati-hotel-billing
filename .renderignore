@@ -1,0 +1,90 @@
+# Syntax: same as .gitignore
+# Files/folders NOT sent to Render build
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.venv-web/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+dist/
+build/
+*.egg-info/
+.installer/
+.backups/
+backups/
+invoices/
+receipts/
+data/
+*.db
+*.db-shm
+*.db-wal
+webapp/data/
+webapp/arati_web.db
+*.log
+
+# Test files
+tests/
+test_*.py
+_tmp_*.py
+pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Mobile app (not needed for web deployment)
+arati_kot_mobile/
+
+# Desktop app
+arati_desktop.py
+app.py
+arati/
+scripts/
+run*.sh
+run*.bat
+start-web.sh
+start-web.bat
+install-*.sh
+setup-*.bat
+setup-*.ps1
+
+# Documentation (optional - keep if you want)
+ANALYTICS_ENGINE.md
+BACKEND_FLOWCHART.md
+BACKEND_LOGIC_AUDIT.md
+CLIENT_FEATURES_EXECUTIVE.md
+CLIENT_FEATURES.md
+HOTEL_FLOWCHART.md
+UI_FEEDBACK_REPORT.md
+WINDOWS_SETUP.md
+RELEASE.md
+PROJECT_RESUME_ENTRY.md
+WINDOWS_SYNC_GUIDE.md
+
+# Misc
+*.md
+!README.md
+!webapp/README.md
+LICENSE
+.env
+.cookies*.txt
+*.txt
+!requirements.txt
+!webapp/requirements.txt
+*.py
+!webapp/**/*.py
