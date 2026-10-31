@@ -40,6 +40,7 @@ DEFAULT_SETTINGS = [
     ("payment_methods", "Cash,Card,Bank Transfer,Digital Wallet,Other"),
     ("room_numbers", ""),
     ("cash_opening_balance", "0"),
+    ("kot_double_confirm", "1"),
     ("backup_dir", ""),
     ("backup_hour", "02:00"),
     ("backup_retention_days", "30"),

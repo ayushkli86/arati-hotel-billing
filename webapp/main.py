@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import json
+import asyncio
 import secrets
 import csv
 import io
@@ -26,7 +27,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import httpx
-from sqlalchemy import func, inspect, or_, select, text
+from sqlalchemy import func, inspect, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -367,6 +368,16 @@ def upgrade_database(bind=engine) -> None:
             "sort_order": "INTEGER NOT NULL DEFAULT 0",
             "menu_group": "VARCHAR(80) NOT NULL DEFAULT ''",
         },
+        "kots": {
+            "room_id": "INTEGER REFERENCES rooms(id)",
+            "room_number": "VARCHAR(20) NOT NULL DEFAULT ''",
+            "issued_by_name": "VARCHAR(160) NOT NULL DEFAULT ''",
+            "cut_at": "DATETIME",
+            "cut_by_id": "INTEGER REFERENCES users(id)",
+        },
+        "room_charges": {
+            "kot_id": "INTEGER REFERENCES kots(id)",
+        },
         "payments": {
             "invoice_number": "VARCHAR(40) NOT NULL DEFAULT ''",
             "business_date": "VARCHAR(20) NOT NULL DEFAULT ''",
@@ -421,6 +432,8 @@ def upgrade_database(bind=engine) -> None:
         for _table, _column in (
             ("reservations", "business_date"), ("stays", "business_date"),
             ("orders", "business_date"), ("invoices", "bill_date"),
+            ("kots", "room_id"), ("kots", "room_number"), ("kots", "cut_by_id"),
+            ("room_charges", "kot_id"),
         ):
             if _column in {info["name"] for info in inspect(connection).get_columns(_table)}:
                 connection.execute(text(
@@ -723,7 +736,7 @@ def check_csrf(request: Request, submitted: str | None) -> None:
 
 STAFF_ALLOWED_SECTIONS = (
     "/dashboard", "/orders", "/billing", "/invoices", "/payments",
-    "/menu", "/rooms", "/reservations", "/customers", "/kots",
+    "/menu", "/rooms", "/reservations", "/customers", "/kots", "/mobile", "/kitchen",
     "/password/change",
 )
 
@@ -3244,6 +3257,40 @@ def _next_kot_number(db: Session) -> str:
             return candidate
 
 
+KOT_STATUSES = ("new", "preparing", "ready", "served")
+KOT_STATUS_LABELS = {
+    "new": "New",
+    "preparing": "Preparing",
+    "ready": "Ready",
+    "served": "Served",
+    "saved": "New",
+    "open": "New",
+    "cancelled": "Cancelled",
+}
+KOT_OPEN_STATUSES = ("new", "preparing", "ready", "saved", "open")
+_KOT_NEXT_STATUS = {"new": "preparing", "saved": "preparing", "open": "preparing",
+                    "preparing": "ready", "ready": "served", "served": None}
+
+
+def _kot_status(value: str | None) -> str:
+    """Map legacy KOT states onto the kitchen workflow."""
+    return "new" if not value or value in {"saved", "open"} else value
+
+
+def _kot_status_label(value: str | None) -> str:
+    return KOT_STATUS_LABELS.get(value or "", (value or "New").replace("_", " ").title())
+
+
+def _kot_next_status(value: str | None) -> str | None:
+    return _KOT_NEXT_STATUS.get(_kot_status(value))
+
+
+def _kot_can_transition(current: str | None, target: str) -> bool:
+    if target not in KOT_STATUSES:
+        return False
+    return target == _KOT_NEXT_STATUS.get(_kot_status(current))
+
+
 def _kot_items(kot: Kot) -> list[dict]:
     try:
         data = json.loads(kot.items or "[]")
@@ -3252,17 +3299,39 @@ def _kot_items(kot: Kot) -> list[dict]:
     return [row for row in data if isinstance(row, dict)] if isinstance(data, list) else []
 
 
+def _staff_name(user: User | None) -> str:
+    return (user.full_name or user.username).strip() if user else ""
+
+
+def _kot_issuer_name(kot: Kot) -> str:
+    return kot.issued_by_name or _staff_name(kot.issued_by) or "Unknown staff"
+
+
+def _kot_cut_name(kot: Kot) -> str:
+    return _staff_name(kot.cut_by)
+
+
 def _kot_dict(kot: Kot) -> dict:
+    next_status = _kot_next_status(kot.status)
     return {
         "id": kot.id,
         "kot_number": kot.kot_number,
         "invoice_id": kot.invoice_id,
+        "room_id": kot.room_id,
+        "room_number": kot.room_number,
         "table_number": kot.table_number,
         "guest_id": kot.guest_id,
         "guest_name": kot.guest_name or (kot.guest.full_name or kot.guest.name if kot.guest else "") or "Walk-in guest",
+        "issued_by_name": _kot_issuer_name(kot),
+        "cut_by_name": _kot_cut_name(kot),
+        "cut_at": local_datetime(kot.cut_at, "%Y-%m-%d %H:%M") if kot.cut_at else "",
         "items": _kot_items(kot),
         "total": float(kot.total or 0),
-        "status": kot.status,
+        "status": _kot_status(kot.status),
+        "status_label": _kot_status_label(kot.status),
+        "next_status": next_status,
+        "next_status_label": _kot_status_label(next_status) if next_status else "",
+        "notes": kot.notes or "",
         "date": local_datetime(kot.created_at, "%Y-%m-%d %H:%M") if kot.created_at else "",
         "business_date": kot.business_date,
     }
@@ -3292,6 +3361,11 @@ def _clean_kot_items(raw) -> list[dict]:
         if rate < 0 or rate > MAX_MONEY_INPUT:
             raise ValueError(f"KOT rate must be between 0 and {MAX_MONEY_INPUT}.")
         amount = (qty * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        catalog_id = None
+        raw_catalog_id = str(row.get("catalog_id") or "").strip()
+        if raw_catalog_id.isdigit():
+            catalog_id = int(raw_catalog_id)
+        category = str(row.get("category") or "food").strip().lower()[:30] or "food"
         cleaned.append({
             "sn": index,
             "particular": particular,
@@ -3299,6 +3373,11 @@ def _clean_kot_items(raw) -> list[dict]:
             "rate": float(rate),
             "amount": float(amount),
             "key": str(row.get("key", ""))[:80],
+            "catalog_id": catalog_id,
+            "category": category,
+            "menu_group": str(row.get("menu_group") or "").strip()[:80],
+            "unit": str(row.get("unit") or "pcs").strip()[:30] or "pcs",
+            "taxable": bool(row.get("taxable", True)),
         })
     return cleaned
 
@@ -3961,16 +4040,32 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/kots", response_class=HTMLResponse)
 def kots_page(
-    request: Request, invoice_id: int | None = None, db: Session = Depends(get_db),
+    request: Request, invoice_id: int | None = None, status: str = "all",
+    db: Session = Depends(get_db),
 ):
     user_or_redirect(request, db)
-    query = select(Kot).options(selectinload(Kot.guest)).order_by(Kot.created_at.desc(), Kot.id.desc())
+    query = select(Kot).options(
+        selectinload(Kot.guest), selectinload(Kot.issued_by), selectinload(Kot.cut_by),
+    ).order_by(Kot.created_at.desc(), Kot.id.desc())
     if invoice_id is not None:
         query = query.where(Kot.invoice_id == invoice_id)
+    if status == "open":
+        query = query.where(Kot.status.in_(KOT_OPEN_STATUSES))
+    elif status == "new":
+        query = query.where(Kot.status.in_(("new", "saved", "open")))
+    elif status in KOT_STATUSES:
+        query = query.where(Kot.status == status)
+    else:
+        status = "all"
     kots = [_kot_dict(kot) for kot in db.scalars(query).all()]
     return render(request, "kots.html", db, {
         "kots": kots,
         "invoice_id": invoice_id,
+        "status_filter": status,
+        "status_options": [
+            ("all", "All"), ("open", "Open"), ("new", "New"),
+            ("preparing", "Preparing"), ("ready", "Ready"), ("served", "Served"),
+        ],
         "total": round(sum(row["total"] for row in kots), 2),
         "active_page": "kots",
         "header_title": "Kitchen Order Tickets",
@@ -4025,6 +4120,7 @@ async def kots_api_save(request: Request, db: Session = Depends(get_db)):
     if kot is None:
         kot = Kot(
             kot_number=_next_kot_number(db),
+            issued_by_name=_staff_name(user),
             created_at=local_now().astimezone(timezone.utc).replace(tzinfo=None),
             user_id=user.id,
         )
@@ -4032,6 +4128,8 @@ async def kots_api_save(request: Request, db: Session = Depends(get_db)):
     kot.table_number = str(payload.get("table_number") or "").strip()[:40]
     kot.guest_id = guest.id if guest else None
     kot.guest_name = guest_name
+    if not kot.issued_by_name:
+        kot.issued_by_name = _staff_name(user)
     kot.items = json.dumps(items)
     kot.total = total
     kot.status = "saved"
@@ -4046,6 +4144,727 @@ async def kots_api_save(request: Request, db: Session = Depends(get_db)):
     })
 
 
+def _kot_menu_items(db: Session) -> list[CatalogItem]:
+    return list(db.scalars(
+        select(CatalogItem)
+        .where(
+            CatalogItem.active.is_(True),
+            CatalogItem.category.in_(("restaurant", "food", "beverage")),
+        )
+        .order_by(CatalogItem.menu_group, CatalogItem.sort_order, CatalogItem.name)
+    ).all())
+
+
+def _kot_menu_dict(item: CatalogItem) -> dict:
+    return {
+        "id": item.id,
+        "name": item.name,
+        "rate": float(item.rate or 0),
+        "category": item.category or "food",
+        "group": item.menu_group or "Menu",
+        "unit": item.unit or "pcs",
+        "taxable": bool(item.taxable),
+    }
+
+
+def _occupied_rooms(db: Session) -> list[dict]:
+    """Rooms with a checked-in guest — the room picker for both KOT screens."""
+    stays = db.scalars(
+        select(Stay)
+        .options(selectinload(Stay.guest), selectinload(Stay.room))
+        .where(Stay.status == "checked_in")
+        .order_by(Stay.room_number, Stay.id)
+    ).all()
+    rooms = []
+    for stay in stays:
+        room = stay.room or db.get(Room, stay.room_id)
+        if room is None or not room.active:
+            continue
+        guest = stay.guest or (db.get(Guest, stay.guest_id) if stay.guest_id else None)
+        rooms.append({
+            "id": room.id,
+            "number": room.number,
+            "type": room.type,
+            "stay_id": stay.id,
+            "guest_id": stay.guest_id,
+            "guest_name": stay.guest_name or (guest.full_name or guest.name if guest else "") or "Guest",
+            "check_in": local_datetime(stay.check_in, "%d %b · %H:%M") if stay.check_in else "",
+        })
+    return rooms
+
+
+def _api_user(request: Request, db: Session) -> User:
+    """Resolve the signed-in user for a JSON client.
+
+    The page routes answer anonymous callers with a 303 to ``/login``, which a
+    phone app cannot act on, so these report 401 instead. ``/api`` is not in
+    ``STAFF_ALLOWED_SECTIONS`` (that list is written for page paths) and kitchen
+    tickets are front-desk work, so both roles are allowed here.
+    """
+    try:
+        user = auth.current_user(request, db)
+    except HTTPException as exc:
+        if exc.status_code in (301, 302, 303, 307, 308):
+            raise HTTPException(401, "Sign in to continue.") from exc
+        raise
+    if user.must_change_password:
+        raise HTTPException(403, "Set a new password in the web app before using the mobile app.")
+    return user
+
+
+@app.get("/api/rooms")
+def api_rooms(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
+    """Occupied rooms for the mobile KOT app.
+
+    ``csrf`` rides along because the client must post it back on
+    ``/mobile/kot/save``, and signing in rotates the token.
+    """
+    _api_user(request, db)
+    return JSONResponse({"rooms": _occupied_rooms(db), "csrf": csrf(request)})
+
+
+@app.get("/api/menu")
+def api_menu(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
+    """Active restaurant menu items for the mobile KOT app."""
+    _api_user(request, db)
+    return JSONResponse({
+        "menu": [_kot_menu_dict(item) for item in _kot_menu_items(db)],
+        "csrf": csrf(request),
+    })
+
+
+def _open_kots(db: Session) -> list[dict]:
+    return [
+        _kot_dict(kot) for kot in db.scalars(
+            select(Kot).options(
+                selectinload(Kot.guest), selectinload(Kot.issued_by),
+                selectinload(Kot.cut_by),
+            )
+            .where(Kot.status.in_(KOT_OPEN_STATUSES))
+            .order_by(Kot.created_at.asc(), Kot.id.asc())
+        ).all()
+    ]
+
+
+def _kot_delete_blocker(db: Session, kot: Kot) -> str | None:
+    """Explain why a ticket cannot be deleted, or return None when it is safe.
+
+    Deleting reverses the room-folio charges the KOT posted, so it is refused
+    once any of those charges (or the ticket itself) has reached an invoice.
+    """
+    if kot.invoice_id is not None:
+        return "This KOT is already on an invoice."
+    charge_on_invoice = db.scalar(
+        select(func.count(RoomCharge.id)).where(
+            RoomCharge.kot_id == kot.id, RoomCharge.invoice_number != "",
+        )
+    )
+    if charge_on_invoice:
+        return "This KOT is already on an invoice."
+    billed_items = db.scalar(
+        select(func.count(InvoiceItem.id)).where(InvoiceItem.kot_id == kot.id)
+    )
+    if billed_items:
+        return "This KOT is already on an invoice."
+    return None
+
+
+def _delete_kot(db: Session, kot: Kot) -> int:
+    """Delete the ticket and the room charges it created; return charge count."""
+    charges = db.scalars(select(RoomCharge).where(RoomCharge.kot_id == kot.id)).all()
+    for charge in charges:
+        db.delete(charge)
+    db.delete(kot)
+    db.flush()
+    return len(charges)
+
+
+@app.get("/api/kots")
+def api_kots(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
+    """Open kitchen tickets for the mobile app, newest last.
+
+    Any signed-in device can see and cut them; the ticket lives on the server,
+    so it does not matter which phone created it.
+    """
+    _api_user(request, db)
+    return JSONResponse({"kots": _open_kots(db), "csrf": csrf(request)})
+
+
+@app.post("/api/kots/{kot_id}/cut")
+async def api_kot_cut(
+    request: Request, kot_id: int, db: Session = Depends(get_db),
+) -> JSONResponse:
+    """Cut a KOT from the mobile app and record the signed-in user as the cook.
+
+    When ``kot_double_confirm`` is on, the first call answers ``428`` so the
+    client can ask again; the second call must send ``confirm: true``.
+    """
+    user = _api_user(request, db)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "Invalid KOT payload.")
+    check_csrf(request, str(payload.get("csrf_token", "")))
+
+    kot = db.get(Kot, kot_id)
+    if kot is None:
+        raise HTTPException(404, "KOT not found.")
+
+    settings = _billing_settings(db)
+    double_confirm = settings.get("kot_double_confirm", "1").strip().lower() not in {
+        "0", "false", "no", "off",
+    }
+    confirmed = payload.get("confirm") in {True, 1, "1", "true", "yes", "on"}
+    if double_confirm and not confirmed:
+        raise HTTPException(428, "Confirm the KOT again before cutting it.")
+
+    current = _kot_status(kot.status)
+    if current not in {"new", "preparing"}:
+        raise HTTPException(
+            409, f"KOT {kot.kot_number} is already {_kot_status_label(current).lower()}.",
+        )
+
+    now_utc = local_now().astimezone(timezone.utc).replace(tzinfo=None)
+    result = db.execute(
+        update(Kot)
+        .where(Kot.id == kot.id, Kot.status.in_(("new", "preparing", "saved", "open")))
+        .values(status="ready", cut_at=now_utc, cut_by_id=user.id, updated_at=now_utc)
+    )
+    if result.rowcount == 0:
+        db.rollback()
+        raise HTTPException(
+            409, f"KOT {kot.kot_number} was already cut on another device.",
+        )
+    _audit(
+        db, user, "kot.cut", "kot", kot.kot_number,
+        f"Ready by {_staff_name(user)} · room {kot.room_number or kot.table_number or 'walk-in'}",
+    )
+    db.commit()
+    db.refresh(kot)
+    return JSONResponse({"ok": True, "kot": _kot_dict(kot)})
+
+
+@app.post("/api/kots/{kot_id}/status")
+async def api_kot_status(
+    request: Request, kot_id: int, db: Session = Depends(get_db),
+) -> JSONResponse:
+    """Move a KOT to preparing/ready/served from the mobile app.
+
+    Mirrors the web forms: forward-only transitions, and ``ready`` records the
+    cook and may need the same double confirmation as ``/api/kots/{id}/cut``.
+    """
+    user = _api_user(request, db)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "Invalid KOT payload.")
+    check_csrf(request, str(payload.get("csrf_token", "")))
+
+    kot = db.get(Kot, kot_id)
+    if kot is None:
+        raise HTTPException(404, "KOT not found.")
+
+    target = str(payload.get("status") or "").strip()
+    current = _kot_status(kot.status)
+    if not _kot_can_transition(current, target):
+        raise HTTPException(409, "That kitchen status change is not allowed.")
+
+    if target == "ready":
+        settings = _billing_settings(db)
+        double_confirm = settings.get("kot_double_confirm", "1").strip().lower() not in {
+            "0", "false", "no", "off",
+        }
+        confirmed = payload.get("confirm") in {True, 1, "1", "true", "yes", "on"}
+        if double_confirm and not confirmed:
+            raise HTTPException(428, "Confirm the KOT again before cutting it.")
+
+    now_utc = local_now().astimezone(timezone.utc).replace(tzinfo=None)
+    values = {"status": target, "updated_at": now_utc}
+    if target == "ready" and kot.cut_at is None:
+        values["cut_at"] = now_utc
+        values["cut_by_id"] = user.id
+    result = db.execute(
+        update(Kot)
+        .where(Kot.id == kot.id, Kot.status == kot.status)
+        .values(**values)
+    )
+    if result.rowcount == 0:
+        db.rollback()
+        raise HTTPException(409, "This KOT changed on another device. Refresh and retry.")
+    _audit(db, user, "kot.status", "kot", kot.kot_number, f"{current} → {target}")
+    db.commit()
+    db.refresh(kot)
+    return JSONResponse({"ok": True, "kot": _kot_dict(kot)})
+
+
+@app.post("/api/kots/{kot_id}/delete")
+async def api_kot_delete(
+    request: Request, kot_id: int, db: Session = Depends(get_db),
+) -> JSONResponse:
+    """Delete a ticket from the kitchen board and reverse its room charges.
+
+    The client must send ``confirm: true`` so an accidental tap cannot wipe a
+    ticket. Tickets already billed to an invoice are refused.
+    """
+    user = _api_user(request, db)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "Invalid KOT payload.")
+    check_csrf(request, str(payload.get("csrf_token", "")))
+
+    kot = db.get(Kot, kot_id)
+    if kot is None:
+        raise HTTPException(404, "KOT not found.")
+    confirmed = payload.get("confirm") in {True, 1, "1", "true", "yes", "on"}
+    if not confirmed:
+        raise HTTPException(428, "Confirm deleting the KOT.")
+
+    blocker = _kot_delete_blocker(db, kot)
+    if blocker:
+        raise HTTPException(409, blocker)
+
+    kot_number = kot.kot_number
+    charges = _delete_kot(db, kot)
+    _audit(
+        db, user, "kot.delete", "kot", kot_number,
+        f"Deleted · {charges} room charge(s) reversed",
+    )
+    db.commit()
+    return JSONResponse({
+        "ok": True,
+        "kot_number": kot_number,
+        "reversed_charges": charges,
+    })
+
+
+@app.get("/api/kots/stream")
+async def api_kots_stream(request: Request):
+    """Server-sent events so the kitchen display updates without a refresh.
+
+    The server polls its own table every couple of seconds and only pushes when
+    the open-ticket set (count or newest update) changes.
+    """
+    session = SessionLocal()
+    try:
+        _api_user(request, session)
+    finally:
+        session.close()
+
+    async def events():
+        last = None
+        yield "retry: 3000\n\n"
+        while not await request.is_disconnected():
+            session = SessionLocal()
+            try:
+                count, newest = session.execute(
+                    select(func.count(Kot.id), func.max(Kot.updated_at))
+                    .where(Kot.status.in_(KOT_OPEN_STATUSES))
+                ).one()
+            finally:
+                session.close()
+            version = f"{count}:{newest.isoformat() if newest else ''}"
+            if version != last:
+                last = version
+                yield f"data: {json.dumps({'version': version})}\n\n"
+            await asyncio.sleep(2)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/mobile/kot", response_class=HTMLResponse)
+def mobile_kot_page(
+    request: Request, room_id: int | None = None, db: Session = Depends(get_db),
+):
+    """Phone-first KOT entry for waiters: pick a room, tap menu items, send.
+
+    Saving here creates the kitchen ticket and posts the same items to the
+    occupied room's folio, so checkout already has the food charges.
+    """
+    user_or_redirect(request, db)
+    rooms = _occupied_rooms(db)
+    menu = [_kot_menu_dict(item) for item in _kot_menu_items(db)]
+    open_kots = [
+        _kot_dict(kot) for kot in db.scalars(
+            select(Kot).options(
+                selectinload(Kot.guest), selectinload(Kot.issued_by),
+                selectinload(Kot.cut_by),
+            )
+            .where(Kot.status.in_(KOT_OPEN_STATUSES))
+            .order_by(Kot.created_at.asc(), Kot.id.asc())
+        ).all()
+    ]
+    today = _business_date(local_now()).isoformat()
+    served_kots = [
+        _kot_dict(kot) for kot in db.scalars(
+            select(Kot).options(
+                selectinload(Kot.guest), selectinload(Kot.issued_by),
+                selectinload(Kot.cut_by),
+            )
+            .where(Kot.status == "served", Kot.business_date == today)
+            .order_by(Kot.updated_at.desc(), Kot.id.desc())
+            .limit(20)
+        ).all()
+    ]
+    return render(request, "mobile_kot.html", db, {
+        "rooms_data": rooms,
+        "menu_items": menu,
+        "open_kots": open_kots,
+        "served_kots": served_kots,
+        "selected_room_id": room_id,
+        "active_page": "kots",
+        "header_title": "Mobile KOT",
+    })
+
+
+def _kot_room_charge_category(item: dict) -> str:
+    category = str(item.get("category") or "").lower()
+    group = str(item.get("menu_group") or "").lower()
+    if category in {"beverage", "beverages", "drink", "drinks", "bar"}:
+        return "beverage"
+    if any(word in group for word in ("beverage", "drink", "tea", "coffee", "bar", "juice")):
+        return "beverage"
+    return "food"
+
+
+@app.post("/mobile/kot/save")
+async def mobile_kot_save(request: Request, db: Session = Depends(get_db)):
+    user = user_or_redirect(request, db)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "Invalid KOT payload.")
+    check_csrf(request, str(payload.get("csrf_token", "")))
+    try:
+        items = _clean_kot_items(payload.get("items"))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    raw_room_id = str(payload.get("room_id") or "").strip()
+    mode = str(payload.get("mode") or "").strip().lower()
+    walk_in = mode == "walkin" or (
+        not mode and not raw_room_id.isdigit() and bool(
+            str(payload.get("guest_name") or payload.get("table_number") or "").strip()
+        )
+    )
+    room = None
+    stay = None
+    if walk_in:
+        guest_name = str(payload.get("guest_name") or "").strip()[:160] or "Walk-in guest"
+        table_number = str(payload.get("table_number") or "").strip()[:40] or "Walk-in"
+        guest_id = None
+    else:
+        if not raw_room_id.isdigit():
+            raise HTTPException(422, "Choose the room for this KOT, or switch to Walk-in.")
+        room = db.get(Room, int(raw_room_id))
+        if room is None or not room.active:
+            raise HTTPException(404, "Room not found.")
+        stay = db.scalar(
+            select(Stay).where(Stay.room_id == room.id, Stay.status == "checked_in")
+        )
+        if stay is None:
+            raise HTTPException(422, f"Room {room.number} has no checked-in guest.")
+
+    for item in items:
+        if not item.get("catalog_id"):
+            raise HTTPException(422, "Choose every item from the menu list.")
+        catalog_item = db.get(CatalogItem, int(item["catalog_id"]))
+        if catalog_item is None or not catalog_item.active:
+            raise HTTPException(422, "One of the selected menu items is no longer available.")
+        item.update({
+            "particular": catalog_item.name,
+            "rate": float(catalog_item.rate or 0),
+            "category": catalog_item.category or "food",
+            "menu_group": catalog_item.menu_group or "",
+            "unit": catalog_item.unit or "pcs",
+            "taxable": bool(catalog_item.taxable),
+        })
+        item["amount"] = float((
+            Decimal(str(item["qty"])) * Decimal(str(item["rate"]))
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    total = sum((Decimal(str(row["amount"])) for row in items), Decimal("0.00"))
+
+    guest = db.get(Guest, stay.guest_id) if stay and stay.guest_id else None
+    if not walk_in:
+        guest_name = stay.guest_name or (guest.full_name or guest.name if guest else "") or "Guest"
+    now_utc = local_now().astimezone(timezone.utc).replace(tzinfo=None)
+    kot = Kot(
+        kot_number=_next_kot_number(db),
+        room_id=room.id if room else None,
+        room_number=room.number if room else "",
+        table_number=table_number if walk_in else room.number,
+        guest_id=(stay.guest_id or None) if stay else None,
+        guest_name=guest_name,
+        issued_by_name=(
+            str(payload.get("issued_by_name") or "").strip()[:160] or _staff_name(user)
+        ),
+        items=json.dumps(items),
+        total=total,
+        status="new",
+        notes=str(payload.get("notes") or "").strip()[:500],
+        business_date=_business_date(local_now()).isoformat(),
+        created_at=now_utc,
+        updated_at=now_utc,
+        user_id=user.id,
+    )
+    db.add(kot)
+    db.flush()
+
+    if not walk_in:
+        charge_date = _business_date(local_now()).isoformat()
+        for item in items:
+            amount = Decimal(str(item["amount"]))
+            if amount <= 0:
+                continue
+            db.add(RoomCharge(
+                stay_id=stay.id,
+                room_number=room.number,
+                description=str(item["particular"])[:240],
+                category=_kot_room_charge_category(item),
+                quantity=Decimal(str(item["qty"])),
+                unit_price=Decimal(str(item["rate"])),
+                amount=amount,
+                charge_date=charge_date,
+                created_at=now_utc,
+                user_id=user.id,
+                kot_id=kot.id,
+            ))
+        _audit(
+            db, user, "kot.create_room", "kot", kot.kot_number,
+            f"Room {room.number} · {len(items)} items · {total:.2f} posted to folio",
+        )
+    else:
+        _audit(
+            db, user, "kot.create_walkin", "kot", kot.kot_number,
+            f"{table_number} · {guest_name} · {len(items)} items · {total:.2f} (pay at counter)",
+        )
+    db.commit()
+    return JSONResponse({
+        "ok": True,
+        "id": kot.id,
+        "kot_number": kot.kot_number,
+        "mode": "walkin" if walk_in else "room",
+        "room_number": room.number if room else "",
+        "table_number": kot.table_number,
+        "guest_name": kot.guest_name,
+        "total": float(kot.total or 0),
+    })
+
+
+@app.get("/kitchen", response_class=HTMLResponse)
+def kitchen_page(request: Request, db: Session = Depends(get_db)):
+    """Kitchen display: pending room KOTs, cut confirmation, and price setup."""
+    user = user_or_redirect(request, db)
+    settings = _billing_settings(db)
+    double_confirm = settings.get("kot_double_confirm", "1").strip().lower() not in {
+        "0", "false", "no", "off",
+    }
+    open_kots = [
+        _kot_dict(kot) for kot in db.scalars(
+            select(Kot).options(
+                selectinload(Kot.guest), selectinload(Kot.issued_by),
+                selectinload(Kot.cut_by),
+            )
+            .where(Kot.status.in_(KOT_OPEN_STATUSES))
+            .order_by(Kot.created_at.asc(), Kot.id.asc())
+        ).all()
+    ]
+    groups = {"new": [], "preparing": [], "ready": []}
+    for kot in open_kots:
+        groups.setdefault(kot["status"], []).append(kot)
+    menu_items = [_kot_menu_dict(item) for item in _kot_menu_items(db)] if user.role == "admin" else []
+    return render(request, "kitchen.html", db, {
+        "new_kots": groups.get("new", []),
+        "preparing_kots": groups.get("preparing", []),
+        "ready_kots": groups.get("ready", []),
+        "menu_items": menu_items,
+        "kot_double_confirm": double_confirm,
+        "active_page": "kitchen",
+        "header_title": "Kitchen Display",
+    })
+
+
+@app.post("/kots/{kot_id}/cut")
+async def kot_cut(request: Request, kot_id: int, db: Session = Depends(get_db)):
+    user = user_or_redirect(request, db)
+    form = await request.form()
+    check_csrf(request, str(form.get("csrf_token", "")))
+    kot = db.get(Kot, kot_id)
+    if kot is None:
+        raise HTTPException(404, "KOT not found.")
+    next_url = str(form.get("next") or "").strip()
+    if not (next_url.startswith("/kitchen") or next_url.startswith("/kots")
+            or next_url.startswith("/mobile/kot")):
+        next_url = "/kitchen"
+    settings = _billing_settings(db)
+    double_confirm = settings.get("kot_double_confirm", "1").strip().lower() not in {
+        "0", "false", "no", "off",
+    }
+    confirmed = str(form.get("cut_confirmed", "")).strip().lower() in {"1", "true", "yes", "on"}
+    if double_confirm and not confirmed:
+        return RedirectResponse(
+            toast_url(next_url, "Confirm the KOT again before cutting it.", "warning"),
+            status_code=303,
+        )
+    current = _kot_status(kot.status)
+    if current not in {"new", "preparing"}:
+        return RedirectResponse(
+            toast_url(next_url, f"KOT {kot.kot_number} is already {_kot_status_label(current).lower()}.",
+                       "warning"),
+            status_code=303,
+        )
+    now_utc = local_now().astimezone(timezone.utc).replace(tzinfo=None)
+    kot.status = "ready"
+    kot.cut_at = now_utc
+    kot.cut_by_id = user.id
+    kot.updated_at = now_utc
+    _audit(
+        db, user, "kot.cut", "kot", kot.kot_number,
+        f"Ready by {_staff_name(user)} · room {kot.room_number or kot.table_number or 'walk-in'}",
+    )
+    db.commit()
+    return RedirectResponse(
+        toast_url(next_url, f"KOT {kot.kot_number} cut and marked ready.", "success"),
+        status_code=303,
+    )
+
+
+@app.post("/kots/{kot_id}/delete")
+async def kot_delete(request: Request, kot_id: int, db: Session = Depends(get_db)):
+    user = user_or_redirect(request, db)
+    form = await request.form()
+    check_csrf(request, str(form.get("csrf_token", "")))
+    kot = db.get(Kot, kot_id)
+    if kot is None:
+        raise HTTPException(404, "KOT not found.")
+    next_url = str(form.get("next") or "").strip()
+    if not (next_url.startswith("/kitchen") or next_url.startswith("/kots")
+            or next_url.startswith("/mobile/kot")):
+        next_url = "/kitchen"
+    blocker = _kot_delete_blocker(db, kot)
+    if blocker:
+        return RedirectResponse(
+            toast_url(next_url, blocker, "warning"),
+            status_code=303,
+        )
+    kot_number = kot.kot_number
+    charges = _delete_kot(db, kot)
+    _audit(
+        db, user, "kot.delete", "kot", kot_number,
+        f"Deleted · {charges} room charge(s) reversed",
+    )
+    db.commit()
+    return RedirectResponse(
+        toast_url(
+            next_url,
+            f"KOT {kot_number} deleted; {charges} room charge(s) reversed.",
+            "success",
+        ),
+        status_code=303,
+    )
+
+
+@app.post("/kitchen/settings")
+async def kitchen_settings_save(request: Request, db: Session = Depends(get_db)):
+    user = user_or_redirect(request, db)
+    if user.role != "admin":
+        raise HTTPException(403, "Only administrators can change kitchen settings.")
+    form = await request.form()
+    check_csrf(request, str(form.get("csrf_token", "")))
+    enabled = str(form.get("kot_double_confirm", "")).strip().lower() in {"1", "on", "true", "yes"}
+    db.merge(HotelSetting(
+        key="kot_double_confirm",
+        value="1" if enabled else "0",
+    ))
+    _audit(
+        db, user, "settings.kot_double_confirm", "setting", "kot_double_confirm",
+        "enabled" if enabled else "disabled",
+    )
+    db.commit()
+    return RedirectResponse(
+        toast_url("/kitchen", "Double confirmation enabled." if enabled else "Double confirmation disabled.",
+                  "success" if enabled else "warning"),
+        status_code=303,
+    )
+
+
+@app.post("/kitchen/items/{item_id}/price")
+async def kitchen_item_price(
+    request: Request, item_id: int, db: Session = Depends(get_db),
+):
+    user = user_or_redirect(request, db)
+    if user.role != "admin":
+        raise HTTPException(403, "Only administrators can change menu prices.")
+    form = await request.form()
+    check_csrf(request, str(form.get("csrf_token", "")))
+    item = db.get(CatalogItem, item_id)
+    if item is None or item.category not in {"restaurant", "food", "beverage"}:
+        raise HTTPException(404, "Menu item not found.")
+    try:
+        price = _bounded_money(Decimal(str(form.get("price", "")).strip()), "Price")
+    except (InvalidOperation, ValueError):
+        return RedirectResponse(
+            toast_url("/kitchen", "Enter a valid menu price between 0 and 10 crore.", "error"),
+            status_code=303,
+        )
+    old_price = item.rate or Decimal("0")
+    item.rate = price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    _audit(
+        db, user, "catalog.price", "catalog_item", str(item.id),
+        f"{item.name}: {old_price:.2f} → {item.rate:.2f}",
+    )
+    db.commit()
+    return RedirectResponse(
+        toast_url("/kitchen", f"{item.name} price updated to {item.rate:.2f}.", "success"),
+        status_code=303,
+    )
+
+
+@app.post("/kots/{kot_id}/status")
+async def kot_set_status(request: Request, kot_id: int, db: Session = Depends(get_db)):
+    user = user_or_redirect(request, db)
+    form = await request.form()
+    check_csrf(request, str(form.get("csrf_token", "")))
+    kot = db.get(Kot, kot_id)
+    if kot is None:
+        raise HTTPException(404, "KOT not found.")
+    target = str(form.get("status", "")).strip()
+    current = _kot_status(kot.status)
+    next_url = str(form.get("next") or "").strip()
+    if not (next_url.startswith("/kitchen") or next_url.startswith("/kots")
+            or next_url.startswith("/mobile/kot")):
+        next_url = "/kots"
+    if not _kot_can_transition(current, target):
+        return RedirectResponse(
+            toast_url(next_url, "That kitchen status change is not allowed.", "warning"),
+            status_code=303,
+        )
+    now_utc = local_now().astimezone(timezone.utc).replace(tzinfo=None)
+    kot.status = target
+    kot.updated_at = now_utc
+    if target == "ready" and kot.cut_at is None:
+        kot.cut_at = now_utc
+        kot.cut_by_id = user.id
+    _audit(db, user, "kot.status", "kot", kot.kot_number, f"{current} → {target}")
+    db.commit()
+    return RedirectResponse(
+        toast_url(next_url, f"KOT {kot.kot_number} marked {_kot_status_label(target).lower()}.", "success"),
+        status_code=303,
+    )
+
+
 @app.get("/kots/{kot_id}/view", response_class=HTMLResponse)
 def kot_view(request: Request, kot_id: int, db: Session = Depends(get_db)):
     user_or_redirect(request, db)
@@ -4055,6 +4874,10 @@ def kot_view(request: Request, kot_id: int, db: Session = Depends(get_db)):
     items = _kot_items(kot)
     return render(request, "kot_view.html", db, {
         "kot": kot, "items": items, "total": float(kot.total or 0),
+        "status_label": _kot_status_label(kot.status),
+        "next_status": _kot_next_status(kot.status),
+        "next_status_label": _kot_status_label(_kot_next_status(kot.status))
+        if _kot_next_status(kot.status) else "",
         "active_page": "kots", "header_title": f"KOT {kot.kot_number}",
     })
 

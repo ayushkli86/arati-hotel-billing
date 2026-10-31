@@ -1,8 +1,8 @@
-{% set hotel_settings = hotel_settings|default({}) %}{% set hotel_name = hotel_settings.get('hotel_name', 'Arati Hotel') %}{% set hotel_address1 = hotel_settings.get('hotel_address1', 'Khandbari, Sankhuwasabha') %}{% set kot_date_display = kot.date or (today|default('')) %}{% set kot_table_display = kot.table_number or '________' %}{% set kot_guest_display = kot_guest_name|default('') %}{% macro fmt(v) %}{{ '%.2f'|format(v|float) }}{% endmacro %}<!doctype html>
+{% set hotel_settings = hotel_settings|default({}) %}{% set hotel_name = hotel_settings.get('hotel_name', 'Arati Hotel') %}{% set hotel_address1 = hotel_settings.get('hotel_address1', 'Khandbari, Sankhuwasabha') %}{% set kot_date_display = kot.date or (today|default('')) %}{% set kot_room_display = kot.room_number|default('') %}{% set kot_table_display = kot.table_number or '________' %}{% set kot_guest_display = kot_guest_name|default('') %}{% set kot_issuer_display = kot.issued_by_name|default('') %}{% macro fmt(v) %}{{ '%.2f'|format(v|float) }}{% endmacro %}<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>{{ kot.kot_number or 'K.O.T' }} · {{ hotel_name }}</title>
+<title>{{ hotel_name }}</title>
 <style>
   @page { size: 100mm auto; margin: 5mm; }
   * { box-sizing: border-box; }
@@ -18,7 +18,6 @@
   .hotel-addr { font-size: 11px; margin: 1px 0 0; }
   .kot-rule { border: 0; border-top: 1px dashed #111; margin: 6px 0; }
   .kot-rule.solid { border-top-style: solid; }
-  .kot-title { font-size: 15px; font-weight: 700; letter-spacing: 5px; margin: 2px 0 4px; }
   .meta { margin: 0; font-size: 12px; }
   .meta td { padding: 1px 0; vertical-align: top; }
   .meta .lbl { white-space: nowrap; padding-right: 6px; }
@@ -35,7 +34,6 @@
   .sign-line { display: block; margin: 0 6px 1px; font-size: 11px; }
   .sig { text-align: right; margin-top: 14px; }
   .sig .space { display: inline-block; width: 130px; border-bottom: 1px solid #111; }
-  .stub { font-size: 9px; text-align: center; color: #333; margin-top: 6px; }
   .toolbar { max-width: 90mm; margin: 0 auto 10px; text-align: right; }
   .toolbar button {
     border: 1px solid #333; border-radius: 5px; padding: 6px 12px;
@@ -54,13 +52,12 @@
   <p class="hotel-name center">{{ hotel_name }}</p>
   <p class="hotel-addr center">{{ hotel_address1 }}</p>
   <hr class="kot-rule solid">
-  <p class="kot-title center">K.O.T</p>
-  <hr class="kot-rule">
   <table class="meta">
-    {% if kot.kot_number %}<tr><td class="lbl">K.O.T No.:</td><td class="val">{{ kot.kot_number }}</td></tr>{% endif %}
-    <tr><td class="lbl">Table No.:</td><td class="val">{{ kot_table_display }}</td></tr>
+    {% if kot_room_display %}<tr><td class="lbl">Room No.:</td><td class="val">{{ kot_room_display }}</td></tr>{% else %}<tr><td class="lbl">Table No.:</td><td class="val">{{ kot_table_display }}</td></tr>{% endif %}
     <tr><td class="lbl">Date:</td><td class="val">{{ kot_date_display }}</td></tr>
     {% if kot_guest_display %}<tr><td class="lbl">Guest:</td><td class="val">{{ kot_guest_display }}</td></tr>{% endif %}
+    {% if kot_issuer_display %}<tr><td class="lbl">Issued by:</td><td class="val">{{ kot_issuer_display }}</td></tr>{% endif %}
+    {% if kot.notes %}<tr><td class="lbl">Note:</td><td class="val">{{ kot.notes }}</td></tr>{% endif %}
   </table>
   <hr class="kot-rule">
   <table class="items-table">
@@ -89,7 +86,6 @@
     <span class="sign-line">Server's / Cashier's Signature</span>
     <span class="space"></span>
   </div>
-  <p class="stub center">--- End of K.O.T ---</p>
 </div>
 </body>
 </html>

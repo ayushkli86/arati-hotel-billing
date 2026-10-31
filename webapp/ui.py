@@ -26,7 +26,10 @@ def toast_event(message: str, kind: str = "success") -> dict[str, str]:
 
 def toast_url(url: str, message: str, kind: str = "success") -> str:
     """Append flash-style toast parameters to a redirect target."""
-    params = urlencode(toast_event(message, kind))
+    params = urlencode({
+        "toast": str(message)[:MAX_TOAST_LENGTH],
+        "toast_type": kind if kind in TOAST_KINDS else "success",
+    })
     separator = "&" if "?" in url else "?"
     return f"{url}{separator}{params}"
 

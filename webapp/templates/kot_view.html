@@ -4,10 +4,13 @@
   <div class="panel-heading mb-2"><div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.5rem;height:2.5rem;font-size:1.2rem;background:rgba(58,124,58,.14);color:#2E7D3E;"><i class="ph ph-notepad"></i></span><div><h2 class="panel-title"><i class="ph ph-notepad" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Kitchen Order Ticket</h2><p class="panel-subtitle">Arati Hotel · Khandbari, Sankhuwasabha</p></div></div>
   <div class="panel-body">
     <p><strong>K.O.T No.:</strong> {{ kot.kot_number }}</p>
-    <p><strong>Table:</strong> {{ kot.table_number or 'Walk-in' }}</p>
+    <p><strong>{% if kot.room_number %}Room:{% else %}Table:{% endif %}</strong> {{ kot.room_number or kot.table_number or 'Walk-in' }}</p>
     <p><strong>Date:</strong> {{ kot.date }}</p>
-    <p><strong>Guest:</strong> {{ kot.guest.name if kot.guest else 'Walk-in guest' }}</p>
-    <p><strong>Status:</strong> {{ kot.status|capitalize }}</p>
+    <p><strong>Guest:</strong> {{ kot.guest_name or (kot.guest.name if kot.guest else 'Walk-in guest') }}</p>
+    <p><strong>Issued by:</strong> {{ kot.issued_by_name or (kot.issued_by.full_name or kot.issued_by.username if kot.issued_by else 'Unknown staff') }}</p>
+    <p><strong>Status:</strong> {{ status_label }}</p>
+    {% if kot.cut_by %}<p><strong>Cut by:</strong> {{ kot.cut_by.full_name or kot.cut_by.username }}{% if kot.cut_at %} at {{ kot.cut_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}</p>{% endif %}
+    {% if kot.notes %}<p><strong>Note:</strong> {{ kot.notes }}</p>{% endif %}
   </div>
   <div class="mt-4">
     <h3 class="panel-title">Items</h3>
@@ -28,7 +31,15 @@
   </div>
   <div class="mt-4 p-3 bg-slate-50 rounded flex items-center justify-between">
     <p class="font-medium">Total: Rs. {{ '%.2f'|format(total|default(0)|float) }}</p>
-    <div class="flex items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2">
+      {% if next_status %}
+      <form method="post" action="/kots/{{ kot.id }}/status">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="status" value="{{ next_status }}">
+        <input type="hidden" name="next" value="/kots/{{ kot.id }}/view">
+        <button class="btn-primary">Mark {{ next_status_label }}</button>
+      </form>
+      {% endif %}
       <a class="btn-secondary" href="/kots/{{ kot.id }}/print"><i class="ph ph-printer"></i> Print K.O.T</a>
       <a class="btn-secondary" href="/kots{% if kot.invoice_id %}?invoice_id={{ kot.invoice_id }}{% endif %}">All KOTs</a>
     </div>

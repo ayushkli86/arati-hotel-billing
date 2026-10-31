@@ -227,6 +227,10 @@ class Kot(Base):
     invoice_id: Mapped[int | None] = mapped_column(
         ForeignKey("invoices.id", ondelete="CASCADE"), nullable=True, index=True,
     )
+    room_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    room_number: Mapped[str] = mapped_column(String(20), default="", index=True)
     table_number: Mapped[str] = mapped_column(String(40), default="", index=True)
     guest_id: Mapped[int | None] = mapped_column(
         ForeignKey("guests.id", ondelete="SET NULL"), nullable=True, index=True,
@@ -237,13 +241,21 @@ class Kot(Base):
     status: Mapped[str] = mapped_column(String(30), default="open", index=True)
     business_date: Mapped[str] = mapped_column(String(20), default="", index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
+    issued_by_name: Mapped[str] = mapped_column(String(160), default="")
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=utcnow, index=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    cut_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
     )
+    cut_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
     invoice: Mapped[Invoice | None] = relationship(back_populates="kots")
+    room: Mapped[Room | None] = relationship()
     guest: Mapped[Guest | None] = relationship()
+    issued_by: Mapped[User | None] = relationship(foreign_keys=[user_id])
+    cut_by: Mapped[User | None] = relationship(foreign_keys=[cut_by_id])
     items_rows: Mapped[list["InvoiceItem"]] = relationship(back_populates="kot")
 
     @property
@@ -312,6 +324,9 @@ class RoomCharge(Base):
     charge_date: Mapped[str] = mapped_column(String(20), default="")
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    kot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("kots.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
 
 
 class Order(Base):

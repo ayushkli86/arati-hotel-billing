@@ -54,6 +54,7 @@
         {% if row.status == 'occupied' %}
         <button hx-get="/rooms/{{ room.id }}/extend" hx-target="#modal-root" hx-swap="innerHTML">Extend stay</button>
         <button hx-get="/rooms/{{ room.id }}/charge" hx-target="#modal-root" hx-swap="innerHTML">Add charge</button>
+        <a href="/mobile/kot?room_id={{ room.id }}">Send KOT</a>
         {% elif row.status == 'available' %}
         <button hx-get="/rooms/{{ room.id }}/reserve" hx-target="#modal-root" hx-swap="innerHTML">Reserve room</button>
         {% endif %}
@@ -90,7 +91,7 @@
       <button hx-get="/rooms/{{ room.id }}/checkin" hx-target="#modal-root" hx-swap="innerHTML" class="btn-primary !px-3 !py-1.5 !text-xs">Check in</button>
     {% endif %}
     <details class="row-menu inline-block align-middle"><summary aria-label="More actions">⋯</summary><div class="row-menu-panel">
-      {% if row.status=='occupied' %}<button hx-get="/rooms/{{ room.id }}/extend" hx-target="#modal-root" hx-swap="innerHTML">Extend stay</button><button hx-get="/rooms/{{ room.id }}/charge" hx-target="#modal-root" hx-swap="innerHTML">Add charge</button>{% endif %}
+      {% if row.status=='occupied' %}<button hx-get="/rooms/{{ room.id }}/extend" hx-target="#modal-root" hx-swap="innerHTML">Extend stay</button><button hx-get="/rooms/{{ room.id }}/charge" hx-target="#modal-root" hx-swap="innerHTML">Add charge</button><a href="/mobile/kot?room_id={{ room.id }}">Send KOT</a>{% endif %}
       <button hx-get="/rooms/{{ room.id }}/history" hx-target="#modal-root" hx-swap="innerHTML">Stay history</button>
       <a href="/invoices?room_id={{ room.id }}">Open folio</a>
       {% if current_user.role == 'admin' %}<button hx-get="/rooms/{{ room.id }}/rate" hx-target="#modal-root" hx-swap="innerHTML">Set rate</button>{% endif %}

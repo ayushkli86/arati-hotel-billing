@@ -1,11 +1,11 @@
 {% from "partials/nav_icon.html" import nav_icon %}
-{% extends "base.html" %}{% set active_page='invoices' %}{% block title %}Invoices{% endblock %}
-{% block header_title %}Invoices{% endblock %}
+{% extends "base.html" %}{% set active_page='invoices' %}{% block title %}Receipt{% endblock %}
+{% block header_title %}Receipt{% endblock %}
 {% block content %}
 {% set open_invoices = invoices|selectattr('status','equalto','issued')|list %}
 {% set paid_invoices = invoices|selectattr('status','equalto','paid')|list %}
 <div class="page-heading">
-  <div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.75rem;height:2.75rem;font-size:1.35rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-receipt"></i></span><div><p class="eyebrow">Finance</p><h1 class="page-title">{% if selected_guest %}Invoices for {{ selected_guest.name }}{% else %}Invoices{% endif %}</h1></div><p class="page-subtitle">Search, review, print, and collect guest bills</p></div>
+  <div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.75rem;height:2.75rem;font-size:1.35rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-receipt"></i></span><div><p class="eyebrow">Finance</p><h1 class="page-title">{% if selected_guest %}Receipt for {{ selected_guest.name }}{% else %}Receipt{% endif %}</h1></div><p class="page-subtitle">Search, review, print, and collect guest bills</p></div>
   <div class="flex flex-wrap gap-2"><a class="btn-secondary" href="/payments"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-credit-card"></i></span>Payments</a><a class="btn-primary" href="/billing/create"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;font-size:.95rem;">{{ nav_icon('plus') }}</span>Create invoice</a></div>
 </div>
 {% if selected_room %}<div class="mb-4 inline-flex items-center gap-2 rounded-lg border border-[rgba(163,184,159,0.5)] bg-[rgba(125,155,122,0.14)] px-3 py-2 text-xs font-semibold text-[color:var(--color-primary)]"><span>Showing invoices for Room {{ selected_room.number }}</span><a href="/invoices{% if q %}?q={{ q }}{% endif %}" class="ml-1 text-[color:var(--color-primary)] hover:underline">✕ Clear</a></div>{% elif room_id %}<div class="mb-4 inline-flex items-center gap-2 rounded-lg border border-[rgba(163,184,159,0.5)] bg-[rgba(125,155,122,0.14)] px-3 py-2 text-xs font-semibold text-[color:var(--color-primary)]"><span>Showing invoices for Room {{ room_number_label }}</span><a href="/invoices{% if q %}?q={{ q }}{% endif %}" class="ml-1 text-[color:var(--color-primary)] hover:underline">✕ Clear</a></div>{% endif %}

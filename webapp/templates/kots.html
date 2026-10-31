@@ -9,29 +9,49 @@
     </div>
   </div>
   <div class="mt-4 flex flex-wrap items-center gap-2">
-    <a href="/billing/create" class="btn-primary"><i class="ph ph-plus"></i> New bill with KOT</a>
+    <a href="/mobile/kot" class="btn-primary"><i class="ph ph-device-mobile"></i> Open Mobile KOT</a>
+    <a href="/kitchen" class="btn-secondary"><i class="ph ph-cooking-pot"></i> Kitchen Display</a>
+    <a href="/billing/create" class="btn-secondary"><i class="ph ph-plus"></i> New bill with KOT</a>
     <a href="/kots" class="btn-secondary">All KOTs</a>
   </div>
 </div>
 
+<div class="mt-4 flex flex-wrap items-center gap-1.5">
+  {% for value, label in status_options %}
+  <a href="/kots?status={{ value }}{% if invoice_id %}&invoice_id={{ invoice_id }}{% endif %}" class="filter-chip {% if status_filter == value %}filter-chip-active{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+
 {% if kots %}
-<div class="mt-4 table-scroll">
-  <table class="data-table soft-table min-w-[860px]">
+<div class="mt-3 table-scroll">
+  <table class="data-table soft-table min-w-[1080px]">
     <thead><tr>
-      <th>K.O.T No.</th><th>Table</th><th>Guest</th><th>Date</th><th class="text-right">Items</th><th class="text-right">Total</th><th>Status</th><th class="text-right">Actions</th>
+      <th>K.O.T No.</th><th>Room / Table</th><th>Guest</th><th>Issued by</th><th>Date</th><th class="text-right">Items</th><th class="text-right">Total</th><th>Status</th><th class="text-right">Actions</th>
     </tr></thead>
     <tbody>
       {% for kot in kots %}
       <tr class="border-b border-slate-100 hover:bg-slate-50">
         <td class="font-medium text-slate-800">{{ kot.kot_number }}</td>
-        <td class="text-slate-500">{{ kot.table_number or 'Walk-in' }}</td>
+        <td class="text-slate-600">{% if kot.room_number %}<span class="font-semibold">Room {{ kot.room_number }}</span>{% else %}{{ kot.table_number or 'Walk-in' }}{% endif %}</td>
         <td class="font-medium text-slate-800">{{ kot.guest_name }}</td>
+        <td class="text-slate-600">{{ kot.issued_by_name }}</td>
         <td class="text-slate-500">{{ kot.date }}</td>
         <td class="text-right">{{ kot['items']|length }}</td>
         <td class="text-right">Rs. {{ '%.2f'|format(kot.total|float) }}</td>
-        <td><span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase {{ 'bg-emerald-100 text-emerald-700' if kot.status == 'saved' else 'bg-amber-100 text-amber-700' }}">{{ kot.status }}</span></td>
+        <td>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase {{ 'bg-emerald-100 text-emerald-700' if kot.status == 'ready' else 'bg-amber-100 text-amber-700' if kot.status in ('new', 'preparing') else 'bg-slate-100 text-slate-500' }}">{{ kot.status_label }}</span>
+          {% if kot.cut_by_name %}<span class="mt-1 block text-[10px] text-slate-400">by {{ kot.cut_by_name }}</span>{% endif %}
+        </td>
         <td class="text-right">
-          {% if kot.invoice_id %}<a class="btn-secondary text-xs px-2 py-1" href="/billing/create?draft_id={{ kot.invoice_id }}">Bill</a>{% endif %}
+          {% if kot.next_status %}
+          <form method="post" action="/kots/{{ kot.id }}/status" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="status" value="{{ kot.next_status }}">
+            <input type="hidden" name="next" value="/kots?status={{ status_filter }}{% if invoice_id %}&invoice_id={{ invoice_id }}{% endif %}">
+            <button class="btn-secondary text-xs px-2 py-1">{{ kot.next_status_label }}</button>
+          </form>
+          {% endif %}
+          {% if kot.invoice_id %}<a class="btn-secondary text-xs px-2 py-1" href="/billing/create?draft_id={{ kot.invoice_id }}">Bill</a>{% elif kot.room_id %}<a class="btn-secondary text-xs px-2 py-1" href="/billing/create?room_id={{ kot.room_id }}">Folio</a>{% endif %}
           <a class="btn-amber text-xs px-2 py-1" href="/kots/{{ kot.id }}/view">View</a>
           <a class="btn-primary text-xs px-2 py-1" href="/kots/{{ kot.id }}/print">Print</a>
         </td>
@@ -42,7 +62,7 @@
 </div>
 {% else %}
 <div class="mt-4 panel p-8 text-center">
-  <p class="text-slate-600">No KOTs yet. Add restaurant items to a bill and save it — the kitchen ticket appears here automatically.</p>
+  <p class="text-slate-600">No KOTs match this filter. Send one from the <a href="/mobile/kot" class="font-semibold text-[color:var(--color-primary)] underline">mobile KOT screen</a>, or add restaurant items to a bill.</p>
 </div>
 {% endif %}
 {% endblock %}
