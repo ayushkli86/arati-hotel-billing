@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """FastAPI entry point for the Arati Hotel front-office dashboard."""
 
 from __future__ import annotations
@@ -8,6 +9,7 @@ import re
 import json
 import asyncio
 import secrets
+import unicodedata
 import csv
 import io
 import threading
@@ -16,13 +18,16 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
 from types import SimpleNamespace
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from markupsafe import escape as html_escape
 from fastapi.responses import (
-    FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse,
+    FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -39,13 +44,13 @@ from .money import (
 )
 from .nepali import amount_in_words as amount_in_words_ne, label as source_invoice_label, to_bs
 
-from . import analytics as web_analytics, auth, daily_closing, excel_analysis, models, reporting, whatsapp
+from . import analytics as web_analytics, auth, daily_closing, excel_analysis, models, reporting
 from .database import Base, SessionLocal, engine, get_db
 from .seed_menu import MENU as MENU_ITEMS
 from .models import (
     AuditLog, CatalogItem, DailyReport, Guest, HotelSetting, Invoice, InvoiceItem,
-    Kot, Order, Payment, Refund, Reservation, Room, RoomCharge, Stay, User, UserSession,
-    WhatsAppConversation, WhatsAppMessage, StaffAttendance,
+    Kot, MenuItem, Order, Payment, Refund, Reservation, Room, RoomCharge, Stay,
+    User, UserSession,
 )
 from .services import guest_service, invoice_service, payment_service, room_service, stay_service
 from zoneinfo import ZoneInfo
@@ -58,6 +63,9 @@ from .orders import (
 )
 from .services import BUSINESS_TZ, amount_in_words, collect_payment, local_now, money
 from .ui import toast_event, toast_from_request, toast_url
+# Registers the additive ``kot_*`` tables so ``create_all`` in upgrade_database
+# creates them; the poller itself only starts from the lifespan below.
+from .integrations import kot as kot_sync
 
 
 ROOT = Path(__file__).resolve().parent
@@ -256,17 +264,33 @@ async def lifespan(_app: FastAPI):
     if _is_production() and not os.getenv("ARATI_WEB_SECRET", "").strip():
         raise RuntimeError("Set a strong ARATI_WEB_SECRET before production startup.")
     upgrade_database()
+    try:
+        _seed_menu_cards()
+    except Exception:  # noqa: BLE001 - seeding must never block startup
+        _log.warning("menu card seeding skipped", exc_info=True)
     scheduler = None
     if os.getenv("ARATI_WEB_DAILY_CLOSE_ENABLED", "1").strip().lower() not in {
         "0", "false", "no", "off",
     }:
         scheduler = daily_closing.DailyCloseScheduler(SessionLocal)
         scheduler.start()
+    # One poller per process, started only when the cloud is configured. A
+    # missing/invalid configuration must never stop the front desk from opening.
+    kot_poller = None
+    if os.getenv("ARATI_WEB_KOT_SYNC", "1").strip().lower() not in {
+        "0", "false", "no", "off",
+    }:
+        try:
+            kot_poller = await kot_sync.start_poller(kot_sync.KotSyncSettings.from_env())
+        except Exception:  # noqa: BLE001 - integration is optional
+            _log.warning("cloud KOT sync could not start", exc_info=True)
     try:
         yield
     finally:
         if scheduler is not None:
             scheduler.stop()
+        if kot_poller is not None:
+            await kot_sync.stop_poller()
 
 
 def upgrade_database(bind=engine) -> None:
@@ -377,6 +401,21 @@ def upgrade_database(bind=engine) -> None:
         },
         "room_charges": {
             "kot_id": "INTEGER REFERENCES kots(id)",
+        },
+        "kot_orders": {
+            "local_room_id": "INTEGER REFERENCES rooms(id)",
+            "local_stay_id": "INTEGER REFERENCES stays(id)",
+            "local_guest_id": "INTEGER REFERENCES guests(id)",
+            "resolution_status": "VARCHAR(20) NOT NULL DEFAULT 'unresolved'",
+            "resolution_reason": "TEXT NOT NULL DEFAULT ''",
+            "billing_status": "VARCHAR(20) NOT NULL DEFAULT 'pending'",
+            "billed_at": "DATETIME",
+            "menu_issues": "TEXT NOT NULL DEFAULT '[]'",
+        },
+        "kot_order_items": {
+            "local_catalog_item_id": "INTEGER REFERENCES catalog_items(id)",
+            "local_available": "BOOLEAN NOT NULL DEFAULT 1",
+            "price_matches": "BOOLEAN NOT NULL DEFAULT 1",
         },
         "payments": {
             "invoice_number": "VARCHAR(40) NOT NULL DEFAULT ''",
@@ -1061,6 +1100,77 @@ def dashboard_rooms(request: Request, room_filter: str = Query("attention"),
 
 ROOM_STATUS_PRIORITY = {"occupied": 0, "dirty": 1, "reserved": 2, "available": 3, "maintenance": 4}
 
+ROOM_PHOTO_LIBRARY = {
+    "standard room": (
+        {"file": "standard-double-bed.jpg", "label": "Double bed", "beds": ("double", "twin")},
+    ),
+    "family room": (
+        {"file": "family-double-bed.jpg", "label": "Double bed", "beds": ("double", "twin")},
+    ),
+    "deluxe room": (
+        {"file": "deluxe-double-bed.jpg", "label": "Double bed", "beds": ("double", "twin")},
+        {"file": "deluxe-king-size.jpg", "label": "King-size bed", "beds": ("king",)},
+        {"file": "deluxe-single-bed.jpg", "label": "Single bed", "beds": ("single",)},
+    ),
+    "super deluxe room": (
+        {"file": "super-deluxe-double-bed.jpg", "label": "Double bed", "beds": ("double", "twin")},
+        {"file": "super-deluxe-king-size.jpg", "label": "King-size bed", "beds": ("king",)},
+        {"file": "super-deluxe-interior.jpg", "label": "Room interior", "beds": ()},
+    ),
+    "king room": (
+        {"file": "deluxe-king-size.jpg", "label": "King-size bed", "beds": ("king",)},
+    ),
+    "arati suite room": (
+        {"file": "arati-suite-king-size.jpg", "label": "Suite king-size bed", "beds": ("king",)},
+        {"file": "arati-suite-interior.jpg", "label": "Suite interior", "beds": ()},
+    ),
+}
+
+
+def _room_photo_gallery(room: Room) -> list[dict]:
+    raw_key = (room.type or "").strip()
+    key = raw_key.casefold()
+    aliases = {
+        "super deluxe": "super deluxe room",
+        "super-deluxe": "super deluxe room",
+        "super deluxe room": "super deluxe room",
+        "super deluxe rooms": "super deluxe room",
+        "suite": "arati suite room",
+        "suite room": "arati suite room",
+        "suite rooms": "arati suite room",
+        "arati suite": "arati suite room",
+        "arati suite room": "arati suite room",
+        "arati suite rooms": "arati suite room",
+        "deluxe": "deluxe room",
+        "deluxe room": "deluxe room",
+        "deluxe rooms": "deluxe room",
+        "standard": "standard room",
+        "standard room": "standard room",
+        "standard rooms": "standard room",
+        "family": "family room",
+        "family room": "family room",
+        "family rooms": "family room",
+        "king room": "king room",
+    }
+    resolved_key = aliases.get(key, key)
+    gallery = []
+    for photo in ROOM_PHOTO_LIBRARY.get(resolved_key, ()):
+        gallery.append({
+            "path": f"/static/room-photos/{photo['file']}",
+            "label": photo["label"],
+            "alt": f"{room.type} - {photo['label']}",
+            "beds": photo.get("beds", ()),
+        })
+    return gallery
+
+
+def _room_primary_photo(room: Room, gallery: list[dict]) -> dict | None:
+    bed = (room.bed_type or "").casefold()
+    for photo in gallery:
+        if any(tag in bed for tag in photo["beds"]):
+            return photo
+    return gallery[0] if gallery else None
+
 
 def _filter_room_rows(rows: list[dict], filters: str = "attention", q: str = "") -> list[dict]:
     """Filter by status/search and put rooms that need attention first."""
@@ -1149,11 +1259,13 @@ def _room_board_data(db: Session) -> dict:
             else:
                 stay_duration = f"{minutes}m"
 
+        photos = _room_photo_gallery(room)
         rows.append({
             "room": room, "status": status, "stay": stay, "reservation": reservation,
             "guest": stay.guest if stay else reservation.guest if reservation else None,
             "balance": float(balances.get(room.id, 0) or 0),
             "stay_duration": stay_duration,
+            "photos": photos, "photo": _room_primary_photo(room, photos),
         })
     counts = {name: sum(row["status"] == name for row in rows) for name in
               ("available", "occupied", "dirty", "reserved", "maintenance")}
@@ -1235,7 +1347,7 @@ def _bounded_money(value: Decimal, label: str, maximum: Decimal = MAX_MONEY_INPU
 def _draft_access(invoice: Invoice, user: User) -> None:
     """A draft belongs to the person who created it; admins may open any."""
     if invoice.user_id is not None and invoice.user_id != user.id and user.role != "admin":
-        raise HTTPException(403, "This draft invoice belongs to another staff account.")
+        raise HTTPException(403, "This draft receipt belongs to another staff account.")
 
 
 def _stay_folio(db: Session, stay: Stay) -> dict:
@@ -1631,7 +1743,7 @@ def room_checkout(
             # For now, just check out the single room that triggered this
             # (multi-room with existing invoices is complex)
             if is_multi_room:
-                raise ValueError("Cannot check out multiple rooms when one has an existing invoice. Check out rooms individually.")
+                raise ValueError("Cannot check out multiple rooms when one has an existing receipt. Check out rooms individually.")
         
         try:
             paid_value = Decimal(amount_paid or "0")
@@ -1987,6 +2099,17 @@ def room_history_modal(request: Request, room_id: int, db: Session = Depends(get
         .order_by(Stay.check_in.desc(), Stay.id.desc())
     ).all()
     return render(request, "partials/room_history_modal.html", db, {"room": room, "stays": stays})
+
+
+@app.get("/rooms/{room_id}/photos", response_class=HTMLResponse)
+def room_photos_modal(request: Request, room_id: int, db: Session = Depends(get_db)):
+    user_or_redirect(request, db)
+    room = db.get(Room, room_id)
+    if room is None:
+        raise HTTPException(404, "Room not found.")
+    photos = _room_photo_gallery(room)
+    return render(request, "partials/room_photos_modal.html", db,
+                  {"room": room, "photos": photos})
 
 
 @app.get("/rooms/{room_id}/rate", response_class=HTMLResponse)
@@ -2508,8 +2631,7 @@ async def reservation_cancel(
 
 
 def _orders_context(
-    request: Request, db: Session, status: str = "open", kind: str = "all",
-    q: str = "", sim_phone: str = "",
+    db: Session, status: str = "open", kind: str = "all", q: str = "",
 ) -> dict:
     status = status if status in {"open", "all", *ORDER_STATUSES} else "open"
     kind = kind if kind in {"all", *KIND_LABELS} else "all"
@@ -2545,16 +2667,6 @@ def _orders_context(
         "completed_today": int(completed_today),
     }
 
-    sim_phone = whatsapp.normalize_phone(sim_phone) or whatsapp.DEFAULT_PHONE
-    sim_messages = list(db.scalars(
-        select(WhatsAppMessage).where(WhatsAppMessage.wa_id == sim_phone)
-        .order_by(WhatsAppMessage.id.desc()).limit(60)
-    ).all())[::-1]
-    sim_conversation = db.scalar(
-        select(WhatsAppConversation).where(WhatsAppConversation.wa_id == sim_phone)
-    )
-    wa_settings = whatsapp.config()
-    webhook_url = f"{str(request.base_url).rstrip('/')}/webhooks/whatsapp"
     return {
         "orders": orders,
         "metrics": metrics,
@@ -2562,14 +2674,6 @@ def _orders_context(
         "status_filter": status,
         "kind_filter": kind,
         "q": q,
-        "sim_phone": sim_phone,
-        "sim_messages": sim_messages,
-        "sim_conversation": sim_conversation,
-        "wa_connected": whatsapp.cloud_configured(),
-        "wa_enabled": bool(wa_settings["enabled"]),
-        "wa_verify_set": bool(wa_settings["verify_token"]),
-        "wa_secret_set": bool(wa_settings["app_secret"]),
-        "webhook_url": webhook_url,
         "status_labels": STATUS_LABELS,
         "status_badges": STATUS_BADGES,
         "kind_labels": KIND_LABELS,
@@ -2577,15 +2681,6 @@ def _orders_context(
         "open_statuses": OPEN_STATUSES,
         "item_summary": item_summary,
     }
-
-
-@app.get("/orders", response_class=HTMLResponse)
-def orders_page(
-    request: Request, status: str = "open", kind: str = "all", q: str = "",
-    sim_phone: str = "", db: Session = Depends(get_db),
-):
-    user_or_redirect(request, db)
-    return render(request, "coming_soon.html", db)
 
 
 @app.get("/orders/{order_id}", response_class=HTMLResponse)
@@ -2596,21 +2691,11 @@ def order_detail(request: Request, order_id: int, db: Session = Depends(get_db))
     )
     if order is None:
         raise HTTPException(404, "Order not found.")
-    conversation = db.scalar(
-        select(WhatsAppConversation).where(WhatsAppConversation.wa_id == order.contact_wa_id)
-    ) if order.contact_wa_id else None
-    messages = list(db.scalars(
-        select(WhatsAppMessage).where(WhatsAppMessage.wa_id == order.contact_wa_id)
-        .order_by(WhatsAppMessage.id.desc()).limit(80)
-    ).all())[::-1] if order.contact_wa_id else []
     errors = {
         "status": "That status change is not allowed from the order's current state.",
-        "phone": "This order has no WhatsApp number to reply to.",
     }
     return render(request, "order_detail.html", db, {
         "order": order,
-        "conversation": conversation,
-        "messages": messages,
         "available_statuses": [
             name for name in ORDER_STATUSES if can_transition(order.status, name)
         ],
@@ -2620,12 +2705,7 @@ def order_detail(request: Request, order_id: int, db: Session = Depends(get_db))
         "kind_labels": KIND_LABELS,
         "fulfilment_labels": FULFILMENT_LABELS,
         "item_summary": item_summary,
-        "notice": {
-            "1": "sent", "0": "failed",
-        }.get(request.query_params.get("notice", ""), ""),
         "error": errors.get(request.query_params.get("error", ""), ""),
-        "reply_state": request.query_params.get("reply", ""),
-        "wa_connected": whatsapp.cloud_configured(),
     })
 
 
@@ -2660,158 +2740,10 @@ def order_set_status(
     _audit(db, user, "order.status", "order", order.order_number,
            f"{previous} → {status}" + (f" · {note}" if note else ""))
     db.commit()
-    sent = whatsapp.notify_order_status(db, order, status)
     message = f"Order {order.order_number} marked {STATUS_LABELS.get(status, status).lower()}."
-    if not sent:
-        message += " The guest could not be messaged on WhatsApp."
     return RedirectResponse(toast_url(
-        f"/orders/{order_id}?notice={1 if sent else 0}", message,
-        "success" if sent else "warning",
+        f"/orders/{order_id}", message, "success",
     ), status_code=303)
-
-
-@app.post("/orders/{order_id}/reply")
-def order_reply(
-    request: Request, order_id: int, body: str = Form(""),
-    csrf_token: str = Form(""), db: Session = Depends(get_db),
-):
-    user = user_or_redirect(request, db)
-    check_csrf(request, csrf_token)
-    order = db.get(Order, order_id)
-    if order is None:
-        raise HTTPException(404, "Order not found.")
-    conversation = whatsapp.conversation_for(db, order.contact_wa_id, order.customer_name)
-    if conversation is None:
-        return RedirectResponse(toast_url(
-            f"/orders/{order_id}?error=phone",
-            "This order has no WhatsApp number to reply to.", "error",
-        ), status_code=303)
-    ok, _detail = whatsapp.send_manual(db, conversation, body)
-    _audit(db, user, "order.reply", "order", order.order_number,
-           "manual WhatsApp reply" if ok else "manual WhatsApp reply failed")
-    db.commit()
-    return RedirectResponse(toast_url(
-        f"/orders/{order_id}?reply={'sent' if ok else 'failed'}",
-        "Message sent to the guest." if ok else "The message could not be sent. Check the WhatsApp connection.",
-        "success" if ok else "error",
-    ), status_code=303)
-
-
-@app.post("/orders/conversations/{conversation_id}/bot")
-def order_bot_control(
-    request: Request, conversation_id: int, action: str = Form("resume"),
-    next_url: str = Form("/orders"), csrf_token: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    user = user_or_redirect(request, db)
-    check_csrf(request, csrf_token)
-    conversation = db.get(WhatsAppConversation, conversation_id)
-    if conversation is None:
-        raise HTTPException(404, "Conversation not found.")
-    paused = action != "resume"
-    whatsapp.set_bot_paused(db, conversation, paused)
-    _audit(db, user, "order.bot", "conversation", str(conversation.id),
-           "assistant paused" if paused else "assistant resumed")
-    db.commit()
-    destination = next_url if next_url.startswith("/orders") and "//" not in next_url else "/orders"
-    return RedirectResponse(toast_url(
-        destination,
-        "Assistant resumed for this chat." if not paused else "Assistant paused for this chat.",
-        "success" if not paused else "info",
-    ), status_code=303)
-
-
-@app.post("/orders/simulator", response_class=HTMLResponse)
-async def whatsapp_simulator(request: Request, db: Session = Depends(get_db)):
-    user = user_or_redirect(request, db)
-    form = await request.form()
-    check_csrf(request, str(form.get("csrf_token", "")))
-    phone = whatsapp.normalize_phone(str(form.get("phone", ""))) or whatsapp.DEFAULT_PHONE
-    error = ""
-    toast = None
-    action = str(form.get("action", "send"))
-    if action == "resume":
-        conversation = whatsapp.conversation_for(db, phone, "Simulator guest")
-        if conversation is not None:
-            whatsapp.set_bot_paused(db, conversation, False)
-            toast = toast_event("Assistant resumed for this chat.", "success")
-    else:
-        message = str(form.get("message", "")).strip()
-        if not message:
-            error = "Type a message to send."
-            toast = toast_event(error, "error")
-        else:
-            try:
-                result = whatsapp.process_inbound(
-                    db, phone, "Simulator guest", message, transport="simulator",
-                )
-            except Exception:
-                db.rollback()
-                _log.exception("Simulator message failed for %s", phone)
-                error = "The message could not be processed. Please try again."
-                toast = toast_event(error, "error")
-            else:
-                if result["order"] is not None:
-                    _audit(db, user, "order.create", "order",
-                           result["order"].order_number, "created in the WhatsApp simulator")
-                    db.commit()
-                    toast = toast_event(
-                        f"Order {result['order'].order_number} created from the conversation.",
-                        "success",
-                    )
-                else:
-                    toast = toast_event("Message sent to the assistant.", "success")
-    messages = list(db.scalars(
-        select(WhatsAppMessage).where(WhatsAppMessage.wa_id == phone)
-        .order_by(WhatsAppMessage.id.desc()).limit(60)
-    ).all())[::-1]
-    conversation = db.scalar(
-        select(WhatsAppConversation).where(WhatsAppConversation.wa_id == phone)
-    )
-    headers = {"HX-Trigger": json.dumps({"showToast": toast})} if toast else None
-    return render(request, "partials/whatsapp_simulator.html", db, {
-        "sim_phone": phone, "sim_messages": messages,
-        "sim_conversation": conversation, "error": error,
-    }, headers=headers)
-
-
-@app.get("/webhooks/whatsapp", include_in_schema=False)
-def whatsapp_webhook_verify(request: Request):
-    params = request.query_params
-    expected = str(whatsapp.config()["verify_token"])
-    if (
-        params.get("hub.mode") == "subscribe" and expected
-        and secrets.compare_digest(params.get("hub.verify_token", ""), expected)
-    ):
-        return PlainTextResponse(params.get("hub.challenge", ""))
-    raise HTTPException(403, "WhatsApp webhook verification failed.")
-
-
-@app.post("/webhooks/whatsapp", include_in_schema=False)
-async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
-    raw = await request.body()
-    if not whatsapp.verify_signature(raw, request.headers.get("x-hub-signature-256")):
-        raise HTTPException(403, "Invalid WhatsApp signature.")
-    if not whatsapp.config()["enabled"]:
-        return {"status": "ignored"}
-    try:
-        payload = json.loads(raw or b"{}")
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise HTTPException(400, "Malformed WhatsApp payload.") from exc
-    if not isinstance(payload, dict):
-        raise HTTPException(400, "Malformed WhatsApp payload.")
-    for message in whatsapp.parse_webhook(payload):
-        try:
-            whatsapp.process_inbound(
-                db, message["wa_id"], message["name"], message["text"],
-                transport="cloud", message_id=message["message_id"],
-            )
-        except Exception:
-            # One garbage inbound must never fail the whole webhook — Meta
-            # interpret a non-200 as failure and retries forever.
-            _log.exception("WhatsApp inbound message failed from %s", message.get("wa_id"))
-            db.rollback()
-    return {"status": "accepted"}
 
 
 def _customer_page_data(db: Session, q: str = "") -> dict:
@@ -2959,7 +2891,7 @@ def deactivate_customer(
     if guest is None:
         raise HTTPException(404, "Guest not found.")
     guest.active = False
-    _audit(db, user, "customer.deactivate", "guest", str(guest.id), "Guest deactivated; invoice history retained.")
+    _audit(db, user, "customer.deactivate", "guest", str(guest.id), "Guest deactivated; receipt history retained.")
     db.commit()
     return RedirectResponse(toast_url("/customers?deactivated=1", "Customer deactivated.", "warning"), status_code=303)
 
@@ -3443,7 +3375,7 @@ def new_invoice_page(
             .where(Invoice.id == draft_id, Invoice.status == "draft")
         )
         if draft is None:
-            raise HTTPException(404, "Draft invoice not found.")
+            raise HTTPException(404, "Draft receipt not found.")
         _draft_access(draft, user)
         page_data["invoice_number"] = draft.invoice_number
         page_data["draft_kots"] = [
@@ -3614,7 +3546,7 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
         check_csrf(request, str(form.get("csrf_token", "")))
         rows = json.loads(str(form.get("line_items", "[]")))
         if not isinstance(rows, list) or not rows:
-            raise ValueError("Add at least one room, restaurant item, or service before creating the invoice.")
+            raise ValueError("Add at least one room, restaurant item, or service before creating the receipt.")
         name = str(form.get("guest_name", "Walk-in guest")).strip()[:160] or "Walk-in guest"
         guest_id = str(form.get("guest_id", "")).strip()
         guest = None
@@ -3640,7 +3572,7 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
         row_kot_ids = []
         for row in rows:
             if not isinstance(row, dict):
-                raise ValueError("Invalid invoice item.")
+                raise ValueError("Invalid receipt item.")
             description = str(row.get("description", "")).strip()[:240]
             try:
                 quantity = Decimal(str(row.get("quantity", 1)))
@@ -3695,11 +3627,11 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
         try:
             invoice_date = datetime.fromisoformat(invoice_date_val)
         except ValueError as exc:
-            raise ValueError("Enter a valid invoice date.") from exc
+            raise ValueError("Enter a valid receipt date.") from exc
         invoice_date_utc = datetime.combine(invoice_date.date(), time.min, BUSINESS_TZ).astimezone(timezone.utc).replace(tzinfo=None)
         action = str(form.get("action", "issue"))
         if action not in {"draft", "issue", "print", "pdf", "preview"}:
-            raise ValueError("Choose a valid invoice action.")
+            raise ValueError("Choose a valid receipt action.")
         try:
             kot_pages_raw = json.loads(str(form.get("kots_data_json", "[]") or "[]"))
         except (TypeError, ValueError):
@@ -3707,7 +3639,7 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
         if not isinstance(kot_pages_raw, list):
             raise ValueError("Invalid KOT data.")
         if len(kot_pages_raw) > 50:
-            raise ValueError("Too many KOT pages on one invoice.")
+            raise ValueError("Too many KOT pages on one receipt.")
         kot_pages = []
         for page in kot_pages_raw:
             if not isinstance(page, dict):
@@ -3760,7 +3692,7 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
             bill_type=bill_type,
         )
         if paid_value > Decimal(str(totals.total)):
-            raise ValueError("Amount received cannot exceed the invoice total.")
+            raise ValueError("Amount received cannot exceed the receipt total.")
         guest_name = name
         preview_guest = Guest(
             name=guest_name,
@@ -3773,12 +3705,12 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
         existing_draft = None
         if draft_id:
             if not draft_id.isdigit():
-                raise ValueError("Invalid draft invoice.")
+                raise ValueError("Invalid draft receipt.")
             existing_draft = db.scalar(
                 select(Invoice).where(Invoice.id == int(draft_id), Invoice.status == "draft")
             )
             if existing_draft is None:
-                raise ValueError("This invoice is no longer a draft. Refresh and try again.")
+                raise ValueError("This receipt is no longer a draft. Refresh and try again.")
             _draft_access(existing_draft, user)
 
         # In-memory preview mode: renders printable preview without creating duplicate DB records
@@ -3869,7 +3801,7 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
                         if existing_stay and existing_stay.guest_id != guest.id:
                             raise ValueError(
                                 f"Room {room.number} is occupied by another guest. "
-                                "Check that guest out or start a new invoice for that stay."
+                                "Check that guest out or start a new receipt for that stay."
                             )
                         if existing_stay:
                             stay_rows.append(existing_stay)
@@ -3998,7 +3930,7 @@ async def create_invoice(request: Request, db: Session = Depends(get_db)):
                 amount=Decimal(str(totals.paid)),
                 method=payment_method,
                 received_by=user.username,
-                note="Payment received at invoice issue",
+                note="Payment received at receipt issue",
                 invoice_number=invoice.invoice_number,
                 business_date=invoice_date.date().isoformat(),
                 paid_at=invoice_date_utc,
@@ -4111,10 +4043,10 @@ async def kots_api_save(request: Request, db: Session = Depends(get_db)):
     invoice = None
     if invoice_id:
         if not invoice_id.isdigit():
-            raise HTTPException(422, "Invalid invoice for this KOT.")
+            raise HTTPException(422, "Invalid receipt for this KOT.")
         invoice = db.get(Invoice, int(invoice_id))
         if invoice is None or invoice.status == "void":
-            raise HTTPException(404, "Invoice not found for this KOT.")
+            raise HTTPException(404, "Receipt not found for this KOT.")
     guest = _kot_guest(db, payload.get("guest_id"))
     guest_name = (guest.full_name or guest.name) if guest else str(payload.get("guest_name") or "").strip()[:160]
     if kot is None:
@@ -4151,7 +4083,7 @@ def _kot_menu_items(db: Session) -> list[CatalogItem]:
             CatalogItem.active.is_(True),
             CatalogItem.category.in_(("restaurant", "food", "beverage")),
         )
-        .order_by(CatalogItem.menu_group, CatalogItem.sort_order, CatalogItem.name)
+        .order_by(CatalogItem.sort_order, CatalogItem.name)
     ).all())
 
 
@@ -4164,6 +4096,7 @@ def _kot_menu_dict(item: CatalogItem) -> dict:
         "group": item.menu_group or "Menu",
         "unit": item.unit or "pcs",
         "taxable": bool(item.taxable),
+        "note": MENU_NOTES.get((item.menu_group or "", item.name), ""),
     }
 
 
@@ -4253,19 +4186,19 @@ def _kot_delete_blocker(db: Session, kot: Kot) -> str | None:
     once any of those charges (or the ticket itself) has reached an invoice.
     """
     if kot.invoice_id is not None:
-        return "This KOT is already on an invoice."
+        return "This KOT is already on a receipt."
     charge_on_invoice = db.scalar(
         select(func.count(RoomCharge.id)).where(
             RoomCharge.kot_id == kot.id, RoomCharge.invoice_number != "",
         )
     )
     if charge_on_invoice:
-        return "This KOT is already on an invoice."
+        return "This KOT is already on a receipt."
     billed_items = db.scalar(
         select(func.count(InvoiceItem.id)).where(InvoiceItem.kot_id == kot.id)
     )
     if billed_items:
-        return "This KOT is already on an invoice."
+        return "This KOT is already on a receipt."
     return None
 
 
@@ -4484,15 +4417,27 @@ async def api_kots_stream(request: Request):
 
 @app.get("/mobile/kot", response_class=HTMLResponse)
 def mobile_kot_page(
-    request: Request, room_id: int | None = None, db: Session = Depends(get_db),
+    request: Request, room_id: int | None = None, mode: str = "",
+    db: Session = Depends(get_db),
 ):
-    """Phone-first KOT entry for waiters: pick a room, tap menu items, send.
+    """Phone-first KOT entry for waiters: room or individual guest.
 
-    Saving here creates the kitchen ticket and posts the same items to the
-    occupied room's folio, so checkout already has the food charges.
+    Room KOTs post their items to the occupied room's folio so checkout
+    already has the food charges. Individual / walk-in KOTs go to the kitchen
+    without a room bill and are paid at the counter.
     """
     user_or_redirect(request, db)
     rooms = _occupied_rooms(db)
+    requested_mode = mode.strip().lower()
+    initial_mode = (
+        "walkin"
+        if requested_mode in {"walkin", "walk-in", "individual"}
+        else "room"
+    )
+    if room_id is not None:
+        initial_mode = "room"
+    elif initial_mode == "room" and not rooms:
+        initial_mode = "walkin"
     menu = [_kot_menu_dict(item) for item in _kot_menu_items(db)]
     open_kots = [
         _kot_dict(kot) for kot in db.scalars(
@@ -4522,6 +4467,7 @@ def mobile_kot_page(
         "open_kots": open_kots,
         "served_kots": served_kots,
         "selected_room_id": room_id,
+        "initial_mode": initial_mode,
         "active_page": "kots",
         "header_title": "Mobile KOT",
     })
@@ -4578,22 +4524,33 @@ async def mobile_kot_save(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(422, f"Room {room.number} has no checked-in guest.")
 
     for item in items:
-        if not item.get("catalog_id"):
-            raise HTTPException(422, "Choose every item from the menu list.")
-        catalog_item = db.get(CatalogItem, int(item["catalog_id"]))
-        if catalog_item is None or not catalog_item.active:
-            raise HTTPException(422, "One of the selected menu items is no longer available.")
-        item.update({
-            "particular": catalog_item.name,
-            "rate": float(catalog_item.rate or 0),
-            "category": catalog_item.category or "food",
-            "menu_group": catalog_item.menu_group or "",
-            "unit": catalog_item.unit or "pcs",
-            "taxable": bool(catalog_item.taxable),
-        })
-        item["amount"] = float((
-            Decimal(str(item["qty"])) * Decimal(str(item["rate"]))
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        # Menu items are re-priced from the catalog so a phone cannot change
+        # the rate. Items without a catalog id are manual entries typed on the
+        # device; they keep the validated name, rate and quantity above.
+        if item.get("catalog_id"):
+            catalog_item = db.get(CatalogItem, int(item["catalog_id"]))
+            if catalog_item is None or not catalog_item.active:
+                raise HTTPException(422, "One of the selected menu items is no longer available.")
+            item.update({
+                "particular": catalog_item.name,
+                "rate": float(catalog_item.rate or 0),
+                "category": catalog_item.category or "food",
+                "menu_group": catalog_item.menu_group or "",
+                "unit": catalog_item.unit or "pcs",
+                "taxable": bool(catalog_item.taxable),
+            })
+            item["amount"] = float((
+                Decimal(str(item["qty"])) * Decimal(str(item["rate"]))
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        else:
+            category = str(item.get("category") or "food").strip().lower() or "food"
+            if category not in {"food", "beverage", "service", "manual"}:
+                category = "food"
+            item["category"] = category
+            item["menu_group"] = str(item.get("menu_group") or "Manual").strip()[:80] or "Manual"
+            item["unit"] = str(item.get("unit") or "pcs").strip()[:30] or "pcs"
+            item["taxable"] = bool(item.get("taxable", True))
+            item["catalog_id"] = None
     total = sum((Decimal(str(row["amount"])) for row in items), Decimal("0.00"))
 
     guest = db.get(Guest, stay.guest_id) if stay and stay.guest_id else None
@@ -4906,17 +4863,17 @@ async def delete_invoice_draft(
 ):
     user = user_or_redirect(request, db)
     if user.role != "admin":
-        raise HTTPException(403, "Only administrators can delete draft invoices.")
+        raise HTTPException(403, "Only administrators can delete draft receipts.")
     check_csrf(request, csrf_token)
     invoice = db.get(Invoice, invoice_id)
     if invoice is None or invoice.status != "draft":
-        raise HTTPException(404, "Draft invoice not found.")
+        raise HTTPException(404, "Draft receipt not found.")
     _draft_access(invoice, user)
     number = invoice.invoice_number
     db.delete(invoice)
     _audit(db, user, "invoice.delete_draft", "invoice", number, "Draft discarded.")
     db.commit()
-    return RedirectResponse(toast_url("/invoices?status=draft", "Draft invoice deleted.", "warning"), status_code=303)
+    return RedirectResponse(toast_url("/invoices?status=draft", "Draft receipt deleted.", "warning"), status_code=303)
 
 
 @app.post("/billing/invoices/{invoice_id}/void")
@@ -4926,15 +4883,15 @@ async def void_invoice(
 ):
     user = user_or_redirect(request, db)
     if user.role != "admin":
-        raise HTTPException(403, "Only administrators can void invoices.")
+        raise HTTPException(403, "Only administrators can void receipts.")
     check_csrf(request, csrf_token)
     invoice = db.get(Invoice, invoice_id)
     if invoice is None or invoice.status in {"draft", "void"}:
-        raise HTTPException(404, "Issued invoice not found.")
+        raise HTTPException(404, "Issued receipt not found.")
     if db.scalar(select(func.count(Payment.id)).where(Payment.invoice_id == invoice.id)):
         raise HTTPException(
             409,
-            "This invoice has recorded payments. Refund the payment instead of voiding the invoice.",
+            "This receipt has recorded payments. Refund the payment instead of voiding the receipt.",
         )
     invoice.status = "void"
     _audit(db, user, "invoice.void", "invoice", invoice.invoice_number,
@@ -4949,7 +4906,7 @@ def _load_invoice_for_print(db: Session, invoice_id: int) -> Invoice:
         selectinload(Invoice.items),
     ).where(Invoice.id == invoice_id))
     if not invoice:
-        raise HTTPException(404, "Invoice not found.")
+        raise HTTPException(404, "Receipt not found.")
     return invoice
 
 
@@ -5005,7 +4962,7 @@ def invoice_pdf(request: Request, invoice_id: int, db: Session = Depends(get_db)
     user_or_redirect(request, db)
     invoice = db.scalar(select(Invoice).options(selectinload(Invoice.guest), selectinload(Invoice.room), selectinload(Invoice.items)).where(Invoice.id == invoice_id))
     if not invoice:
-        raise HTTPException(404, "Invoice not found.")
+        raise HTTPException(404, "Receipt not found.")
     settings = _billing_settings(db)
     try:
         from weasyprint import HTML
@@ -5093,7 +5050,7 @@ def collect_modal(request: Request, invoice_id: int, db: Session = Depends(get_d
     user_or_redirect(request, db)
     invoice = db.scalar(select(Invoice).options(selectinload(Invoice.guest), selectinload(Invoice.room)).where(Invoice.id == invoice_id))
     if not invoice or invoice.status not in {"issued", "paid"} or invoice.balance <= 0:
-        return HTMLResponse('<div class="fixed inset-0 z-50 grid place-items-center" style="background:rgba(27,58,42,.45);padding:1rem"><div class="rounded-2xl p-6 max-w-sm w-full text-center" style="background:var(--color-surface,#fff);box-shadow:0 24px 60px rgba(27,58,42,.25)"><p class="font-bold mb-2" style="color:var(--color-primary,#2E7D3E)">Invoice Settled</p><p class="text-sm mb-4" style="color:#6B6B60">This invoice has no outstanding balance.</p><button onclick="this.closest(\'.fixed\').remove()" class="rounded-lg border-0 px-4 py-2 text-sm font-bold" style="background:var(--color-primary,#1B3A2A);color:#F7F1DE;cursor:pointer">Close</button></div></div>', status_code=200)
+        return HTMLResponse('<div class="fixed inset-0 z-50 grid place-items-center" style="background:rgba(27,58,42,.45);padding:1rem"><div class="rounded-2xl p-6 max-w-sm w-full text-center" style="background:var(--color-surface,#fff);box-shadow:0 24px 60px rgba(27,58,42,.25)"><p class="font-bold mb-2" style="color:var(--color-primary,#2E7D3E)">Receipt Settled</p><p class="text-sm mb-4" style="color:#6B6B60">This receipt has no outstanding balance.</p><button onclick="this.closest(\'.fixed\').remove()" class="rounded-lg border-0 px-4 py-2 text-sm font-bold" style="background:var(--color-primary,#1B3A2A);color:#F7F1DE;cursor:pointer">Close</button></div></div>', status_code=200)
     return render(request, "partials/payment_modal.html", db, {
         "invoice": invoice, "methods": _payment_methods(db),
     }, 200)
@@ -5108,11 +5065,11 @@ def collect_invoice(
     check_csrf(request, csrf_token)
     invoice = db.scalar(select(Invoice).options(selectinload(Invoice.guest), selectinload(Invoice.room)).where(Invoice.id == invoice_id))
     if not invoice:
-        raise HTTPException(404, "Invoice not found.")
+        raise HTTPException(404, "Receipt not found.")
     if invoice.status not in {"issued", "paid"}:
-        raise HTTPException(409, "Only issued invoices can receive payments.")
+        raise HTTPException(409, "Only issued receipts can receive payments.")
     if invoice.balance <= 0:
-        raise HTTPException(409, "This invoice has no outstanding balance.")
+        raise HTTPException(409, "This receipt has no outstanding balance.")
     if method not in _payment_methods(db):
         raise HTTPException(422, "Choose a valid payment method.")
     try:
@@ -5139,7 +5096,7 @@ def collect_invoice(
         }, status_code=200)
     except Exception:
         db.rollback()
-        _log.exception("Payment collection failed for invoice %s", invoice_id)
+        _log.exception("Payment collection failed for receipt %s", invoice_id)
         if request.headers.get("HX-Request") == "true":
             return Response(
                 f'<div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">The payment could not be recorded. Please try again.</div>',
@@ -5299,7 +5256,7 @@ async def payment_action(request: Request, action: str, db: Session = Depends(ge
         if amount == 0:
             raise ValueError("Enter a non-zero amount.")
         if len(invoice_number) > 40:
-            raise ValueError("Enter a valid invoice number.")
+            raise ValueError("Enter a valid receipt number.")
         if reason not in reasons:
             raise ValueError("Choose a reason for this ledger entry.")
         if reason == "Other (see note)":
@@ -5313,7 +5270,7 @@ async def payment_action(request: Request, action: str, db: Session = Depends(ge
             Invoice.status.in_(("issued", "paid")),
         ))
         if invoice_row is None:
-            raise ValueError("The invoice was not found or is not eligible for ledger changes.")
+            raise ValueError("The receipt was not found or is not eligible for ledger changes.")
         if action == "refund":
             if amount <= 0:
                 raise ValueError("A refund amount must be greater than zero.")
@@ -5322,7 +5279,7 @@ async def payment_action(request: Request, action: str, db: Session = Depends(ge
             paid = Decimal(str(invoice_row.paid_amount)).quantize(Decimal("0.01"))
             balance = Decimal(str(invoice_row.balance)).quantize(Decimal("0.01"))
             if amount > paid:
-                raise ValueError("Refund cannot exceed the amount collected on this invoice.")
+                raise ValueError("Refund cannot exceed the amount collected on this receipt.")
             invoice_row.paid_amount = paid - amount
             invoice_row.balance = balance + amount
             ledger_method = method
@@ -5332,7 +5289,7 @@ async def payment_action(request: Request, action: str, db: Session = Depends(ge
                 raise ValueError("A credit adjustment cannot exceed the outstanding balance.")
             new_balance = Decimal(str(invoice_row.balance)).quantize(Decimal("0.01")) - amount
             if new_balance < 0 or new_balance > Decimal("9999999999.99"):
-                raise ValueError("The adjustment would create an invalid invoice balance.")
+                raise ValueError("The adjustment would create an invalid receipt balance.")
             invoice_row.balance = new_balance
             ledger_method = "Adjustment"
             audit_action = "payment.adjustment"
@@ -5368,7 +5325,7 @@ async def payment_action(request: Request, action: str, db: Session = Depends(ge
         }, status_code=200)
     except Exception:
         db.rollback()
-        _log.exception("Ledger payment action failed for invoice %s", invoice_number)
+        _log.exception("Ledger payment action failed for receipt %s", invoice_number)
         if request.headers.get("HX-Request") == "true":
             return Response(
                 f'<div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">The transaction could not be completed. Please try again.</div>',
@@ -5432,52 +5389,6 @@ def _report_query_data(
     return report, filters
 
 
-@app.get("/reports", response_class=HTMLResponse)
-def reports_page(
-    request: Request, report: str = "daily_sales", preset: str = "custom",
-    start: str = "", end: str = "", employee: str = "All",
-    payment_method: str = "All", transaction_type: str = "All",
-    room_no: str = "", invoice_no: str = "", db: Session = Depends(get_db),
-):
-    user_or_redirect(request, db)
-    try:
-        start, end = _report_dates(preset, start, end)
-        report_data, filters = _report_query_data(
-            db, report, start, end, employee, payment_method,
-            transaction_type, room_no, invoice_no,
-        )
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
-    today = local_now().date().isoformat()
-    yesterday = (local_now().date() - timedelta(days=1)).isoformat()
-    daily_reports = daily_closing.list_reports(db)
-    for entry in daily_reports:
-        try:
-            entry.totals = json.loads(entry.totals_json or "{}")
-        except (TypeError, ValueError):
-            entry.totals = {}
-    return render(request, "reports.html", db, {
-        "active_page": "reports",
-        "report": report_data,
-        "report_key": report,
-        "start": start,
-        "end": end,
-        "preset": preset,
-        "filters": filters,
-        "cards": reporting.dashboard_cards(db, today),
-        "options": _report_options(db),
-        "report_options": reporting.REPORTS,
-        "daily_reports": daily_reports,
-        "scheduler_runs": daily_closing.list_runs(db),
-        "daily_report_date": yesterday,
-        "daily_preview": [
-            {"label": "Yesterday", "date": yesterday, "sales": reporting.dashboard_cards(db, yesterday).get("gross_sales", 0)},
-            {"label": "Today", "date": today, "sales": reporting.dashboard_cards(db, today).get("gross_sales", 0)},
-        ],
-        "daily_status": request.query_params.get("daily_status", ""),
-    })
-
-
 @app.post("/reports/excel", response_class=HTMLResponse)
 async def analyze_excel_report(
     request: Request,
@@ -5493,7 +5404,7 @@ async def analyze_excel_report(
         content.extend(chunk)
         if len(content) > excel_analysis.MAX_FILE_BYTES:
             return render(request, "excel_analysis.html", db, {
-                "active_page": "reports",
+                "active_page": "analysis",
                 "filename": filename,
                 "error": "That file is larger than 10 MB. Upload a smaller workbook.",
                 "server_toast": toast_event("That workbook is larger than 10 MB.", "error"),
@@ -5502,13 +5413,13 @@ async def analyze_excel_report(
         analysis = excel_analysis.analyze(bytes(content), filename)
     except ValueError as exc:
         return render(request, "excel_analysis.html", db, {
-            "active_page": "reports",
+            "active_page": "analysis",
             "filename": filename,
             "error": str(exc),
             "server_toast": toast_event(str(exc), "error"),
         }, status_code=422)
     return render(request, "excel_analysis.html", db, {
-        "active_page": "reports",
+        "active_page": "analysis",
         "analysis": analysis,
         "filename": filename,
         "server_toast": toast_event(
@@ -5541,7 +5452,7 @@ def generate_daily_close(
         db.rollback()
         raise HTTPException(422, str(exc)) from exc
     return RedirectResponse(
-        toast_url(f"/reports?daily_status={report.status}", "Daily closing report generated.", "success"),
+        toast_url(f"/analysis?daily_status={report.status}", "Daily closing report generated.", "success"),
         status_code=303,
     )
 
@@ -5575,7 +5486,7 @@ def regenerate_daily_close(
         db.rollback()
         raise HTTPException(422, str(exc)) from exc
     return RedirectResponse(
-        toast_url(f"/reports?daily_status={report.status}", "Daily closing report regenerated.", "success"),
+        toast_url(f"/analysis?daily_status={report.status}", "Daily closing report regenerated.", "success"),
         status_code=303,
     )
 
@@ -5919,6 +5830,14 @@ def analysis_page(
     charts = {chart["key"]: chart for chart in result["charts"]}
     sales_points = _short_points(charts["sales"]["points"])
     collection_points = _short_points(charts["collections"]["points"])
+    today_iso = today.isoformat()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    daily_reports = daily_closing.list_reports(db)
+    for entry in daily_reports:
+        try:
+            entry.totals = json.loads(entry.totals_json or "{}")
+        except (TypeError, ValueError):
+            entry.totals = {}
     return render(request, "analysis.html", db, {
         "active_page": "analysis",
         "analysis": result,
@@ -5937,6 +5856,14 @@ def analysis_page(
         "compare": compare == "1",
         "compare_start": compare_start,
         "compare_end": compare_end,
+        "daily_reports": daily_reports,
+        "scheduler_runs": daily_closing.list_runs(db),
+        "daily_report_date": yesterday,
+        "daily_preview": [
+            {"label": "Yesterday", "date": yesterday, "sales": reporting.dashboard_cards(db, yesterday).get("gross_sales", 0)},
+            {"label": "Today", "date": today_iso, "sales": reporting.dashboard_cards(db, today_iso).get("gross_sales", 0)},
+        ],
+        "daily_status": request.query_params.get("daily_status", ""),
     })
 
 
@@ -6177,34 +6104,381 @@ MENU_NOTES = {
 }
 
 
-def _menu_groups() -> list[dict]:
-    groups: list[dict] = []
-    index: dict[str, dict] = {}
-    for group, name, rate, unit in MENU_ITEMS:
-        entry = index.get(group)
-        if entry is None:
-            entry = {"no": len(groups) + 1, "name": group, "items": []}
-            index[group] = entry
-            groups.append(entry)
-        entry["items"].append({
-            "name": name,
-            "rate": rate,
-            "price": f"{rate:,}",
-            "unit": unit,
-            "note": MENU_NOTES.get((group, name), ""),
-        })
-    return groups
+# ---------------------------------------------------------------------------
+# Menu board (public /menu + admin /admin/menu)
+# ---------------------------------------------------------------------------
+# A guest-facing card grid kept deliberately separate from the billing catalog:
+# cards carry a photo, slug, description and availability, while the catalog
+# keeps driving KOTs and invoices. The board is seeded once from MENU_ITEMS.
+
+_MENU_IMAGE_DIR = ROOT / "static" / "uploads" / "menu"
+_MENU_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+
+# Default card photo for the seeded menu, keyed by (category, item name).
+# Files live in webapp/static/menu-photos/ and are copied from the hotel's
+# asset folder. Items without an entry keep the fork-and-knife fallback.
+MENU_ITEM_PHOTOS: dict[tuple[str, str], str] = {
+    ("Breakfast Set", "Simple Breakfast"): "simple-breakfast.png",
+    ("Breakfast Set", "Organic Breakfast"): "organic-breakfast.jpg",
+    ("Breakfast Set", "Indian Breakfast"): "indian-breakfast.jpg",
+    ("Chicken Momo", "Chicken Steam Momo"): "chicken-steam-momo.jpg",
+    ("Chicken Momo", "Chicken Kothey Momo"): "chicken-kothey-momo.jpg",
+    ("Chicken Momo", "Chicken Momo Plater"): "chicken-momo-platter.jpg",
+    ("Chicken Momo", "Chicken Chilly Momo"): "chicken-chilly-momo.jpg",
+    ("Chicken Momo", "Chicken Fried Momo"): "chicken-fried-momo.jpg",
+    ("Chicken Momo", "Chicken Jhol Momo"): "chicken-jhol-momo.jpg",
+    ("Chicken Momo", "Chicken Sizzler Momo"): "chicken-sizzler-momo.jpg",
+    ("Chicken Momo", "Kodo ko Chicken Momo"): "kodo-chicken-momo.jpg",
+    ("Chowmein / Noodles", "Chicken Chowmein/Noodles"): "chicken-chowmein.jpg",
+    ("Chowmein / Noodles", "Egg Chowmein/Noodles"): "egg-chowmein.jpg",
+    ("Chowmein / Noodles", "Mix Chowmein/Noodles"): "mix-chowmein.jpg",
+    ("Chowmein / Noodles", "Veg Chowmein/Noodles"): "veg-chowmein.jpg",
+    ("Cold Beverage", "Banana Lassi"): "banana-lassi.jpg",
+    ("Cold Beverage", "Blue Lagoon"): "blue-lagoon.jpg",
+    ("Cold Beverage", "Cold Coffee"): "cold-coffee.jpg",
+    ("Cold Beverage", "Plain Lassi"): "plain-lassi.jpg",
+    ("Cold Beverage", "Sweet Curd"): "sweet-curd.jpg",
+    ("Cold Beverage", "Sweet Lassi"): "sweet-lassi.jpg",
+    ("Cold Beverage", "Virgin Majito"): "virgin-mojito.jpg",
+    ("Continental", "Chicken sizzler"): "chicken-sizzler.jpg",
+    ("Continental", "Veg. Sizzler"): "veg-sizzler.jpg",
+    ("Fried Rice", "Chicken Biryani"): "chicken-biryani.jpg",
+    ("Fried Rice", "Mutton Biryani"): "mutton-biryani.jpg",
+    ("Italian (Pizza / Pasta)", "Chicken pizza"): "chicken-pizza.jpg",
+    ("Khaja Set", "Chicken Khaja set"): "chicken-khaja-set.jpg",
+    ("Khaja Set", "Mutton Khaja set"): "mutton-khaja-set.jpg",
+    ("Local Chicken", "Local Chicken Bhutuwa"): "local-chicken-bhutuwa.jpg",
+    ("Mutton", "Mutton Bhutan"): "mutton-bhutan.jpg",
+    ("Mutton", "Mutton Sadheko"): "mutton-sadeko.png",
+    ("Traditional Nepali Thali", "Local Fish Thali"): "local-fish-thali.jpg",
+    ("Traditional Nepali Thali", "Mutton Thali"): "mutton-thali.jpg",
+    ("Traditional Nepali Thali", "Veg. Thali"): "veg-thali.jpg",
+    ("Nepali Thukpa", "Chicken Thukpa"): "chicken-thukpa.jpg",
+    ("Nepali Thukpa", "Egg Thukpa"): "egg-thukpa.jpg",
+    ("Nepali Thukpa", "Veg Thukpa"): "veg-thukpa.jpg",
+    ("Non-Veg Snacks", "Chicken Chilly"): "chicken-chilly.jpg",
+    ("Veg Momo", "Veg Momo Plater"): "veg-momo-platter.jpg",
+    ("Veg Snacks", "French fried"): "french-fries.jpg",
+}
+_MENU_PHOTO_BACKFILL_KEY = "menu_photo_assets_backfill_v1"
+
+
+def _menu_item_photo(category: str, name: str) -> str:
+    filename = MENU_ITEM_PHOTOS.get((category, name))
+    return f"/static/menu-photos/{filename}" if filename else ""
+
+
+def _attach_menu_photos(db: Session) -> int:
+    """Backfill mapped photos once without replacing existing/custom images."""
+    if db.get(HotelSetting, _MENU_PHOTO_BACKFILL_KEY) is not None:
+        return 0
+    updated = 0
+    for item in db.scalars(select(MenuItem)).all():
+        if item.image:
+            continue
+        photo = _menu_item_photo(item.category, item.name)
+        if photo:
+            item.image = photo
+            updated += 1
+    db.add(HotelSetting(key=_MENU_PHOTO_BACKFILL_KEY, value="done"))
+    return updated
+
+
+def _slugify(value: str) -> str:
+    value = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode("ascii")
+    value = re.sub(r"[^a-zA-Z0-9]+", "-", value).strip("-").lower()
+    return value or "item"
+
+
+def _validate_image_ref(value: str) -> str:
+    """Menu images must be a local /static/ path or an http(s) URL."""
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if value.startswith("/static/"):
+        return value
+    if value.startswith(("http://", "https://")):
+        return value
+    raise ValueError("Image must be a /static/ path or an http(s) URL.")
+
+
+class MenuItemIn(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    slug: str = Field(default="", max_length=180)
+    category: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=2000)
+    price: Decimal = Field(default=Decimal("0"), ge=0)
+    image: str = Field(default="", max_length=300)
+    available: bool = True
+
+    @field_validator("image")
+    @classmethod
+    def _check_image(cls, value: str) -> str:
+        return _validate_image_ref(value)
+
+    @field_validator("name", "category")
+    @classmethod
+    def _strip_required(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("This field is required.")
+        return value
+
+
+class MenuItemMove(BaseModel):
+    direction: Literal["up", "down"]
+
+
+def require_admin(request: Request, db: Session = Depends(get_db)) -> User:
+    """Admin-only guard for the menu write API.
+
+    Swap this dependency for the real auth layer in production. It validates
+    the session, the admin role and the CSRF token (``X-CSRF-Token`` header)
+    on every state-changing request.
+    """
+    try:
+        user = auth.current_user(request, db)
+    except HTTPException as exc:
+        if exc.status_code in (301, 302, 303, 307, 308):
+            raise HTTPException(401, "Sign in to continue.") from exc
+        raise
+    if user.must_change_password:
+        raise HTTPException(403, "Set a new password in the web app before continuing.")
+    if user.role != "admin":
+        raise HTTPException(403, "Only administrators can manage the menu.")
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        check_csrf(request, request.headers.get("X-CSRF-Token"))
+    return user
+
+
+def _serialize_menu_item(item: MenuItem) -> dict:
+    return {
+        "id": item.id,
+        "name": item.name,
+        "slug": item.slug,
+        "category": item.category,
+        "description": item.description or "",
+        "price": float(item.price or 0),
+        "image": item.image or "",
+        "available": bool(item.available),
+        "order": item.sort_order,
+    }
+
+
+def _menu_items_sorted(db: Session) -> list[MenuItem]:
+    return db.scalars(
+        select(MenuItem).order_by(
+            MenuItem.category.asc(), MenuItem.sort_order.asc(), MenuItem.id.asc()
+        )
+    ).all()
+
+
+def _serialize_menu_items(db: Session) -> list[dict]:
+    items = _menu_items_sorted(db)
+    counts: dict[str, int] = {}
+    for item in items:
+        counts[item.category] = counts.get(item.category, 0) + 1
+    rows = []
+    for item in items:
+        row = _serialize_menu_item(item)
+        row["count"] = counts[item.category]
+        rows.append(row)
+    return rows
+
+
+def _ensure_unique_slug(db: Session, base: str, exclude_id: int | None = None) -> str:
+    slug = _slugify(base)
+    candidate = slug
+    n = 2
+    while True:
+        statement = select(MenuItem.id).where(MenuItem.slug == candidate)
+        if exclude_id is not None:
+            statement = statement.where(MenuItem.id != exclude_id)
+        if db.scalar(statement) is None:
+            return candidate
+        candidate = f"{slug}-{n}"
+        n += 1
+
+
+def _next_category_order(db: Session, category: str) -> int:
+    highest = db.scalar(
+        select(func.max(MenuItem.sort_order)).where(MenuItem.category == category)
+    )
+    return (highest or 0) + 1
+
+
+def _resequence_category(db: Session, category: str) -> None:
+    items = db.scalars(
+        select(MenuItem).where(MenuItem.category == category).order_by(
+            MenuItem.sort_order.asc(), MenuItem.id.asc()
+        )
+    ).all()
+    for index, item in enumerate(items, start=1):
+        item.sort_order = index
+
+
+def _seed_menu_cards() -> None:
+    """Populate the menu board once from the canonical seeded menu list."""
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal.begin() as db:
+        if db.scalar(select(func.count(MenuItem.id))) not in (0, None):
+            _attach_menu_photos(db)
+            return
+        per_category: dict[str, int] = {}
+        seen_slugs: set[str] = set()
+        for group, name, rate, _unit in MENU_ITEMS:
+            order = per_category.get(group, 0) + 1
+            per_category[group] = order
+            slug = _slugify(name)
+            candidate = slug
+            suffix = 2
+            while candidate in seen_slugs:
+                candidate = f"{slug}-{suffix}"
+                suffix += 1
+            seen_slugs.add(candidate)
+            db.add(MenuItem(
+                name=name,
+                slug=candidate,
+                category=group,
+                description=MENU_NOTES.get((group, name), ""),
+                price=Decimal(str(rate)),
+                image=_menu_item_photo(group, name),
+                available=True,
+                sort_order=order,
+            ))
+
+
+@app.get("/api/menu-items", dependencies=[Depends(require_admin)])
+def api_menu_items_list(db: Session = Depends(get_db)) -> JSONResponse:
+    return JSONResponse({"items": _serialize_menu_items(db)})
+
+
+@app.post("/api/menu-items", dependencies=[Depends(require_admin)])
+def api_menu_items_create(payload: MenuItemIn, db: Session = Depends(get_db)) -> JSONResponse:
+    category = payload.category.strip()
+    item = MenuItem(
+        name=payload.name.strip(),
+        slug=_ensure_unique_slug(db, payload.slug or payload.name),
+        category=category,
+        description=payload.description.strip(),
+        price=payload.price,
+        image=payload.image.strip(),
+        available=payload.available,
+        sort_order=_next_category_order(db, category),
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return JSONResponse(
+        {"item": _serialize_menu_item(item), "items": _serialize_menu_items(db)},
+        status_code=201,
+    )
+
+
+@app.put("/api/menu-items/{item_id}", dependencies=[Depends(require_admin)])
+def api_menu_items_update(item_id: int, payload: MenuItemIn, db: Session = Depends(get_db)) -> JSONResponse:
+    item = db.get(MenuItem, item_id)
+    if item is None:
+        raise HTTPException(404, "Menu item not found.")
+    old_category = item.category
+    new_category = payload.category.strip()
+    item.name = payload.name.strip()
+    item.slug = _ensure_unique_slug(db, payload.slug or payload.name, exclude_id=item.id)
+    item.category = new_category
+    item.description = payload.description.strip()
+    item.price = payload.price
+    item.image = payload.image.strip()
+    item.available = payload.available
+    if new_category != old_category:
+        item.sort_order = _next_category_order(db, new_category)
+        _resequence_category(db, old_category)
+    db.commit()
+    db.refresh(item)
+    return JSONResponse({"item": _serialize_menu_item(item), "items": _serialize_menu_items(db)})
+
+
+@app.delete("/api/menu-items/{item_id}", dependencies=[Depends(require_admin)])
+def api_menu_items_delete(item_id: int, db: Session = Depends(get_db)) -> JSONResponse:
+    item = db.get(MenuItem, item_id)
+    if item is None:
+        raise HTTPException(404, "Menu item not found.")
+    category = item.category
+    db.delete(item)
+    _resequence_category(db, category)
+    db.commit()
+    return JSONResponse({"ok": True, "items": _serialize_menu_items(db)})
+
+
+@app.post("/api/menu-items/{item_id}/move", dependencies=[Depends(require_admin)])
+def api_menu_items_move(item_id: int, payload: MenuItemMove, db: Session = Depends(get_db)) -> JSONResponse:
+    item = db.get(MenuItem, item_id)
+    if item is None:
+        raise HTTPException(404, "Menu item not found.")
+    siblings = db.scalars(
+        select(MenuItem).where(MenuItem.category == item.category).order_by(
+            MenuItem.sort_order.asc(), MenuItem.id.asc()
+        )
+    ).all()
+    index = next((i for i, sibling in enumerate(siblings) if sibling.id == item.id), None)
+    if index is None:
+        raise HTTPException(404, "Menu item not found in its category.")
+    swap_with = index - 1 if payload.direction == "up" else index + 1
+    if 0 <= swap_with < len(siblings):
+        other = siblings[swap_with]
+        item.sort_order, other.sort_order = other.sort_order, item.sort_order
+        _resequence_category(db, item.category)
+        db.commit()
+    return JSONResponse({"ok": True, "items": _serialize_menu_items(db)})
+
+
+@app.post("/api/uploads/menu-image")
+def upload_menu_image(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)) -> JSONResponse:
+    require_admin(request, db)
+    data = file.file.read(_MENU_MAX_UPLOAD_BYTES + 1)
+    if len(data) > _MENU_MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "Image is larger than 5 MB.")
+    if len(data) < 12:
+        raise HTTPException(422, "That file is not a usable image.")
+    extension = None
+    if data.startswith(b"\xff\xd8\xff"):
+        extension = "jpg"
+    elif data.startswith(b"\x89PNG\r\n\x1a\n"):
+        extension = "png"
+    elif data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        extension = "webp"
+    if extension is None:
+        raise HTTPException(422, "Only JPG, PNG or WebP images are accepted.")
+    _MENU_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{secrets.token_hex(16)}.{extension}"
+    (_MENU_IMAGE_DIR / filename).write_bytes(data)
+    return JSONResponse({"url": f"/static/uploads/menu/{filename}"}, status_code=201)
+
+
+def _menu_board_context(db: Session, is_admin: bool) -> dict:
+    items = _serialize_menu_items(db)
+    categories: list[str] = []
+    for item in items:
+        if item["category"] not in categories:
+            categories.append(item["category"])
+    return {
+        "menu_items": items,
+        "menu_item_count": len(items),
+        "menu_categories": categories,
+        "hotel_settings": _billing_settings(db),
+        "is_admin": is_admin,
+    }
 
 
 @app.get("/menu", response_class=HTMLResponse)
 def menu_page(request: Request, db: Session = Depends(get_db)):
     user_or_redirect(request, db)
-    settings = _billing_settings(db)
-    return render(request, "menu.html", db, {
-        "menu_groups": _menu_groups(),
-        "menu_item_count": len(MENU_ITEMS),
-        "hotel_settings": settings,
-    })
+    return render(request, "menu.html", db, _menu_board_context(db, is_admin=False))
+
+
+@app.get("/admin/menu", response_class=HTMLResponse)
+def admin_menu_page(request: Request, db: Session = Depends(get_db)):
+    user_or_redirect(request, db)
+    return render(request, "menu.html", db, _menu_board_context(db, is_admin=True))
 
 
 @app.get("/catalog", response_class=HTMLResponse)
@@ -6451,7 +6725,7 @@ def printer_test_page(request: Request, preview: bool = False, db: Session = Dep
         total=Decimal("2460.00"), paid_amount=Decimal("0.00"),
         balance=Decimal("2460.00"), copy_type=settings.get("invoice_copy", "Customer Copy"),
         payment_method="Cash", prepared_by="Printer setup", received_by="",
-        notes="This is a sample only; it is not saved as an invoice.",
+        notes="This is a sample only; it is not saved as a receipt.",
     )
     config = _printer_config(settings)
     return render(request, "print_invoice.html", db, {
@@ -6656,7 +6930,7 @@ def _staff_tracking_data(db: Session, start_dt: datetime, end_dt: datetime) -> d
             if invoice.status != "void":
                 continue
             error_rows.append({
-                "when": invoice.issue_date, "type": "Voided invoice",
+                "when": invoice.issue_date, "type": "Voided receipt",
                 "reference": invoice.invoice_number,
                 "amount": Decimal(str(invoice.total or 0)),
                 "detail": invoice.guest_name or "",
@@ -6834,7 +7108,6 @@ def create_staff_account(
 
     username = username.strip().lower()
     full_name = full_name.strip()
-    password = password.strip()
     target = None
     if user_id.strip():
         try:
@@ -6976,291 +7249,6 @@ def delete_staff_account(
     return RedirectResponse(toast_url("/staff?saved=deleted", "Staff account removed.", "warning"), status_code=303)
 
 
-# --- Attendance routes --------------------------------------------------------
-
-def _attendance_range(start: str, end: str) -> tuple[date, date, datetime, datetime]:
-    today = local_now().date()
-    try:
-        start_date = date.fromisoformat(start.strip()) if start.strip() else today.replace(day=1)
-        end_date = date.fromisoformat(end.strip()) if end.strip() else today
-    except ValueError as exc:
-        raise HTTPException(422, "Enter a valid attendance date range.") from exc
-    if start_date > end_date:
-        raise HTTPException(422, "The attendance start date must be on or before the end date.")
-    start_dt = datetime.combine(start_date, time.min, BUSINESS_TZ).astimezone(timezone.utc).replace(tzinfo=None)
-    end_dt = datetime.combine(end_date + timedelta(days=1), time.min, BUSINESS_TZ).astimezone(timezone.utc).replace(tzinfo=None)
-    return start_date, end_date, start_dt, end_dt
-
-
-def _attendance_data(db: Session, start_dt: datetime, end_dt: datetime) -> dict:
-    """Get attendance records and compute summaries for the given period."""
-    # Get all active staff
-    users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.role, User.full_name, User.username)).all()
-    users_by_id = {u.id: u for u in users}
-
-    # Get attendance records in the period
-    records = db.scalars(
-        select(StaffAttendance).options(selectinload(StaffAttendance.user)).where(
-            StaffAttendance.created_at >= start_dt, StaffAttendance.created_at < end_dt
-        ).order_by(StaffAttendance.business_date.desc(), StaffAttendance.check_in.desc())
-    ).all()
-
-    # Build today's records (current business day)
-    today_str = local_now().date().isoformat()
-    today_records = [r for r in records if r.business_date == today_str]
-
-    # Current time in UTC (naive) for ongoing session calculations
-    now_utc = models.utcnow()
-
-    # Add ongoing_hours to records with check_in but no check_out
-    for r in records:
-        if r.check_in and not r.check_out:
-            r.ongoing_hours = (now_utc - r.check_in).total_seconds() / 3600
-
-    # Compute totals
-    total_records = len(records)
-    present_today = len([r for r in today_records if r.check_in is not None])
-    on_duty = len([r for r in today_records if r.check_in is not None and r.check_out is None])
-
-    # Late count (check-in after 9:30 AM)
-    late_count = 0
-    total_hours = Decimal("0")
-    for r in records:
-        if r.check_in and r.check_out:
-            hours = (r.check_out - r.check_in).total_seconds() / 3600
-            total_hours += Decimal(str(hours))
-            check_in_local = r.check_in.replace(tzinfo=timezone.utc).astimezone(BUSINESS_TZ)
-            if check_in_local.time() > time(9, 30):
-                late_count += 1
-        elif r.check_in and not r.check_out:
-            # Ongoing session - both are naive UTC
-            hours = (now_utc - r.check_in).total_seconds() / 3600
-            total_hours += Decimal(str(hours))
-            check_in_local = r.check_in.replace(tzinfo=timezone.utc).astimezone(BUSINESS_TZ)
-            if check_in_local.time() > time(9, 30):
-                late_count += 1
-
-    avg_hours = float(total_hours / max(1, len([r for r in records if r.check_in and r.check_out]))) if records else 0
-
-    # Staff summaries
-    staff_summaries = {}
-    for user in users:
-        user_records = [r for r in records if r.user_id == user.id]
-        days_present = len([r for r in user_records if r.check_in is not None])
-        completed_records = [r for r in user_records if r.check_in is not None and r.check_out is not None]
-        total_user_hours = sum(
-            Decimal(str((r.check_out - r.check_in).total_seconds() / 3600))
-            for r in completed_records
-        )
-        ongoing_records = [r for r in user_records if r.check_in is not None and r.check_out is None]
-        for r in ongoing_records:
-            total_user_hours += Decimal(str((now_utc - r.check_in).total_seconds() / 3600))
-
-        avg_user_hours = float(total_user_hours / max(1, len(completed_records))) if completed_records else 0
-
-        late_user = sum(
-            1 for r in user_records
-            if r.check_in and r.check_in.replace(tzinfo=timezone.utc).astimezone(BUSINESS_TZ).time() > time(9, 30)
-        )
-        early_departures = sum(
-            1 for r in user_records
-            if r.check_out and r.check_out.replace(tzinfo=timezone.utc).astimezone(BUSINESS_TZ).time() < time(17, 0)
-        )
-
-        staff_summaries[user.id] = {
-            "days_present": days_present,
-            "total_hours": float(total_user_hours),
-            "avg_hours": avg_user_hours,
-            "late_count": late_user,
-            "early_departures": early_departures,
-        }
-
-    return {
-        "users": users,
-        "users_by_id": users_by_id,
-        "records": records,
-        "today_records": today_records,
-        "staff_summaries": staff_summaries,
-        "totals": {
-            "present_today": present_today,
-            "on_duty": on_duty,
-            "total_records": total_records,
-            "avg_hours": round(avg_hours, 2),
-            "late_count": late_count,
-            "total_hours": float(total_hours),
-        },
-    }
-
-
-@app.get("/my-attendance", response_class=HTMLResponse)
-def my_attendance_page(
-    request: Request, db: Session = Depends(get_db),
-):
-    user = user_or_redirect(request, db)
-    
-    # Get current month range
-    today = local_now().date()
-    start_date = today.replace(day=1)
-    if start_date.month == 12:
-        end_date = start_date.replace(year=start_date.year + 1, month=1, day=1) - timedelta(days=1)
-    else:
-        end_date = start_date.replace(month=start_date.month + 1, day=1) - timedelta(days=1)
-    
-    start_dt = datetime.combine(start_date, time.min, BUSINESS_TZ).astimezone(timezone.utc).replace(tzinfo=None)
-    end_dt = datetime.combine(end_date + timedelta(days=1), time.min, BUSINESS_TZ).astimezone(timezone.utc).replace(tzinfo=None)
-    
-    # Get attendance records for this user this month
-    records = db.scalars(
-        select(StaffAttendance).where(
-            StaffAttendance.user_id == user.id,
-            StaffAttendance.created_at >= start_dt, StaffAttendance.created_at < end_dt
-        ).order_by(StaffAttendance.business_date.desc())
-    ).all()
-    
-    # Add ongoing_hours
-    now_utc = models.utcnow()
-    for r in records:
-        if r.check_in and not r.check_out:
-            r.ongoing_hours = (now_utc - r.check_in).total_seconds() / 3600
-    
-    # Compute month summary
-    today_str = today.isoformat()
-    today_record = next((r for r in records if r.business_date == today_str), None)
-    is_checked_in = today_record and today_record.check_in is not None
-    is_checked_out = today_record and today_record.check_out is not None
-    
-    days_present = len([r for r in records if r.check_in is not None])
-    completed = [r for r in records if r.check_in and r.check_out]
-    ongoing = [r for r in records if r.check_in and not r.check_out]
-    
-    total_hours = sum(Decimal(str((r.check_out - r.check_in).total_seconds() / 3600)) for r in completed)
-    for r in ongoing:
-        total_hours += Decimal(str((now_utc - r.check_in).total_seconds() / 3600))
-    
-    avg_hours = float(total_hours / max(1, len(completed))) if completed else 0
-    late_count = sum(
-        1 for r in records
-        if r.check_in and r.check_in.replace(tzinfo=timezone.utc).astimezone(BUSINESS_TZ).time() > time(9, 30)
-    )
-    
-    month_summary = {
-        "days_present": days_present,
-        "total_hours": float(total_hours),
-        "avg_hours": avg_hours,
-        "late_count": late_count,
-    }
-    
-    return render(request, "my_attendance.html", db, {
-        "attendance_records": records,
-        "today_record": today_record,
-        "is_checked_in": is_checked_in,
-        "is_checked_out": is_checked_out,
-        "month_summary": month_summary,
-    })
-
-
-@app.get("/attendance", response_class=HTMLResponse)
-def attendance_page(
-    request: Request, start: str = "", end: str = "", db: Session = Depends(get_db),
-):
-    user = user_or_redirect(request, db)
-    if user.role != "admin":
-        raise HTTPException(403, "Admin access required.")
-    start_date, end_date, start_dt, end_dt = _attendance_range(start, end)
-    data = _attendance_data(db, start_dt, end_dt)
-    return render(request, "attendance.html", db, {
-        **data, "start": start_date.isoformat(), "end": end_date.isoformat(),
-    })
-
-
-@app.post("/attendance/check-in")
-def attendance_check_in(
-    request: Request,
-    csrf_token: str = Form(""),
-    notes: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    user = user_or_redirect(request, db)
-    check_csrf(request, csrf_token)
-
-    today_str = local_now().date().isoformat()
-    now = models.utcnow()
-
-    # Check if already checked in today
-    existing = db.scalar(
-        select(StaffAttendance).where(
-            StaffAttendance.user_id == user.id,
-            StaffAttendance.business_date == today_str,
-        )
-    )
-    if existing and existing.check_in is not None:
-        return RedirectResponse(
-            toast_url("/attendance", "You are already checked in today.", "warning"),
-            status_code=303,
-        )
-
-    if existing:
-        existing.check_in = now
-        existing.check_in_ip = request.client.host if request.client else ""
-        existing.check_in_user_agent = request.headers.get("user-agent", "")[:512]
-        existing.notes = notes.strip() or existing.notes
-        existing.updated_at = now
-    else:
-        db.add(StaffAttendance(
-            user_id=user.id,
-            business_date=today_str,
-            check_in=now,
-            check_in_ip=request.client.host if request.client else "",
-            check_in_user_agent=request.headers.get("user-agent", "")[:512],
-            notes=notes.strip(),
-        ))
-
-    _audit(db, user, "attendance.check_in", "attendance", today_str, f"Checked in at {now:%H:%M}")
-    db.commit()
-    return RedirectResponse(toast_url("/attendance", "Checked in successfully.", "success"), status_code=303)
-
-
-@app.post("/attendance/check-out")
-def attendance_check_out(
-    request: Request,
-    csrf_token: str = Form(""),
-    notes: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    user = user_or_redirect(request, db)
-    check_csrf(request, csrf_token)
-
-    today_str = local_now().date().isoformat()
-    now = models.utcnow()
-
-    record = db.scalar(
-        select(StaffAttendance).where(
-            StaffAttendance.user_id == user.id,
-            StaffAttendance.business_date == today_str,
-        )
-    )
-    if not record or record.check_in is None:
-        return RedirectResponse(
-            toast_url("/attendance", "You must check in first.", "error"),
-            status_code=303,
-        )
-    if record.check_out is not None:
-        return RedirectResponse(
-            toast_url("/attendance", "You are already checked out today.", "warning"),
-            status_code=303,
-        )
-
-    record.check_out = now
-    record.check_out_ip = request.client.host if request.client else ""
-    record.check_out_user_agent = request.headers.get("user-agent", "")[:512]
-    record.notes = (record.notes + " | " if record.notes else "") + f"Check-out: {notes.strip()}" if notes.strip() else record.notes
-    record.updated_at = now
-
-    _audit(db, user, "attendance.check_out", "attendance", today_str, f"Checked out at {now:%H:%M}")
-    db.commit()
-    return RedirectResponse(toast_url("/attendance", "Checked out successfully.", "success"), status_code=303)
-
-
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, db: Session = Depends(get_db)):
     user = user_or_redirect(request, db)
@@ -7319,7 +7307,7 @@ async def settings_save(request: Request, db: Session = Depends(get_db)):
             raise ValueError("Logo path must be under /static/.")
         prefix = values["bill_prefix"].upper()
         if not prefix or len(prefix) > 12 or not prefix.isalnum():
-            raise ValueError("Invoice prefix must contain only letters and digits (maximum 12).")
+            raise ValueError("Receipt prefix must contain only letters and digits (maximum 12).")
         values["bill_prefix"] = prefix
         try:
             vat = Decimal(values["vat_rate"])
@@ -7337,7 +7325,7 @@ async def settings_save(request: Request, db: Session = Depends(get_db)):
         if values["date_format"] not in {"DD/MM/YYYY", "YYYY-MM-DD"}:
             raise ValueError("Date format must be DD/MM/YYYY or YYYY-MM-DD.")
         if values["invoice_language"] not in {"en", "ne"}:
-            raise ValueError("Choose English or Nepali as the default invoice language.")
+            raise ValueError("Choose English or Nepali as the default receipt language.")
         try:
             close_time = time.fromisoformat(values["close_time"])
         except ValueError as exc:
@@ -7348,7 +7336,7 @@ async def settings_save(request: Request, db: Session = Depends(get_db)):
         for key, value in values.items():
             db.merge(HotelSetting(key=key, value=value))
         _audit(db, user, "settings.hotel.update", "hotel", "profile",
-               "Hotel billing, invoice, and daily-close settings updated")
+               "Hotel billing, receipt, and daily-close settings updated")
         db.commit()
         return RedirectResponse(toast_url("/settings?saved=1", "Hotel settings saved.", "success"), status_code=303)
     except ValueError as exc:
@@ -7474,3 +7462,42 @@ async def website_admin_proxy(request: Request, path: str = "", db: Session = De
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
+
+
+# --------------------------------------------------------------------------
+# Cloud KOT integration dashboard. Additive: the route only reads the mirror
+# tables plus the poller's in-memory status, and the manual action merely wakes
+# the existing poller — no local billing data is rewritten here.
+# --------------------------------------------------------------------------
+@app.get("/kot-integration")
+def kot_integration_page(request: Request, db: Session = Depends(get_db)):
+    user = user_or_redirect(request, db)
+    if user.role != "admin":
+        raise HTTPException(403, "Only administrators can view the cloud KOT sync.")
+    config = kot_sync.KotSyncSettings.from_env()
+    poller = kot_sync.get_poller()
+    return render(request, "kot_integration.html", db, {
+        "active_page": "kot-integration",
+        "sync": kot_sync.snapshot(db),
+        "config": config.public_summary(),
+        "poller": poller.status() if poller is not None else None,
+        "sync_requested": request.query_params.get("sync") == "1",
+    })
+
+
+@app.post("/kot-integration/sync")
+async def kot_integration_sync(request: Request, db: Session = Depends(get_db)):
+    user = user_or_redirect(request, db)
+    if user.role != "admin":
+        raise HTTPException(403, "Only administrators can run the cloud KOT sync.")
+    form = await request.form()
+    check_csrf(request, str(form.get("csrf_token", "")))
+    poller = kot_sync.get_poller()
+    if poller is None:
+        raise HTTPException(
+            409,
+            "Cloud KOT sync is not configured. Set KOT_CLOUD_URL, KOT_CLOUD_USERNAME "
+            "and KOT_CLOUD_PASSWORD, then restart the webapp.",
+        )
+    poller.request_sync()
+    return RedirectResponse("/kot-integration?sync=1", status_code=303)

@@ -1,0 +1,172 @@
+{% from "partials/nav_icon.html" import nav_icon %}
+{% extends "base.html" %}
+{% set active_page = 'kot-integration' %}
+{% block title %}Cloud KOT Sync{% endblock %}
+{% block header_title %}Cloud KOT Sync{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-6xl space-y-4">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">System · Kitchen integration</p>
+      <h1 class="page-title">
+        <span class="room-icon-chip" style="display:inline-flex;justify-content:center;width:2.1rem;height:2.1rem;font-size:1.1rem;margin-right:.55rem;vertical-align:-.55em;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-arrows-clockwise"></i></span>
+        Cloud KOT Sync
+      </h1>
+      <p class="page-subtitle">Kitchen tickets from the mobile app, mirrored into this hotel's books</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      {% if config.enabled %}
+        {% if poller and poller.running %}
+        <span role="status" class="badge-teal">Connected</span>
+        {% else %}
+        <span role="status" class="badge-amber">Configured · poller stopped</span>
+        {% endif %}
+      {% else %}
+      <span role="status" class="badge-amber">Not configured</span>
+      {% endif %}
+      <form method="post" action="/kot-integration/sync">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn-primary" {% if not config.enabled or not poller %}disabled style="opacity:.55;cursor:not-allowed;"{% endif %}>
+          <i class="ph ph-arrows-clockwise"></i> Sync now
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {% if sync_requested %}
+  <div role="status" class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+    <i class="ph ph-check-circle"></i> Sync requested — the next cycle starts immediately.
+  </div>
+  {% endif %}
+
+  {% if not config.enabled %}
+  <div role="alert" class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+    <p class="font-bold"><i class="ph ph-plug"></i> The cloud KOT connection is off</p>
+    <p class="mt-1">{{ config.disabled_reason }}</p>
+    <p class="mt-2">Billing, receipts, rooms and the local kitchen display keep working exactly as before. See <code>KOT_SYNC.md</code> for the environment variables and the rollback steps.</p>
+  </div>
+  {% elif sync.last_error %}
+  <div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+    <p class="font-bold"><i class="ph ph-warning-circle"></i> Last sync error</p>
+    <p class="mt-1 break-words">{{ sync.last_error }}</p>
+  </div>
+  {% endif %}
+
+  <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="panel">
+      <p class="field-label">Open in kitchen</p>
+      <p class="text-3xl font-extrabold" style="color:var(--color-primary);">{{ sync.open_count }}</p>
+      <p class="panel-subtitle">New + preparing + ready</p>
+    </div>
+    <div class="panel">
+      <p class="field-label">Tickets today</p>
+      <p class="text-3xl font-extrabold" style="color:var(--color-primary);">{{ sync.today_count }}</p>
+      <p class="panel-subtitle">{{ sync.today }} · business day</p>
+    </div>
+    <div class="panel">
+      <p class="field-label">Waiting to send</p>
+      <p class="text-3xl font-extrabold" style="color:var(--color-primary);">{{ sync.pending_out }}</p>
+      <p class="panel-subtitle">Local orders/menu queued for cloud</p>
+    </div>
+    <div class="panel">
+      <p class="field-label">Failed events</p>
+      <p class="text-3xl font-extrabold" style="color:{{ '#b91c1c' if sync.failed_count else 'var(--color-primary)' }};">{{ sync.failed_count }}</p>
+      <p class="panel-subtitle">Retried automatically</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title"><i class="ph ph-compass" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Connection</h2>
+    <dl class="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+      <div><dt class="field-label">Cloud endpoint</dt><dd class="font-semibold break-all">{{ config.base_url }}</dd></div>
+      <div><dt class="field-label">Service account</dt><dd class="font-semibold">{{ config.username }}</dd></div>
+      <div><dt class="field-label">Last successful cycle</dt><dd class="font-semibold">{{ sync.last_run or 'Never' }}</dd></div>
+      <div><dt class="field-label">Ticket cursor</dt><dd class="font-semibold">{{ sync.cursor }}</dd></div>
+      <div><dt class="field-label">Poll interval</dt><dd class="font-semibold">every {{ config.poll_seconds }}s</dd></div>
+      <div><dt class="field-label">Unbilled on this side</dt><dd class="font-semibold">{{ sync.unmapped }} ticket(s)</dd></div>
+    </dl>
+    {% if poller and poller.last_result %}
+    <p class="panel-subtitle mt-3">
+      Last cycle: pulled {{ poller.last_result.pulled }}, refreshed {{ poller.last_result.refreshed }},
+      queued {{ poller.last_result.queued }}, sent {{ poller.last_result.pushed_orders }} order(s),
+      {{ poller.last_result.pushed_dishes }} menu change(s) and {{ poller.last_result.pushed_rooms }} room(s),
+      failed {{ poller.last_result.failed }}.
+    </p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title"><i class="ph ph-notepad" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Recent tickets</h2>
+    <p class="panel-subtitle">Cloud is authoritative for kitchen and payment status; this hotel's receipts stay local</p>
+    <div class="mt-3 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+            <th class="py-2 pr-3">Ticket</th>
+            <th class="py-2 pr-3">Where</th>
+            <th class="py-2 pr-3">Kitchen</th>
+            <th class="py-2 pr-3">Payment</th>
+            <th class="py-2 pr-3">Total</th>
+            <th class="py-2 pr-3">Receipt</th>
+            <th class="py-2 pr-3">Billing</th>
+            <th class="py-2 pr-3">Synced</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in sync.recent %}
+          <tr class="border-b border-slate-100">
+            <td class="py-2 pr-3 font-semibold">{{ order.display_number }}<span class="block text-xs font-normal text-slate-500">{{ order.order_uuid[:8] }}</span></td>
+            <td class="py-2 pr-3">{{ order.table_name or order.room_number or 'Walk-in' }}<span class="block text-xs text-slate-500">{{ order.order_type }}</span></td>
+            <td class="py-2 pr-3"><span class="badge-teal">{{ order.kitchen_status }}</span></td>
+            <td class="py-2 pr-3">{{ order.payment_status }}</td>
+            <td class="py-2 pr-3 font-semibold">{{ '%.2f'|format(order.total or 0) }}</td>
+            <td class="py-2 pr-3">{{ order.local_invoice_number or '—' }}</td>
+            <td class="py-2 pr-3 text-xs">{{ order.billing_status }}{% if order.resolution_reason %}<span class="block text-red-700">{{ order.resolution_reason }}</span>{% endif %}</td>
+            <td class="py-2 pr-3 text-xs text-slate-500">{{ order.synced_at.strftime('%d %b · %H:%M') if order.synced_at else '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="py-6 text-center text-slate-500">No cloud tickets mirrored yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title"><i class="ph ph-warning" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Resolution & billing exceptions</h2>
+    <p class="panel-subtitle">Unmatched rooms, vacant/checked-out guests and menu issues needing review ({{ sync.exception_count }})</p>
+    {% if sync.exceptions %}
+    <ul class="mt-3 space-y-2 text-sm">
+      {% for order in sync.exceptions %}
+      <li class="rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <p class="font-semibold">{{ order.display_number }} · {{ order.table_name or order.room_number or 'Walk-in' }}</p>
+        <p class="mt-1 text-xs text-amber-900">{{ order.resolution_reason or 'Needs review' }}</p>
+        {% if order.menu_issues and order.menu_issues not in ('', '[]') %}
+        <p class="mt-1 text-xs text-amber-900">Menu: {{ order.menu_issues }}</p>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-3 text-sm text-slate-500">No exceptions. All mirrored tickets resolved.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title"><i class="ph ph-warning-octagon" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Failed events</h2>
+    <p class="panel-subtitle">Each job is retried up to 5 times; nothing is dropped silently</p>
+    {% if sync.failed_events %}
+    <ul class="mt-3 space-y-2 text-sm">
+      {% for job in sync.failed_events %}
+      <li class="rounded-lg border border-slate-200 p-3">
+        <p class="font-semibold">{{ job.event_type }} <span class="text-xs font-normal text-slate-500">· {{ job.attempts }} attempt(s) · {{ job.created_at.strftime('%d %b %H:%M') if job.created_at else '' }}</span></p>
+        <p class="mt-1 break-words text-xs text-red-700">{{ job.last_error or 'No error recorded' }}</p>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-3 text-sm text-slate-500">Nothing failed. Outbound jobs are clear.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
