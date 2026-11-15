@@ -62,7 +62,7 @@ MENU: list[tuple[str, str, int, str]] = [
     ("Veg Snacks", "Mushroom Chilly", 450, "pcs"),
     ("Veg Snacks", "Crispy Sweet Corn", 350, "pcs"),
     ("Veg Snacks", "Veg. pakauda", 325, "pcs"),
-    ("Veg Snacks", "Onion Ring", 295, "pcs"),
+    ("Veg Snacks", "Onion Ring", 325, "pcs"),
     ("Veg Snacks", "Aalu Jeera", 295, "pcs"),
     ("Veg Snacks", "Peanut Sadheko", 295, "pcs"),
     ("Veg Snacks", "Mushroom Choila", 450, "pcs"),
