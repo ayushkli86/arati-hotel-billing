@@ -8,6 +8,7 @@
         {% for type in room_types %}<option value="{{ type.id }}" {% if (room_type_id|default(room.room_type_item_id|string)) == (type.id|string) %}selected{% endif %}>{{ type.name }} · {{ money(type.rate) }} / night</option>{% endfor %}
       </select></label>
       <label class="block"><span class="field-label">Floor</span><input required maxlength="30" name="floor" value="{{ floor_val|default(room.floor) }}" class="form-input"></label>
+      <label class="block"><span class="field-label">Bed type</span><input maxlength="60" name="bed_type" value="{{ bed_type_val|default(room.bed_type or '') }}" class="form-input" placeholder="e.g. Twin Bed"></label>
       {% if room.nightly_rate_override %}<p class="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">This room has a custom rate override. Changing its type will keep that rate.</p>{% endif %}
       <div class="flex justify-end gap-2"><button type="button" class="btn-secondary" @click="$el.closest('[role=dialog]').parentElement.remove()">Cancel</button><button class="btn-primary">Save room</button></div>
     </form>

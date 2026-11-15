@@ -85,9 +85,8 @@
   </div>
 </article>{% endmacro %}
 {% if view == 'grid' %}
-  {% set block_a = ['1111','1112','2221','2222','2224','2225','2226','4441','4445','5551','5552','5554','5555'] %}
-  {% set block_a_rows = room_rows|selectattr('room.number','in',block_a)|list %}
-  {% set block_b_rows = room_rows|rejectattr('room.number','in',block_a)|list %}
+  {% set block_a_rows = room_rows|selectattr('room.floor','equalto','A')|list %}
+  {% set block_b_rows = room_rows|rejectattr('room.floor','equalto','A')|list %}
   {% if block_a_rows %}<section class="mb-6"><h3 class="room-section-title">BLOCK A <span class="room-section-count">{{ block_a_rows|length }}</span></h3><div class="room-grid">{% for row in block_a_rows %}{{ room_card(row) }}{% endfor %}</div></section>{% endif %}
   {% if block_b_rows %}<section class="mb-6"><h3 class="room-section-title">BLOCK B <span class="room-section-count">{{ block_b_rows|length }}</span></h3><div class="room-grid">{% for row in block_b_rows %}{{ room_card(row) }}{% endfor %}</div></section>{% endif %}
   {% if not room_rows %}<div class="empty-state rounded-xl border border-dashed border-slate-300 bg-white py-14"><span class="nav-icon" style="width:2rem;height:2rem;font-size:2rem;color:var(--color-secondary-light);">{{ nav_icon('rooms') }}</span><p class="mt-2 text-sm font-semibold text-slate-700">No rooms match these filters</p><p class="mt-1 text-xs text-slate-500">Try another status or search term.</p></div>{% endif %}

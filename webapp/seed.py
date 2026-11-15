@@ -69,9 +69,12 @@ def seed_demo_data() -> None:
                 CatalogItem(name="Meeting Room (hour)", category="service", rate=1500),
             ])
         room_type_rates = {
-            "Standard Room": 5000.0,
-            "Deluxe Room": 5500.0,
-            "Boutique Room": 6500.0,
+            "Standard Room": 3000.0,
+            "Deluxe Room": 5000.0,
+            "Super Deluxe Room": 5500.0,
+            "Suite Deluxe Room": 6500.0,
+            "Family Room": 4000.0,
+            "Arati Suite Room": 8000.0,
         }
         room_type_items = {}
         for name, rate in room_type_rates.items():
@@ -81,33 +84,47 @@ def seed_demo_data() -> None:
             if item is None:
                 item = CatalogItem(name=name, category="room", rate=rate, unit="night")
                 db.add(item)
+            else:
+                item.rate = rate
+                item.active = True
             room_type_items[name] = item
         db.flush()
         if db.scalar(select(Room.id).limit(1)):
             return
 
         rooms_spec = [
-            ("1222", "Deluxe Room", 5500.0),
-            ("2222", "Deluxe Room", 5500.0),
-            ("2221", "Deluxe Room", 5500.0),
-            ("4441", "Deluxe Room", 5500.0),
-            ("4442", "Deluxe Room", 5500.0),
-            ("2224", "Standard Room", 5000.0),
-            ("2225", "Standard Room", 5000.0),
-            ("2226", "Standard Room", 5000.0),
-            ("4444", "Standard Room", 5000.0),
-            ("4445", "Standard Room", 5000.0),
-            ("4446", "Standard Room", 5000.0),
-            ("5551", "Boutique Room", 6500.0),
-            ("5552", "Boutique Room", 6500.0),
-            ("5554", "Boutique Room", 6500.0),
-            ("5555", "Boutique Room", 6500.0),
+            ("1222", "Super Deluxe Room", 5500.0, "Twin Bed"),
+            ("2222", "Super Deluxe Room", 5500.0, "Twin Bed"),
+            ("2221", "Super Deluxe Room", 5500.0, "King Size"),
+            ("4441", "Super Deluxe Room", 5500.0, "King Size"),
+            ("4442", "Super Deluxe Room", 5500.0, "Twin Bed"),
+            ("2224", "Deluxe Room", 5000.0, "Single Bed"),
+            ("2225", "Deluxe Room", 5000.0, "Single Bed"),
+            ("2226", "Deluxe Room", 5000.0, "Single Bed"),
+            ("4444", "Deluxe Room", 5000.0, "Twin Bed"),
+            ("4445", "Deluxe Room", 5000.0, "Twin Bed"),
+            ("4446", "Deluxe Room", 5000.0, "Twin Bed"),
+            ("5551", "Suite Deluxe Room", 6500.0, "Master Bed"),
+            ("5552", "Suite Deluxe Room", 6500.0, "Master Bed"),
+            ("5554", "Suite Deluxe Room", 6500.0, "Master Bed"),
+            ("5555", "Arati Suite Room", 8000.0, "Master Bed"),
+            ("B-111", "Family Room", 4000.0, "1 Master + 1 Single"),
+            ("B-221", "Family Room", 4000.0, "1 Master + 1 Single"),
+            ("B-441", "Family Room", 4000.0, "1 Master + 1 Single"),
+            ("B-555", "Family Room", 4000.0, "1 Master + 1 Single"),
+            ("B-112", "Standard Room", 3000.0, "Twin Bed"),
+            ("B-114", "Standard Room", 3000.0, "Twin Bed"),
+            ("B-222", "Standard Room", 3000.0, "Twin Bed"),
+            ("B-224", "Standard Room", 3000.0, "Twin Bed"),
+            ("B-442", "Standard Room", 3000.0, "Twin Bed"),
+            ("B-444", "Standard Room", 3000.0, "Twin Bed"),
         ]
         rooms = []
-        for number, type_name, rate in rooms_spec:
+        for number, type_name, rate, bed_type in rooms_spec:
             room = Room(
-                number=number, type=type_name, status="available",
-                housekeeping_status="clean", floor=number[0], nightly_rate=rate,
+                number=number, type=type_name, bed_type=bed_type, status="available",
+                housekeeping_status="clean",
+                floor="B" if number.startswith("B") else "A", nightly_rate=rate,
                 room_type_item=room_type_items[type_name],
             )
             rooms.append(room)

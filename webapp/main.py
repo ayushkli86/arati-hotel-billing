@@ -1102,10 +1102,10 @@ ROOM_STATUS_PRIORITY = {"occupied": 0, "dirty": 1, "reserved": 2, "available": 3
 
 ROOM_PHOTO_LIBRARY = {
     "standard room": (
-        {"file": "standard-double-bed.jpg", "label": "Double bed", "beds": ("double", "twin")},
+        {"file": "standard-double-bed.jpg", "label": "Twin beds", "beds": ("double", "twin")},
     ),
     "family room": (
-        {"file": "family-double-bed.jpg", "label": "Double bed", "beds": ("double", "twin")},
+        {"file": "family-double-bed.jpg", "label": "Family room", "beds": ("double", "twin", "master", "single")},
     ),
     "deluxe room": (
         {"file": "deluxe-double-bed.jpg", "label": "Double bed", "beds": ("double", "twin")},
@@ -1116,6 +1116,10 @@ ROOM_PHOTO_LIBRARY = {
         {"file": "super-deluxe-double-bed.jpg", "label": "Double bed", "beds": ("double", "twin")},
         {"file": "super-deluxe-king-size.jpg", "label": "King-size bed", "beds": ("king",)},
         {"file": "super-deluxe-interior.jpg", "label": "Room interior", "beds": ()},
+    ),
+    "suite deluxe room": (
+        {"file": "suite-deluxe-king-size.jpg", "label": "Master bed", "beds": ("king", "master", "double")},
+        {"file": "suite-deluxe-interior.jpg", "label": "Suite interior", "beds": ()},
     ),
     "king room": (
         {"file": "deluxe-king-size.jpg", "label": "King-size bed", "beds": ("king",)},
@@ -1135,6 +1139,10 @@ def _room_photo_gallery(room: Room) -> list[dict]:
         "super-deluxe": "super deluxe room",
         "super deluxe room": "super deluxe room",
         "super deluxe rooms": "super deluxe room",
+        "suite deluxe": "suite deluxe room",
+        "suite-deluxe": "suite deluxe room",
+        "suite deluxe room": "suite deluxe room",
+        "suite deluxe rooms": "suite deluxe room",
         "suite": "arati suite room",
         "suite room": "arati suite room",
         "suite rooms": "arati suite room",
@@ -2245,10 +2253,13 @@ async def room_inventory_create(request: Request, db: Session = Depends(get_db))
         number = str(form.get("number", "")).strip()
         room_type_id = str(form.get("room_type_id", "")).strip()
         floor = str(form.get("floor", "1")).strip()
+        bed_type = str(form.get("bed_type", "")).strip()
         if not number or len(number) > 20:
             raise ValueError("Enter a room number within the allowed length.")
         if not floor or len(floor) > 30:
             raise ValueError("Enter a valid floor.")
+        if len(bed_type) > 60:
+            raise ValueError("Enter a bed type within 60 characters.")
         room_type = db.get(CatalogItem, int(room_type_id)) if room_type_id.isdigit() else None
         if room_type is None or room_type.category != "room" or not room_type.active:
             raise ValueError("Select an active room type from the catalog.")
@@ -2260,14 +2271,17 @@ async def room_inventory_create(request: Request, db: Session = Depends(get_db))
         if db.scalar(select(Room.id).where(Room.number == number)) is not None:
             raise ValueError("That room number already exists.")
         room = Room(
-            number=number, type=room_type.name, floor=floor, status="available",
-            housekeeping_status="clean",
+            number=number, type=room_type.name, bed_type=bed_type, floor=floor,
+            status="available", housekeeping_status="clean",
             nightly_rate=rate, nightly_rate_override=rate != room_type.rate,
             room_type_item=room_type, active=True,
         )
         db.add(room)
         db.flush()
-        _audit(db, user, "room.create", "room", number, f"{room_type.name}, floor {floor}")
+        _audit(
+            db, user, "room.create", "room", number,
+            f"{room_type.name}, bed {bed_type or '—'}, floor {floor}",
+        )
         db.commit()
         return RedirectResponse(toast_url("/rooms/inventory", f"Room {number} added to the inventory.", "success"), status_code=303)
     except (InvalidOperation, ValueError, HTTPException) as exc:
@@ -2287,6 +2301,7 @@ async def room_inventory_create(request: Request, db: Session = Depends(get_db))
                 "number": str(form.get("number", "")),
                 "room_type_id": room_type_id,
                 "floor": str(form.get("floor", "1")),
+                "bed_type": bed_type,
                 "nightly_rate": str(form.get("nightly_rate", "")),
             },
         }, status_code=200)
@@ -2329,14 +2344,18 @@ async def room_details_update(request: Request, room_id: int, db: Session = Depe
         floor = str(form.get("floor", "")).strip()
         if not floor or len(floor) > 30:
             raise ValueError("Enter a floor within 30 characters.")
+        bed_type = str(form.get("bed_type", room.bed_type or "")).strip()
+        if len(bed_type) > 60:
+            raise ValueError("Enter a bed type within 60 characters.")
         room.type = room_type.name
         room.room_type_item = room_type
         room.floor = floor
+        room.bed_type = bed_type
         if not room.nightly_rate_override:
             room.nightly_rate = room_type.rate
         _audit(
             db, user, "room.update", "room", room.number,
-            f"room type {room_type.name}, floor {floor}",
+            f"room type {room_type.name}, bed {bed_type or '—'}, floor {floor}",
         )
         db.commit()
         return Response(status_code=204, headers={"HX-Redirect": "/rooms/inventory"})
@@ -2358,6 +2377,7 @@ async def room_details_update(request: Request, room_id: int, db: Session = Depe
             "room": room, "room_types": room_types, "error": str(exc),
             "room_type_id": str(form.get("room_type_id", "")),
             "floor_val": str(form.get("floor", "")),
+            "bed_type_val": str(form.get("bed_type", "")),
         }, status_code=200)
 
 
