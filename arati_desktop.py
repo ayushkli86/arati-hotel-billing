@@ -31,6 +31,34 @@ LOG_FILE = APP_DIR / "desktop.log"
 _lock_handle = None
 
 
+def _load_env(path: Path) -> None:
+    """Load ``.env`` so the desktop app runs the same cloud KOT sync as the server.
+
+    Real environment variables always win (the launcher itself may be started
+    with ``KOT_*`` already exported). The file is intentionally read before the
+    webapp modules are imported, because they resolve settings at import time.
+    """
+    if not path.exists():
+        return
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            if line.startswith("export "):
+                line = line[len("export ") :].lstrip()
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                value = value[1:-1]
+            if key:
+                os.environ.setdefault(key, value)
+        logging.info("Loaded environment from %s", path)
+    except Exception:
+        logging.exception("Could not load %s", path)
+
+
 def _configure_logging() -> None:
     APP_DIR.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
@@ -167,6 +195,7 @@ StartupWMClass=arati-hotel
 
 def main() -> int:
     _configure_logging()
+    _load_env(ROOT / ".env")
     if not _acquire_instance_lock():
         logging.info("Arati Hotel is already running — focusing its window")
         _focus_existing()
