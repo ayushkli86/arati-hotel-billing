@@ -199,6 +199,13 @@ MENU: list[tuple[str, str, int, str]] = [
     ("Italian (Pizza / Pasta)", "Chicken Alfredo", 480, "pcs"),
     ("Italian (Pizza / Pasta)", "Chicken Arabiata", 450, "pcs"),
     ("Italian (Pizza / Pasta)", "Chicken Bolognese", 500, "pcs"),
+    # 26. Soft Drinks
+    ("Soft Drinks", "Coca-Cola 1 Glass", 100, "pcs"),
+    ("Soft Drinks", "Sprite 1 Glass", 100, "pcs"),
+    ("Soft Drinks", "Coca-Cola / Sprite / Dew / 7 up 500ml", 150, "pcs"),
+    ("Soft Drinks", "Red Bull Yellow", 200, "pcs"),
+    ("Soft Drinks", "Red Bull Yellow", 250, "pcs"),
+    ("Soft Drinks", "Red bull Blue (Original)", 400, "pcs"),
 ]
 
 LEGACY_PLACEHOLDERS = {"Breakfast Set", "Chicken Thali", "Veg Thali", "Tea / Coffee"}
