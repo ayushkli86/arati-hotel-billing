@@ -95,6 +95,7 @@ MENU: list[tuple[str, str, int, str]] = [
     ("Non-Veg Snacks", "Plain Omelet", 200, "pcs"),
     ("Non-Veg Snacks", "Masala Omelet", 250, "pcs"),
     ("Non-Veg Snacks", "Sausage Chilly", 350, "pcs"),
+    ("Non-Veg Snacks", "Chicken Ball (10 pcs)", 270, "pcs"),
     # 9. Local Chicken
     ("Local Chicken", "Local Chicken Bhutuwa", 650, "pcs"),
     ("Local Chicken", "Local Chicken Curry", 650, "pcs"),
@@ -200,6 +201,8 @@ MENU: list[tuple[str, str, int, str]] = [
     ("Italian (Pizza / Pasta)", "Chicken Alfredo", 480, "pcs"),
     ("Italian (Pizza / Pasta)", "Chicken Arabiata", 450, "pcs"),
     ("Italian (Pizza / Pasta)", "Chicken Bolognese", 500, "pcs"),
+    ("Italian (Pizza / Pasta)", "Cream Pasta", 360, "pcs"),
+    ("Italian (Pizza / Pasta)", "Chicken Spaghetti", 400, "pcs"),
     # 26. Soft Drinks
     ("Soft Drinks", "Coca-Cola 1 Glass", 100, "pcs"),
     ("Soft Drinks", "Sprite 1 Glass", 100, "pcs"),
