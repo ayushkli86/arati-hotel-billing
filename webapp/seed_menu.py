@@ -142,6 +142,7 @@ MENU: list[tuple[str, str, int, str]] = [
     ("Veg Momo", "Veg Chilly Momo", 275, "pcs"),
     ("Veg Momo", "Kodo ko Veg. Momo", 200, "pcs"),
     ("Veg Momo", "Veg Momo Plater", 400, "pcs"),
+    ("Veg Momo", "Beetroot Momo", 200, "pcs"),
     # 17. Khaja Set
     ("Khaja Set", "Veg Khaja set", 450, "pcs"),
     ("Khaja Set", "Mutton Khaja set", 650, "pcs"),
