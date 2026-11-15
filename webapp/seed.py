@@ -69,9 +69,9 @@ def seed_demo_data() -> None:
                 CatalogItem(name="Meeting Room (hour)", category="service", rate=1500),
             ])
         room_type_rates = {
-            "Standard Room": 3000.0,
-            "Deluxe Room": 4500.0,
-            "Super Deluxe Room": 5000.0,
+            "Standard Room": 5000.0,
+            "Deluxe Room": 5500.0,
+            "Boutique Room": 6500.0,
         }
         room_type_items = {}
         for name, rate in room_type_rates.items():
@@ -86,15 +86,28 @@ def seed_demo_data() -> None:
         if db.scalar(select(Room.id).limit(1)):
             return
 
-        room_types = ["Standard"] * 12 + ["Deluxe"] * 9 + ["Super Deluxe"] * 4
-        rates = {"Standard": 3000.0, "Deluxe": 4500.0, "Super Deluxe": 5000.0}
+        rooms_spec = [
+            ("1222", "Deluxe Room", 5500.0),
+            ("2222", "Deluxe Room", 5500.0),
+            ("2221", "Deluxe Room", 5500.0),
+            ("4441", "Deluxe Room", 5500.0),
+            ("4442", "Deluxe Room", 5500.0),
+            ("2224", "Standard Room", 5000.0),
+            ("2225", "Standard Room", 5000.0),
+            ("2226", "Standard Room", 5000.0),
+            ("4444", "Standard Room", 5000.0),
+            ("4445", "Standard Room", 5000.0),
+            ("4446", "Standard Room", 5000.0),
+            ("5551", "Boutique Room", 6500.0),
+            ("5552", "Boutique Room", 6500.0),
+            ("5554", "Boutique Room", 6500.0),
+            ("5555", "Boutique Room", 6500.0),
+        ]
         rooms = []
-        for index, kind in enumerate(room_types):
-            floor = str(index // 8 + 1)
-            type_name = f"{kind} Room"
+        for number, type_name, rate in rooms_spec:
             room = Room(
-                number=str(101 + index), type=type_name, status="available",
-                housekeeping_status="clean", floor=floor, nightly_rate=rates[kind],
+                number=number, type=type_name, status="available",
+                housekeeping_status="clean", floor=number[0], nightly_rate=rate,
                 room_type_item=room_type_items[type_name],
             )
             rooms.append(room)
