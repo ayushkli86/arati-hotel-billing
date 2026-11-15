@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 from __future__ import annotations
 
 import secrets
@@ -62,7 +63,7 @@ def get_or_create_draft_invoice(
 
     guest = db.get(Guest, guest_id)
     if not guest or not guest.active:
-        raise ValueError("Active guest required for invoice")
+        raise ValueError("Active guest required for receipt")
 
     stay = db.get(Stay, stay_id) if stay_id else None
     room_obj = db.get(Room, room_id) if room_id else (db.get(Room, stay.room_id) if stay else None)
@@ -129,7 +130,7 @@ def add_item_to_draft(
     user_id: int | None = None,
 ) -> InvoiceItem:
     if not invoice.is_draft:
-        raise ValueError("Cannot add items to a finalized invoice")
+        raise ValueError("Cannot add items to a finalized receipt")
 
     qty = Decimal(str(quantity or 1))
     if qty <= 0:
@@ -199,11 +200,11 @@ def recalc_invoice_totals(db: Session, invoice: Invoice, settings: dict | None =
 def finalize_invoice(db: Session, invoice_id: int, prefix: str, user_id: int | None = None) -> Invoice:
     invoice = db.get(Invoice, invoice_id)
     if not invoice:
-        raise ValueError("Invoice not found")
+        raise ValueError("Receipt not found")
     if not invoice.is_draft:
-        raise ValueError("Invoice already finalized")
+        raise ValueError("Receipt already finalized")
     if not invoice.guest_id:
-        raise ValueError("Invoice must be linked to a guest before finalizing")
+        raise ValueError("Receipt must be linked to a guest before finalizing")
     if not invoice.items:
         raise ValueError("Cannot finalize an empty running folio")
 

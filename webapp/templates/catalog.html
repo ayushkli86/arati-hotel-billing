@@ -7,7 +7,7 @@
 {% set category_labels = {'restaurant':'Restaurant','food':'Food','service':'Service','room':'Room type','other':'Other'} %}
 <div class="space-y-5">
   <div class="page-heading">
-    <div><p class="eyebrow">System · Billing items</p><h1 class="page-title"><span class="room-icon-chip" style="display:inline-flex;justify-content:center;width:2.1rem;height:2.1rem;font-size:1.1rem;margin-right:.55rem;vertical-align:-.55em;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-package"></i></span>Catalog</h1><p class="page-subtitle">Restaurant items and services offered on invoices · existing invoices keep their original line details</p></div>
+    <div><p class="eyebrow">System · Billing items</p><h1 class="page-title"><span class="room-icon-chip" style="display:inline-flex;justify-content:center;width:2.1rem;height:2.1rem;font-size:1.1rem;margin-right:.55rem;vertical-align:-.55em;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-package"></i></span>Catalog</h1><p class="page-subtitle">Restaurant items and services offered on receipts · existing receipts keep their original line details</p></div>
     {% if saved %}<span role="status" class="badge-teal">Catalog saved</span>{% endif %}
   </div>
   {% if error %}<div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{{ error }}</div>{% endif %}
@@ -15,7 +15,7 @@
     {% if current_user.role == 'admin' %}
     <section class="panel sticky top-20">
       <h2 class="panel-title">{% if editing or form_values.item_id %}<i class="ph ph-pencil-simple" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;"></i>Edit catalog item{% else %}<i class="ph ph-user-plus" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;"></i>Add catalog item{% endif %}</h2>
-      <p class="panel-subtitle">Prices and VAT settings apply to new invoices only</p>
+      <p class="panel-subtitle">Prices and VAT settings apply to new receipts only</p>
       <form method="post" action="/catalog/items" class="mt-5 space-y-5">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="item_id" value="{{ form_values.item_id|default(editing.id if editing else '') }}">

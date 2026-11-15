@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Nepali labels, Devanagari numerals, amount in words and Bikram Sambat dates.
 
 Presentation helpers only — all arithmetic still comes from :mod:`arati.money`,
@@ -24,7 +25,7 @@ MONTHS_NE = (
 LABELS: dict[str, tuple[str, str]] = {
     "tax_invoice": ("TAX INVOICE", "मूल्य अभिवृद्धि कर बिजक"),
     "bill_of_supply": ("BILL OF SUPPLY", "आपूर्ति बिजक"),
-    "invoice_no": ("Invoice No.", "बिजक नं."),
+    "invoice_no": ("Receipt No.", "बिजक नं."),
     "date": ("Date", "मिति"),
     "bs_date": ("BS date", "मिति (वि.सं.)"),
     "customer": ("Customer", "ग्राहक"),
@@ -67,7 +68,7 @@ LABELS: dict[str, tuple[str, str]] = {
     "thank_you": ("Thank you for your business.", "धन्यवाद!"),
     "thank_you_business": ("Thank You For Your Business!", "तपाईंको व्यवसायका लागि धन्यवाद!"),
     "questions_contact": (
-        "If you have any questions about this invoice, please contact",
+        "If you have any questions about this receipt, please contact",
         "यस बिजकसम्बन्धी कुनै प्रश्न छ भने कृपया सम्पर्क गर्नुहोस्",
     ),
     "payable_to": (

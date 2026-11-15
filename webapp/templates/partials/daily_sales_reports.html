@@ -1,0 +1,52 @@
+{% if daily_status == 'generated' %}
+<div role="status" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">Daily-close PDF generated successfully.</div>
+{% elif daily_status == 'failed' %}
+<div role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">Daily-close PDF generation failed. Review the report history for details.</div>
+{% endif %}
+
+<section class="panel">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div><h2 class="panel-title"><i class="ph ph-file-pdf" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;"></i>Daily closing reports</h2><p class="panel-subtitle">Versioned PDF snapshots are kept for audit. Yesterday is selected by default; choose today to include today's receipts.</p></div>
+    {% if current_user.role == 'admin' %}
+    <form method="post" action="/reports/daily/generate" class="flex flex-wrap items-end gap-2"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label><span class="field-label"><i class="ph ph-calendar-blank" style="font-size:.95rem;margin-right:.4rem;vertical-align:-.15em;"></i>Business date</span><input type="date" name="business_date" required value="{{ daily_report_date }}" class="form-input"></label><button class="btn-primary"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-file-pdf"></i></span>Generate PDF</button></form>
+    {% endif %}
+  </div>
+  {% if current_user.role == 'admin' %}
+  <p class="mt-2 text-xs text-slate-500">Sales by business date: {% for item in daily_preview %}{{ item.label|lower }} ({{ item.date }}) <strong>{{ money(item.sales) }}</strong>{% if not loop.last %} · {% endif %}{% endfor %}. Pick the date you want to close, then generate.</p>
+  {% endif %}
+  <div class="table-scroll mt-4"><table class="data-table soft-table min-w-full">
+    <thead><tr><th>Business date</th><th>Version</th><th>Status</th><th class="text-right">Sales</th><th class="text-right">Collected</th><th>Generated</th><th>By</th><th>Details / actions</th></tr></thead>
+    <tbody>
+      {% for daily in daily_reports %}
+      <tr>
+        <td class="whitespace-nowrap font-medium">{{ daily.business_date }}</td>
+        <td>v{{ daily.version }}</td>
+        <td><span class="badge-{{ 'teal' if daily.status == 'generated' else 'amber' if daily.status == 'failed' else 'slate' }}">{{ daily.status|title }}</span></td>
+        <td class="text-right font-semibold tabular-nums">{{ money(daily.totals.get('gross_sales', 0)) }}</td>
+        <td class="text-right tabular-nums">{{ money(daily.totals.get('collected', 0)) }}</td>
+        <td class="whitespace-nowrap text-slate-600">{{ daily.generated_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ daily.generated_by }}</td>
+        <td>
+          {% if daily.error %}<p class="mb-2 max-w-md text-xs text-rose-700">{{ daily.error }}</p>{% endif %}
+          <div class="flex flex-wrap gap-2">
+            {% if daily.status in ('generated', 'superseded') %}<a class="btn-amber !px-2.5 !py-1 !text-xs" href="/reports/daily/{{ daily.id }}/download"><i class="ph ph-download-simple"></i>Download PDF</a>{% endif %}
+            {% if current_user.role == 'admin' %}<form method="post" action="/reports/daily/{{ daily.id }}/regenerate"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn-amber !px-2.5 !py-1 !text-xs"><i class="ph ph-arrows-clockwise"></i>Regenerate</button></form>{% endif %}
+          </div>
+        </td>
+      </tr>
+      {% else %}<tr><td colspan="8" class="py-10 text-center text-sm text-slate-500">No daily-close reports yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <div><h2 class="panel-title"><i class="ph ph-cpu" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;"></i>Scheduler history</h2><p class="panel-subtitle">Automatic close attempts, catch-up runs, and skipped duplicate closes.</p></div>
+  <div class="table-scroll mt-4"><table class="data-table soft-table min-w-full">
+    <thead><tr><th>Job</th><th>Business date</th><th>Started</th><th>Finished</th><th>Status</th><th>Message</th></tr></thead>
+    <tbody>
+      {% for run in scheduler_runs %}
+      <tr><td class="font-medium">{{ run.job_name }}</td><td>{{ run.business_date or '—' }}</td><td class="whitespace-nowrap text-slate-600">{{ run.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td><td class="whitespace-nowrap text-slate-600">{{ run.finished_at.strftime('%Y-%m-%d %H:%M:%S') if run.finished_at else '—' }}</td><td><span class="badge-{{ 'teal' if run.status in ('success','completed') else 'amber' if run.status in ('skipped','running') else 'slate' }}">{{ run.status|title }}</span></td><td class="text-slate-600">{{ run.message }}</td></tr>
+      {% else %}<tr><td colspan="6" class="py-10 text-center text-sm text-slate-500">No scheduler activity recorded yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>

@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Small PBKDF2 password helpers and signed-session authentication."""
 
 from __future__ import annotations

@@ -117,22 +117,12 @@ Balance = Grand Total − Amount Paid
 
 ---
 
-## 4. WhatsApp Order Assistant (Digital Channel)
+## 4. Front Desk Order Requests
 
-### 4.1 Guest-Facing Ordering
-- **Menu Browsing** — Food & drinks from catalog (categories: restaurant, food, beverage)
-- **Fulfilment Options** — Pickup, Delivery, Dine-in, Room Delivery
-- **Room Booking Requests** — Check-in date, nights, guests, room type → creates booking request for front desk
-- **Event/Service Booking** — Spa, conference, laundry, transport from catalog (service category)
-- **Conversation State** — Numbered menu flow, context-aware, pauses for human handoff
-
-### 4.2 Staff-Facing Order Management
-- **Order Queue** — `/orders` page with filters: Type (Food/Room/Service), Status, Search
-- **Order Status Workflow** — New → Confirmed → Preparing → Ready → Completed / Cancelled
-- **Guest Notifications** — Automatic WhatsApp updates on status changes
-- **Human Handoff** — "Talk to front desk" pauses bot; staff reply from order page
+- **Order Queue** — Food, room, and service requests with type, status, and search filters
+- **Order Status Workflow** — New → Confirmed → Preparing → Ready → Completed / Cancelled, each change audited
 - **Order Details** — Items, fulfilment, room/delivery details, guest contact, staff notes
-- **WhatsApp Cloud API Integration** — Meta Business API (production) or local simulator (training)
+- **Billing Handoff** — Requests are requests only; VAT and service charge are applied when billed
 
 ---
 
@@ -301,7 +291,6 @@ Balance = Grand Total − Amount Paid
 - `ARATI_WEB_SECRET` — Session signing key (mandatory in production)
 - `ARATI_WEB_HTTPS=1` — Secure cookies behind TLS
 - `ARATI_WEB_REPORT_DIRECTORY` — Daily close PDF output path
-- `ARATI_WHATSAPP_*` — Meta Cloud API credentials (optional)
 - `ARATI_WEB_DAILY_CLOSE_ENABLED=0` — Disable internal scheduler (for multi-worker)
 
 ---
@@ -321,7 +310,7 @@ Balance = Grand Total − Amount Paid
 
 - **93 Unit/Integration Tests** — Invoice arithmetic (VAT, service charge, discounts, rounding), Tax vs Bill of Supply, payment status, schema migration, 25-room workflow, daily closing (timezone, idempotency, catch-up), PDF/ESC-POS generation
 - **Smoke Test** — Full Tk app boot + screen rendering + permission verification (`xvfb-run`)
-- **Web App Tests** — WhatsApp agent flows, webhook parsing, signature verification, duplicate delivery, human handoff
+- **Web App Tests** — mobile KOT API, room photo gallery, and error handling
 
 ---
 

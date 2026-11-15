@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Invoice arithmetic for Arati Hotel.
 
 A hotel bill is issued as a **Tax Invoice** (service charge + 13% VAT) or a

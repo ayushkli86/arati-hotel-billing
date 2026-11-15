@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% set active_page = 'reports' %}
+{% set active_page = 'analysis' %}
 {% block title %}Excel Analysis{% endblock %}
 {% block header_title %}Excel Analysis{% endblock %}
 {% block content %}
@@ -16,7 +16,7 @@
     </div>
     <div class="flex flex-wrap gap-2 no-print">
       {% if analysis %}<button onclick="window.print()" class="btn-secondary"><i class="ph ph-printer" style="font-size:.95rem;"></i>Print / Save PDF</button>{% endif %}
-      <a href="/reports" class="btn-secondary"><i class="ph ph-arrow-left" style="font-size:.95rem;"></i>Back to reports</a>
+      <a href="/analysis" class="btn-secondary"><i class="ph ph-arrow-left" style="font-size:.95rem;"></i>Back to Sales Analysis</a>
     </div>
   </div>
 

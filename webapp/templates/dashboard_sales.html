@@ -20,7 +20,7 @@
   </div>
 
   <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    <article class="metric-card-hero"><p class="section-label"><i class="ph ph-chart-bar" style="font-size:.9rem;"></i> Gross sales</p><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ money(metrics.gross_sales) }}</p><p class="mt-1 text-xs text-slate-500">{{ metrics.transactions|int }} invoice(s)</p></article>
+    <article class="metric-card-hero"><p class="section-label"><i class="ph ph-chart-bar" style="font-size:.9rem;"></i> Gross sales</p><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ money(metrics.gross_sales) }}</p><p class="mt-1 text-xs text-slate-500">{{ metrics.transactions|int }} receipt(s)</p></article>
     <article class="metric-card"><p class="section-label"><i class="ph ph-hand-coins" style="font-size:.9rem;"></i> Collections</p><p class="mt-2 text-xl font-extrabold text-[color:var(--color-primary)]">{{ money(metrics.collected) }}</p></article>
     <article class="metric-card"><p class="section-label"><i class="ph ph-bed" style="font-size:.9rem;"></i> Room revenue</p><p class="mt-2 text-xl font-extrabold soft-amber-text">{{ money(metrics.room_revenue) }}</p></article>
     <article class="metric-card"><p class="section-label"><i class="ph ph-coins" style="font-size:.9rem;"></i> Outstanding</p><p class="mt-2 text-xl font-extrabold text-slate-900">{{ money(metrics.outstanding) }}</p></article>

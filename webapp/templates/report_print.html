@@ -53,10 +53,10 @@
   {% if report.transactions %}
   <div style="break-before: page;"></div>
   <h2>Transactions of the day</h2>
-  <p>Every issued invoice for this business date, with guest names and settlement status.</p>
+  <p>Every issued receipt for this business date, with guest names and settlement status.</p>
   <table>
     <thead><tr>
-      <th>Invoice no.</th><th>Date</th><th>Guest</th><th>Room</th><th>Cashier</th>
+      <th>Receipt no.</th><th>Date</th><th>Guest</th><th>Room</th><th>Cashier</th>
       <th>Subtotal</th><th>Discount</th><th>VAT</th><th>Total</th><th>Method</th><th>Paid</th><th>Balance</th>
     </tr></thead>
     <tbody>
@@ -165,7 +165,7 @@
   {% if sections.cashiers %}
   <h2>Cashier production</h2>
   <table>
-    <thead><tr><th>Cashier</th><th>Invoices</th><th>Gross sales</th><th>Collected</th><th>Outstanding</th></tr></thead>
+    <thead><tr><th>Cashier</th><th>Receipts</th><th>Gross sales</th><th>Collected</th><th>Outstanding</th></tr></thead>
     <tbody>
       {% for row in sections.cashiers %}
       <tr><td>{{ row.cashier }}</td><td>{{ row.invoices|int }}</td><td>{{ money(row.gross_sales) }}</td><td>{{ money(row.collected) }}</td><td>{{ money(row.outstanding) }}</td></tr>
@@ -177,7 +177,7 @@
   <h2>Payments ledger</h2>
   {% if sections.payments %}
   <table>
-    <thead><tr><th>Time</th><th>Invoice</th><th>Guest</th><th>Room</th><th>Method</th><th>Amount</th><th>Cashier</th></tr></thead>
+    <thead><tr><th>Time</th><th>Receipt</th><th>Guest</th><th>Room</th><th>Method</th><th>Amount</th><th>Cashier</th></tr></thead>
     <tbody>
       {% for row in sections.payments %}
       <tr><td>{{ row.date }} {{ row.time }}</td><td>{{ row.invoice_number }}</td><td>{{ row.guest }}</td><td>{{ row.room }}</td><td>{{ row.method }}</td><td>{{ money(row.amount) }}</td><td>{{ row.cashier }}</td></tr>
@@ -190,7 +190,7 @@
   {% if sections.refunds %}
   <h2>Refunds and adjustments</h2>
   <table>
-    <thead><tr><th>Type</th><th>Invoice</th><th>Method</th><th>Amount</th><th>Reason</th><th>Cashier</th></tr></thead>
+    <thead><tr><th>Type</th><th>Receipt</th><th>Method</th><th>Amount</th><th>Reason</th><th>Cashier</th></tr></thead>
     <tbody>
       {% for row in sections.refunds %}
       <tr><td>{{ row.kind }}</td><td>{{ row.invoice_number }}</td><td>{{ row.method }}</td><td>{{ money(row.amount) }}</td><td>{{ row.reason }}</td><td>{{ row.cashier }}</td></tr>

@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 from __future__ import annotations
 
 from datetime import datetime

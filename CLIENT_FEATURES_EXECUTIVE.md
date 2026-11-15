@@ -15,7 +15,7 @@ A **complete hotel property management & billing system** built for Arati Hotel,
 | **Front Desk** | Room board (visual grid), check-in/out, reservations, housekeeping, guest directory, stay extensions, room charges |
 | **Billing** | Three-column invoice builder, Tax Invoice / Bill of Supply, VAT (13%) + Service Charge (10%), multi-stay folios, draft→issue workflow |
 | **Payments** | 7 methods (Cash, Card, eSewa, Khalti, Fonepay, Bank, Room Credit), partial payments, refunds, adjustments, immutable ledger |
-| **WhatsApp Orders** | Guest orders food/rooms/services via WhatsApp → staff queue → status updates auto-sent to guest |
+| **Order Requests** | Food, room, and service requests recorded by the front desk with an audited status workflow |
 | **Reports** | 10+ operational reports (daily/monthly/custom, collections, outstanding, occupancy, cashier) — CSV/PDF/Print |
 | **Analytics** | Sales trends, period comparison, category/room/payment breakdowns, room KPIs (ADR, RevPAR, Occupancy), data quality audit |
 | **Daily Close** | Automatic midnight closing (Kathmandu TZ), idempotent, catch-up on restart, versioned PDF reports |
@@ -69,7 +69,7 @@ A **complete hotel property management & billing system** built for Arati Hotel,
 ### **Testing**
 - **93 automated tests** — arithmetic, tax models, migrations, daily close, PDF generation
 - **Smoke test** — full app boot + permission verification
-- **Web tests** — WhatsApp agent flows, webhook security, duplicate handling
+- **Web tests** — mobile KOT API, room photos, error handling
 
 ---
 

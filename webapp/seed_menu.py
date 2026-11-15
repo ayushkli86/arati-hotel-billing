@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Seed the complete Arati Hotel, Khandbari, Sankhuwasabha restaurant menu."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Business date, invoice numbering, and money-safe billing operations."""
 
 from __future__ import annotations

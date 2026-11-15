@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Order vocabulary, numbering and status rules shared by the web app and bot."""
 
 from __future__ import annotations

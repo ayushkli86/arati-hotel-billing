@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Database models for guests, rooms, stays, invoices and payments."""
 
 from __future__ import annotations
@@ -279,6 +280,29 @@ class CatalogItem(Base):
     rooms: Mapped[list[Room]] = relationship(back_populates="room_type_item")
 
 
+class MenuItem(Base):
+    """A public restaurant menu card: photo, slug, description, availability.
+
+    Deliberately separate from ``CatalogItem`` (the billing catalog): a menu
+    card is guest-facing presentation, while the catalog drives invoicing and
+    KOTs. ``sort_order`` is the 1-based position within ``category`` and powers
+    the move-up/move-down ordering on the admin board.
+    """
+
+    __tablename__ = "menu_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), index=True)
+    slug: Mapped[str] = mapped_column(String(180), unique=True, index=True)
+    category: Mapped[str] = mapped_column(String(80), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    price: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    image: Mapped[str] = mapped_column(String(300), default="")
+    available: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Payment(Base):
     __tablename__ = "payments"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -330,9 +354,8 @@ class RoomCharge(Base):
 
 
 class Order(Base):
-    """A food, room, or event/service request received from a guest.
+    """A food, room, or event/service request recorded by the front desk.
 
-    WhatsApp orders are created by the assistant in ``webapp/whatsapp.py``.
     The front desk maintains the status; nothing here touches accounting until
     the order is billed as an invoice.
     """
@@ -340,10 +363,9 @@ class Order(Base):
     __tablename__ = "orders"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     order_number: Mapped[str] = mapped_column(String(40), unique=True, index=True)
-    channel: Mapped[str] = mapped_column(String(30), default="whatsapp", index=True)
+    channel: Mapped[str] = mapped_column(String(30), default="front_desk", index=True)
     kind: Mapped[str] = mapped_column(String(20), default="food", index=True)
     status: Mapped[str] = mapped_column(String(30), default="new", index=True)
-    contact_wa_id: Mapped[str] = mapped_column(String(40), default="", index=True)
     customer_name: Mapped[str] = mapped_column(String(160), default="")
     customer_phone: Mapped[str] = mapped_column(String(40), default="")
     fulfilment: Mapped[str] = mapped_column(String(30), default="")
@@ -356,9 +378,6 @@ class Order(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     total: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     invoice_number: Mapped[str] = mapped_column(String(40), default="")
-    conversation_id: Mapped[int | None] = mapped_column(
-        ForeignKey("whatsapp_conversations.id"), nullable=True
-    )
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=utcnow, index=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -368,9 +387,6 @@ class Order(Base):
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
-    conversation: Mapped["WhatsAppConversation | None"] = relationship(back_populates="orders")
-
-
 class OrderItem(Base):
     __tablename__ = "order_items"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -382,38 +398,6 @@ class OrderItem(Base):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     order: Mapped[Order] = relationship(back_populates="items")
-
-
-class WhatsAppConversation(Base):
-    __tablename__ = "whatsapp_conversations"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    wa_id: Mapped[str] = mapped_column(String(40), unique=True, index=True)
-    display_name: Mapped[str] = mapped_column(String(160), default="")
-    state: Mapped[str] = mapped_column(Text, default="{}")
-    bot_paused: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=utcnow)
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    orders: Mapped[list[Order]] = relationship(back_populates="conversation")
-    messages: Mapped[list["WhatsAppMessage"]] = relationship(
-        back_populates="conversation", cascade="all, delete-orphan"
-    )
-
-
-class WhatsAppMessage(Base):
-    __tablename__ = "whatsapp_messages"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    conversation_id: Mapped[int | None] = mapped_column(
-        ForeignKey("whatsapp_conversations.id"), nullable=True, index=True
-    )
-    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"), nullable=True)
-    wa_id: Mapped[str] = mapped_column(String(40), default="", index=True)
-    direction: Mapped[str] = mapped_column(String(10), default="in", index=True)
-    body: Mapped[str] = mapped_column(Text, default="")
-    message_id: Mapped[str] = mapped_column(String(120), default="")
-    status: Mapped[str] = mapped_column(String(30), default="received")
-    detail: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
-    conversation: Mapped[WhatsAppConversation | None] = relationship(back_populates="messages")
 
 
 class HotelSetting(Base):

@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Read an uploaded Excel workbook and build a self-contained analysis."""
 
 from __future__ import annotations

@@ -97,9 +97,9 @@ body {
   <button type="button" onclick="shareInvoice(this, 'email')" data-pdf-url="/billing/invoices/{{ invoice.id }}/pdf" data-invoice-number="{{ invoice.invoice_number }}" data-guest-name="{{ invoice.guest_name or invoice.guest.name }}" data-recipient="{{ invoice.guest.email or '' }}" data-items="{{ invoice.items|map(attribute='description')|join(', ') }}" data-total="{{ invoice.total }}" data-paid="{{ invoice.paid_amount }}" data-balance="{{ invoice.balance }}">Email</button>
   <button type="button" onclick="shareInvoice(this, 'whatsapp')" data-pdf-url="/billing/invoices/{{ invoice.id }}/pdf" data-invoice-number="{{ invoice.invoice_number }}" data-guest-name="{{ invoice.guest_name or invoice.guest.name }}" data-recipient="{{ invoice.guest_phone or invoice.guest.phone or '' }}" data-items="{{ invoice.items|map(attribute='description')|join(', ') }}" data-total="{{ invoice.total }}" data-paid="{{ invoice.paid_amount }}" data-balance="{{ invoice.balance }}">WhatsApp</button>
   {% endif %}
-  <a href="/billing/invoices/{{ invoice.id }}/invoice">View Invoice</a>
+  <a href="/billing/invoices/{{ invoice.id }}/invoice">View Receipt</a>
   <a href="/billing/invoices/{{ invoice.id }}/receipt.pdf">Receipt PDF</a>
-  <a class="secondary" href="/invoices">Back to invoices</a>
+  <a class="secondary" href="/invoices">Back to receipts</a>
 </div>
 <p id="share-status" class="share-status" role="status" aria-live="polite"></p>
 {% for _ in range(printer_config.copies) %}
@@ -155,7 +155,7 @@ body {
 <div class="words">{{ amount_words }}</div>
 {% if invoice.payment_terms %}<div class="words">{{ invoice.payment_terms }}</div>{% endif %}
 <div class="head small">{{ hotel_settings.get('footer_note') or 'Thank you!' }}</div>
-<div class="head small">Computer generated invoice</div>
+<div class="head small">Computer generated receipt</div>
 {% endif %}
 </section>
 {% endfor %}
@@ -166,8 +166,8 @@ body {
 async function shareInvoice(button, channel) {
   const {pdfUrl, invoiceNumber, guestName, recipient, items, total, paid, balance} = button.dataset;
   const email = channel === 'email';
-  const subject = `Arati Hotel invoice ${invoiceNumber}`;
-  const message = `Hello ${guestName},\n\nPlease find invoice ${invoiceNumber} attached.\nItems: ${items}\nTotal: NPR ${Number(total).toFixed(2)}\nPaid: NPR ${Number(paid).toFixed(2)}\nBalance due: NPR ${Number(balance).toFixed(2)}\n\nThank you for staying with Arati Hotel.`;
+  const subject = `Arati Hotel receipt ${invoiceNumber}`;
+  const message = `Hello ${guestName},\n\nPlease find receipt ${invoiceNumber} attached.\nItems: ${items}\nTotal: NPR ${Number(total).toFixed(2)}\nPaid: NPR ${Number(paid).toFixed(2)}\nBalance due: NPR ${Number(balance).toFixed(2)}\n\nThank you for staying with Arati Hotel.`;
   const status = document.getElementById('share-status');
   const phoneDigits = recipient.replace(/\D/g, '');
   const whatsappNumber = phoneDigits.startsWith('977')
@@ -197,7 +197,7 @@ async function shareInvoice(button, channel) {
   }
 
   button.disabled = true;
-  status.textContent = 'Preparing invoice PDF…';
+  status.textContent = 'Preparing receipt PDF…';
   try {
     const response = await fetch(pdfUrl, {credentials: 'same-origin'});
     if (!response.ok) {
@@ -205,20 +205,20 @@ async function shareInvoice(button, channel) {
     }
     const blob = await response.blob();
     if (blob.type !== 'application/pdf') {
-      throw new Error('The invoice PDF could not be generated.');
+      throw new Error('The receipt PDF could not be generated.');
     }
     const file = new File([blob], `${invoiceNumber}.pdf`, {type: 'application/pdf'});
     if (!navigator.canShare({files: [file]})) {
       throw new Error('This device cannot share the generated PDF as an attachment.');
     }
     await navigator.share({files: [file], title: subject, text: message});
-    status.textContent = 'Invoice shared. Complete sending in the selected app.';
+    status.textContent = 'Receipt shared. Complete sending in the selected app.';
   } catch (error) {
     if (error.name === 'AbortError') {
       status.textContent = 'Sharing cancelled.';
     } else {
-      console.error('Unable to share invoice PDF:', error);
-      status.textContent = `Could not share the invoice PDF: ${error.message}`;
+      console.error('Unable to share receipt PDF:', error);
+      status.textContent = `Could not share the receipt PDF: ${error.message}`;
     }
   } finally {
     button.disabled = false;

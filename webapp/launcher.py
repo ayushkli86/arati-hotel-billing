@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Run the local web front office and open the room board in a browser."""
 
 from __future__ import annotations

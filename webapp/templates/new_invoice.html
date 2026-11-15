@@ -1,6 +1,6 @@
 {% from "partials/nav_icon.html" import nav_icon %}
-{% extends "base.html" %}{% set active_page='billing' %}{% block title %}Create Invoice{% endblock %}
-{% block header_title %}Create Invoice{% endblock %}
+{% extends "base.html" %}{% set active_page='billing' %}{% block title %}Create Receipt{% endblock %}
+{% block header_title %}Create Receipt{% endblock %}
 {% block content %}
 <style>#quick-action-bar{display:none!important}.billing-workspace .panel{padding:1rem}
 .pad-preview{position:relative;background:#F7DDE0;border:1.5px solid #141414;color:#141414;padding:12px 12px 18px;font-family:"Noto Sans Devanagari",Arial,sans-serif;font-size:10px;box-shadow:0 2px 10px rgba(0,0,0,.1)}
@@ -20,8 +20,8 @@
       <span class="room-icon-chip" style="width:2.75rem;height:2.75rem;font-size:1.35rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-receipt"></i></span>
       <div>
         <p class="eyebrow">Front desk <span class="text-slate-500">/</span> Billing</p>
-        <h1 class="page-title" x-text="invoiceId ? 'Edit Draft Invoice' : 'Create Invoice'"></h1>
-        <p class="page-subtitle">Invoice workspace <span class="text-slate-300">·</span> {{ today }}</p>
+        <h1 class="page-title" x-text="invoiceId ? 'Edit Draft Receipt' : 'Create Receipt'"></h1>
+        <p class="page-subtitle">Receipt workspace <span class="text-slate-300">·</span> {{ today }}</p>
       </div>
     </div>
     <div class="flex items-center gap-2">
@@ -33,16 +33,16 @@
     <i class="ph ph-info" style="color:var(--color-primary)" aria-hidden="true"></i>
     <span x-text="toast_message"></span>
   </div>{% endif %}
-  {% if prefill_invoice_number %}<div role="status" class="mb-4 flex items-start gap-2 rounded-xl border border-[color:var(--color-primary)]/25 bg-[rgba(125,155,122,0.14)] p-3 text-xs font-semibold text-[color:var(--color-primary)]"><i class="ph ph-receipt mt-0.5" aria-hidden="true"></i><span>This room's stay is already invoiced as <strong>{{ prefill_invoice_number }}</strong> — the checkout button in Rooms settles that invoice's total. Dishes and charges added here are already included in the folio.</span></div>{% endif %}
+  {% if prefill_invoice_number %}<div role="status" class="mb-4 flex items-start gap-2 rounded-xl border border-[color:var(--color-primary)]/25 bg-[rgba(125,155,122,0.14)] p-3 text-xs font-semibold text-[color:var(--color-primary)]"><i class="ph ph-receipt mt-0.5" aria-hidden="true"></i><span>This room's stay is already billed as <strong>{{ prefill_invoice_number }}</strong> — the checkout button in Rooms settles that receipt's total. Dishes and charges added here are already included in the folio.</span></div>{% endif %}
   <form id="invoice-form" method="post" action="/billing/create" @submit="syncItems($event)">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="line_items" :value="JSON.stringify(items)"><input type="hidden" name="kots_data_json" :value="kotsDataJSON()"><input type="hidden" name="action" x-model="action"><input type="hidden" name="invoice_id" x-model="invoiceId">
     <div class="sticky top-14 z-20 mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
     <div class="flex items-center gap-1">
       <button type="button" @click="submitAction('draft', $event)" class="btn-secondary"><span class="nav-icon" style="width:.9rem;height:.9rem;font-size:.9rem;color:inherit;"><i class="ph ph-floppy-disk"></i></span>Save as draft</button>
-      <details class="row-menu"><summary aria-label="More invoice actions">⋯</summary><div class="row-menu-panel bottom-11 top-auto left-0">
+      <details class="row-menu"><summary aria-label="More receipt actions">⋯</summary><div class="row-menu-panel bottom-11 top-auto left-0">
         <button type="button" @click="submitAction('preview', $event)"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-eye"></i></span>Preview PDF</button>
         <button type="button" @click="submitAction('pdf', $event)"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-download-simple"></i></span>Download PDF</button>
-        <button type="button" class="menu-danger" @click="if(confirm('Reset this invoice?')) location.reload()"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-arrow-counter-clockwise"></i></span>Reset invoice</button>
+        <button type="button" class="menu-danger" @click="if(confirm('Reset this receipt?')) location.reload()"><span class="nav-icon" style="width:.85rem;height:.85rem;font-size:.85rem;color:inherit;"><i class="ph ph-arrow-counter-clockwise"></i></span>Reset receipt</button>
       </div></details>
     </div>
     <div class="flex flex-wrap items-center gap-2">
@@ -109,11 +109,11 @@
 
         <section class="panel">
           <div class="form-section-head">
-            <div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.5rem;height:2.5rem;font-size:1.2rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-notepad"></i></span><div><h2 class="panel-title"><i class="ph ph-notepad" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Invoice details</h2><p class="panel-subtitle">Stay dates, format, and payment terms</p></div></div>
+            <div class="flex items-center gap-3"><span class="room-icon-chip" style="width:2.5rem;height:2.5rem;font-size:1.2rem;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-notepad"></i></span><div><h2 class="panel-title"><i class="ph ph-notepad" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Receipt details</h2><p class="panel-subtitle">Stay dates, format, and payment terms</p></div></div>
           </div>
           <div class="grid gap-x-4 gap-y-5 sm:grid-cols-3">
-            <label><span class="field-label"><i class="ph ph-file-text"></i>Invoice type</span><select name="invoice_type" x-model="invoiceType" class="form-input"><option>Tax Invoice</option><option>Bill of Supply</option><option>Proforma</option></select></label>
-            <label><span class="field-label"><i class="ph ph-calendar-blank"></i>Invoice date</span><input name="invoice_date" type="date" value="{{ today }}" x-model="invoiceDate" class="form-input"></label>
+            <label><span class="field-label"><i class="ph ph-file-text"></i>Receipt type</span><select name="invoice_type" x-model="invoiceType" class="form-input"><option>Tax Invoice</option><option>Bill of Supply</option><option>Proforma</option></select></label>
+            <label><span class="field-label"><i class="ph ph-calendar-blank"></i>Receipt date</span><input name="invoice_date" type="date" value="{{ today }}" x-model="invoiceDate" class="form-input"></label>
             <label><span class="field-label"><i class="ph ph-translate"></i>Language</span><select name="language" x-model="language" class="form-input"><option>English</option><option>Nepali</option></select></label>
             <label><span class="field-label"><i class="ph ph-copy"></i>Copy type</span><select name="copy_type" x-model="copyType" class="form-input"><option value="{{ invoice_copy_default }}">{{ invoice_copy_default }}</option>{% for copy in ('Customer Copy','Office Copy') %}{% if copy != invoice_copy_default %}<option>{{ copy }}</option>{% endif %}{% endfor %}</select></label>
             <label><span class="field-label"><i class="ph ph-bed"></i>Room (auto)</span><input class="form-input bg-slate-50 font-medium" readonly :value="roomNumbers() || 'No room selected'"></label>
@@ -133,7 +133,7 @@
           <button type="button" @click="addCustom()" class="mt-3 flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs font-semibold" style="border-color:var(--color-secondary-light);color:var(--color-primary);"><span class="room-icon-chip" style="width:1.75rem;height:1.75rem;font-size:.9rem;border-radius:.5rem;background:rgba(125,155,122,.18);color:#2E5C3A;"><i class="ph ph-plus"></i></span> Add custom item</button>
         </section>
 
-        <section class="panel"><label class="block"><span class="field-label"><i class="ph ph-chat-circle-text"></i>Notes (visible on invoice)</span><textarea name="notes" x-model="notes" rows="2" maxlength="2000" class="form-input resize-y" placeholder="Thank you for staying with us."></textarea></label></section>
+        <section class="panel"><label class="block"><span class="field-label"><i class="ph ph-chat-circle-text"></i>Notes (visible on receipt)</span><textarea name="notes" x-model="notes" rows="2" maxlength="2000" class="form-input resize-y" placeholder="Thank you for staying with us."></textarea></label></section>
 
         <div class="mt-4 grid items-stretch gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
     <!-- KOT Section -->
@@ -186,7 +186,7 @@
           <div class="space-y-2.5">
             <div class="flex justify-between text-sm text-slate-600"><span>Subtotal</span><span x-text="'NPR '+fmt(subtotal)"></span></div>
             <div class="flex justify-between text-sm text-slate-600"><span>Item discount</span><span x-text="'− NPR '+fmt(itemDiscountTotal)"></span></div>
-            <div class="grid grid-cols-[1fr_5rem_7rem] items-end gap-2"><label class="text-sm text-slate-600">Invoice discount</label><select name="discount_kind" x-model="discountKind" class="form-input !px-2 !py-1.5 text-xs"><option value="amount">NPR</option><option value="percent">%</option></select><input name="discount_value" type="number" min="0" step=".01" x-model.number="discountValue" class="form-input !px-2 !py-1.5 text-right text-xs" aria-label="Invoice discount"></div>
+            <div class="grid grid-cols-[1fr_5rem_7rem] items-end gap-2"><label class="text-sm text-slate-600">Receipt discount</label><select name="discount_kind" x-model="discountKind" class="form-input !px-2 !py-1.5 text-xs"><option value="amount">NPR</option><option value="percent">%</option></select><input name="discount_value" type="number" min="0" step=".01" x-model.number="discountValue" class="form-input !px-2 !py-1.5 text-right text-xs" aria-label="Receipt discount"></div>
             <div class="flex justify-between text-sm text-slate-600"><span x-text="'Service charge ('+serviceChargeRate+'%)'"></span><span x-text="'NPR '+fmt(serviceCharge)"></span></div>
             <div class="flex justify-between text-sm text-slate-600"><span x-text="invoiceType==='Bill of Supply'?'VAT (not applicable)':'VAT ('+vatRate+'%)'"></span><span x-text="'NPR '+fmt(vatTotal)"></span></div>
             <div class="flex items-center justify-between border-t border-slate-100 pt-3 text-xl font-extrabold text-slate-900"><span>Grand total</span><span class="text-[color:var(--color-primary)]" x-text="'NPR '+fmt(grandTotal)"></span></div>
@@ -219,7 +219,7 @@ kotPages:(function(){const pages=(draftKots||[]).map(k=>({tableNo:k.table_number
         kotCats:['restaurant','food'],
         addKot(){this.kotPages.push({tableNo:'',guestId:'',kotId:null,kotNumber:'',items:null}); this.kotActive=this.kotPages.length-1;},
         openKotIndex(){let i=this.kotPages.findIndex(p=>!p.kotId); if(i>=0)return i; this.addKot(); return this.kotPages.length-1;},
-        removeKot(i){const page=this.kotPages[i]; if(!page)return; const savedKeys=(page.items||[]).map(x=>x.key).filter(Boolean); this.items.forEach(it=>{if(savedKeys.includes(it.key))it.kot_id=null;}); this.kotPages.splice(i,1); if(this.kotActive>this.kotPages.length-1){this.kotActive=Math.max(this.kotPages.length-1,0);} this.items.forEach(it=>{if(this.kotCats.includes((it.category||'').toLowerCase())){const g=Number.isInteger(it.kot_group)?it.kot_group:0; if(g===i){it.kot_group=0;} else if(g>i){it.kot_group=g-1;}}}); if(page.kotId){window.showToast&&window.showToast('KOT detached from this invoice.','info');} this.loadSavedKots();},
+        removeKot(i){const page=this.kotPages[i]; if(!page)return; const savedKeys=(page.items||[]).map(x=>x.key).filter(Boolean); this.items.forEach(it=>{if(savedKeys.includes(it.key))it.kot_id=null;}); this.kotPages.splice(i,1); if(this.kotActive>this.kotPages.length-1){this.kotActive=Math.max(this.kotPages.length-1,0);} this.items.forEach(it=>{if(this.kotCats.includes((it.category||'').toLowerCase())){const g=Number.isInteger(it.kot_group)?it.kot_group:0; if(g===i){it.kot_group=0;} else if(g>i){it.kot_group=g-1;}}}); if(page.kotId){window.showToast&&window.showToast('KOT detached from this receipt.','info');} this.loadSavedKots();},
         kotIsRestaurant(it){return this.kotCats.includes((it.category||'').toLowerCase());},
         kotGroup(it){const raw=it.kot_group; return (Number.isInteger(raw)&&raw>=0&&raw<this.kotPages.length)?raw:0;},
         kotSources(i){const page=this.kotPages[i]; if(page&&page.kotId&&Array.isArray(page.items))return page.items.filter(it=>it&&it.particular); return this.items.filter(it=>this.kotIsRestaurant(it)&&!it.kot_id&&this.kotGroup(it)===i);},
@@ -334,7 +334,7 @@ kotPages:(function(){const pages=(draftKots||[]).map(k=>({tableNo:k.table_number
       }
     },
     amountWords(){let n=Math.round(this.grandTotal);if(!n)return 'Zero Rupees Only';const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];const tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];const under=x=>x<20?ones[x]:tens[Math.floor(x/10)]+(x%10?' '+ones[x%10]:'');let words='';if(n>=10000000){words+=under(Math.floor(n/10000000))+' Crore ';n%=10000000}if(n>=100000){words+=under(Math.floor(n/100000))+' Lakh ';n%=100000}if(n>=1000){words+=under(Math.floor(n/1000))+' Thousand ';n%=1000}if(n>=100){words+=ones[Math.floor(n/100)]+' Hundred ';n%=100}if(n)words+=under(n)+' ';return words.trim()+' Rupees Only'},
-    syncItems(evt){if(!this.items.length){evt.preventDefault();window.showToast&&window.showToast('Add at least one item before saving.','warning')}else if((Number(this.amountPaid)||0)>this.grandTotal){evt.preventDefault();window.showToast&&window.showToast('Amount received cannot exceed the invoice total.','warning')}},submitAction(value,event){this.action=value;var button=event&&event.currentTarget;this.$nextTick(function(){var form=document.getElementById('invoice-form');if(button){button.classList.add('is-busy');button.setAttribute('aria-busy','true');}if(form.requestSubmit){form.requestSubmit()}else{form.submit()}})}
+    syncItems(evt){if(!this.items.length){evt.preventDefault();window.showToast&&window.showToast('Add at least one item before saving.','warning')}else if((Number(this.amountPaid)||0)>this.grandTotal){evt.preventDefault();window.showToast&&window.showToast('Amount received cannot exceed the receipt total.','warning')}},submitAction(value,event){this.action=value;var button=event&&event.currentTarget;this.$nextTick(function(){var form=document.getElementById('invoice-form');if(button){button.classList.add('is-busy');button.setAttribute('aria-busy','true');}if(form.requestSubmit){form.requestSubmit()}else{form.submit()}})}
   }
 }
 </script>

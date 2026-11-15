@@ -16,6 +16,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// `flutter build apk --dart-define=SERVER_URL=http://192.168.1.20:8000`
 const String kServerUrl = String.fromEnvironment('SERVER_URL');
 
+/// Hosted webapp backend on Render. Used when the phone is not on the hotel
+/// Wi-Fi (or no local server answers), so the app works from anywhere.
+const String kCloudServerUrl = String.fromEnvironment(
+  'CLOUD_URL',
+  defaultValue: 'https://arati-webapp.onrender.com',
+);
+
 /// mDNS service advertised by `arati-mdns.service` on the hotel server.
 const String kServerService = '_arati-kot._tcp.local';
 const int kServerPort = 8000;
@@ -184,15 +191,40 @@ class ServerConfig {
     'http://debian.local:8000',
   ];
 
+  static bool _isLanHost(String host) {
+    final name = host.toLowerCase();
+    if (name.isEmpty) return false;
+    if (name == 'localhost' || name.endsWith('.local')) return true;
+    if (!name.contains('.')) return true;
+    final parts = name.split('.');
+    if (parts.length != 4) return false;
+    final octets = parts.map(int.tryParse).toList(growable: false);
+    if (octets.any((part) => part == null || part < 0 || part > 255)) {
+      return false;
+    }
+    final first = octets[0]!;
+    final second = octets[1]!;
+    return first == 10 ||
+        first == 127 ||
+        (first == 192 && second == 168) ||
+        (first == 172 && second >= 16 && second <= 31) ||
+        (first == 100 && second >= 64 && second <= 127);
+  }
+
+  /// Normalizes a server address typed by the user or baked into a build.
+  ///
+  /// LAN names/private IPs get `http://` and the KOT port; public hostnames
+  /// (e.g. the Render backend) keep `https://` and their own port.
   static String normalize(String raw) {
     var value = raw.trim();
     if (value.isEmpty) return '';
-    if (!value.startsWith('http://') && !value.startsWith('https://')) {
-      value = 'http://$value';
+    if (!value.contains('://')) {
+      final host = value.split('/').first.split(':').first;
+      value = '${_isLanHost(host) ? 'http' : 'https'}://$value';
     }
     final uri = Uri.tryParse(value);
     if (uri == null || uri.host.isEmpty) return '';
-    final withPort = !uri.hasPort && uri.scheme == 'http'
+    final withPort = !uri.hasPort && uri.scheme == 'http' && _isLanHost(uri.host)
         ? uri.replace(port: kServerPort)
         : uri;
     final clean = Uri(
@@ -320,15 +352,24 @@ class ServerConfig {
       candidates.add(normalized);
     }
 
+    final cloud = normalize(kCloudServerUrl);
     add(preferred);
     add(await saved());
     add(kServerUrl);
     for (final name in _knownNames) {
       add(name);
     }
+    // Fall back to Render before the slow LAN scan: it is the same backend and
+    // works from any network.
+    add(cloud);
 
     for (final url in candidates) {
-      if (await isReachable(url)) {
+      // Render's free instance sleeps when idle, so the first request after a
+      // cold start can take most of a minute. Local servers must answer fast.
+      final timeout = url == cloud
+          ? const Duration(seconds: 60)
+          : const Duration(seconds: 3);
+      if (await isReachable(url, timeout: timeout)) {
         await save(url);
         return url;
       }
@@ -557,6 +598,10 @@ class ApiClient {
     }
   }
 
+  /// Full `/api/rooms` answer: occupied rooms for the KOT composer plus the
+  /// whole room board (statuses, guests, balances) mirrored from the webapp.
+  Future<Map<String, dynamic>> fetchRoomsPayload() => _fetchMap('/api/rooms');
+
   Future<List<Map<String, dynamic>>> fetchRooms() =>
       _fetchRows('/api/rooms', 'rooms');
 
@@ -630,13 +675,18 @@ class ApiClient {
     return Map<String, dynamic>.from(body);
   }
 
-  Future<List<Map<String, dynamic>>> _fetchRows(String path, String key) async {
+  Future<Map<String, dynamic>> _fetchMap(String path) async {
     final body = _decode(await _send('GET', path));
     if (body is! Map) {
       throw ApiFailure('The server sent an answer this app cannot read.');
     }
     final csrf = body['csrf'];
     if (csrf is String) csrfToken = csrf;
+    return Map<String, dynamic>.from(body);
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchRows(String path, String key) async {
+    final body = await _fetchMap(path);
     final rows = body[key];
     if (rows is! List) {
       throw ApiFailure('The server sent an answer this app cannot read.');
@@ -951,6 +1001,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
+                if (!_resolvingServer)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => _resolveServer(manual: kCloudServerUrl),
+                      icon: const Icon(Icons.cloud_outlined, size: 16),
+                      label: const Text('Use Render cloud backend'),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _username,

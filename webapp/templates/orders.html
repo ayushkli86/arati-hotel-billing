@@ -8,14 +8,10 @@
     <div class="flex items-center gap-3">
       <span class="room-icon-chip" style="background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-clipboard-text"></i></span>
       <div>
-        <p class="eyebrow">FRONT DESK · WHATSAPP ORDERS</p>
+        <p class="eyebrow">FRONT DESK · ORDER REQUESTS</p>
         <h1 class="page-title">Order Bookings</h1>
-        <p class="page-subtitle">Food, room, and service requests from WhatsApp in one queue.</p>
+        <p class="page-subtitle">Food, room, and service requests in one queue.</p>
       </div>
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-      {% if wa_connected %}<span class="badge-teal"><i class="ph ph-whatsapp-logo" style="font-size:.8rem;"></i>WhatsApp connected</span>{% else %}<span class="badge-amber"><i class="ph ph-flask" style="font-size:.8rem;"></i>Simulator mode</span>{% endif %}
-      <a href="#wa-simulator" class="btn-secondary"><i class="ph ph-paper-plane-tilt" style="font-size:.95rem;"></i>Open simulator</a>
     </div>
   </div>
 
@@ -26,7 +22,7 @@
     <article class="metric-card"><span class="section-label"><i class="ph ph-check-circle" style="font-size:.85rem;"></i>Completed today</span><p class="mt-2 text-xl font-extrabold text-slate-900">{{ metrics.completed_today }}</p><p class="mt-1 text-xs text-slate-500">Kathmandu business day</p></article>
   </section>
 
-  <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+  <div class="grid items-start gap-4">
     <section class="panel !p-0">
       <form method="get" action="/orders" class="grid gap-x-4 gap-y-5 border-b border-slate-100 p-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
         <label><span class="field-label"><i class="ph ph-pulse"></i>Status</span><select name="status" class="form-input">
@@ -60,7 +56,7 @@
             {% for order in orders %}
             <tr>
               <td><a href="/orders/{{ order.id }}" class="font-bold text-[color:var(--color-primary)] hover:underline">{{ order.order_number }}</a><span class="mt-1 block text-xs text-slate-400">{{ local_datetime(order.created_at, '%d %b · %H:%M') }}</span></td>
-              <td><span class="font-semibold text-slate-800">{{ order.customer_name or 'WhatsApp guest' }}</span><span class="mt-1 block text-xs text-slate-500">{{ order.customer_phone or '—' }}</span></td>
+              <td><span class="font-semibold text-slate-800">{{ order.customer_name or 'Guest' }}</span><span class="mt-1 block text-xs text-slate-500">{{ order.customer_phone or '—' }}</span></td>
               <td class="max-w-[280px] whitespace-normal">
                 <span class="badge-slate">{{ kind_labels.get(order.kind, order.kind) }}</span>
                 {% if order.kind == 'food' %}
@@ -86,52 +82,13 @@
               <td class="text-right"><a href="/orders/{{ order.id }}" class="btn-secondary !px-2.5 !py-1 !text-xs">Open</a></td>
             </tr>
             {% else %}
-            <tr><td colspan="7" class="py-12 text-center"><p class="text-sm font-semibold text-slate-700">No order requests here</p><p class="mt-1 text-xs text-slate-500">Send a message in the simulator, or wait for a WhatsApp order.</p></td></tr>
+            <tr><td colspan="7" class="py-12 text-center"><p class="text-sm font-semibold text-slate-700">No order requests here</p><p class="mt-1 text-xs text-slate-500">Requests appear here as soon as the front desk records them.</p></td></tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     </section>
-
-    <section id="wa-simulator" class="panel xl:sticky xl:top-20">
-      {% include "partials/whatsapp_simulator.html" %}
-    </section>
   </div>
 
-  <section class="panel">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h2 class="panel-title"><i class="ph ph-whatsapp-logo" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.15em;color:#2E7D3E;"></i>WhatsApp connection</h2>
-        <p class="panel-subtitle">Meta WhatsApp Cloud API · the agent answers the same way here and on a real number.</p>
-      </div>
-      {% if wa_connected %}<span class="badge-teal">Live number configured</span>{% elif wa_enabled %}<span class="badge-amber">Simulator only</span>{% else %}<span class="badge-rose">Processing disabled</span>{% endif %}
-    </div>
-    <div class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <div class="space-y-2 text-sm text-slate-600">
-        <p class="section-label" style="font-size:.68rem;"><i class="ph ph-link"></i>Webhook callback URL</p>
-        <div class="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800">{{ webhook_url }}</div>
-        <p class="text-xs text-slate-500">Paste this into Meta → WhatsApp → Configuration → Webhook, with the same verify token you set in <code>ARATI_WHATSAPP_VERIFY_TOKEN</code>. Subscribe to <strong>messages</strong>.</p>
-        <div class="flex flex-wrap gap-2 pt-1">
-          <span class="badge-{{ 'teal' if wa_connected else 'slate' }}">Token &amp; phone ID {{ 'set' if wa_connected else 'missing' }}</span>
-          <span class="badge-{{ 'teal' if wa_verify_set else 'slate' }}">Verify token {{ 'set' if wa_verify_set else 'missing' }}</span>
-          <span class="badge-{{ 'teal' if wa_secret_set else 'amber' }}">Signature secret {{ 'set' if wa_secret_set else 'not set' }}</span>
-        </div>
-      </div>
-      <details class="rounded-xl border border-slate-200 bg-slate-50 p-3" {% if not wa_connected %}open{% endif %}>
-        <summary class="cursor-pointer text-sm font-bold text-slate-800">Connect the hotel’s WhatsApp number</summary>
-        <ol class="mt-3 list-decimal space-y-2 pl-5 text-xs leading-5 text-slate-600">
-          <li>Create a Meta developer app with the WhatsApp product and add the hotel’s business phone number.</li>
-          <li>Copy the permanent access token and the phone number ID into the environment.</li>
-          <li>Choose a private verify string, set the webhook URL above, and subscribe to messages.</li>
-          <li>Restart the web server. The badge changes to <em>Live number configured</em> and the same agent answers real guests.</li>
-        </ol>
-        <pre class="mt-3 overflow-x-auto rounded-lg bg-slate-900 p-3 text-[11px] leading-5 text-slate-100">ARATI_WHATSAPP_TOKEN=…
-ARATI_WHATSAPP_PHONE_NUMBER_ID=…
-ARATI_WHATSAPP_VERIFY_TOKEN=choose-a-private-string
-ARATI_WHATSAPP_APP_SECRET=…</pre>
-        <p class="mt-2 text-[11px] leading-4 text-slate-500">Keep these values out of source control. Without them the simulator still works and no message leaves this server.</p>
-      </details>
-    </div>
-  </section>
 </div>
 {% endblock %}

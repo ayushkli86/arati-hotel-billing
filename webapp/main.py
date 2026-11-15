@@ -4145,15 +4145,72 @@ def _api_user(request: Request, db: Session) -> User:
     return user
 
 
+def _api_room_board(db: Session) -> dict:
+    """The web room board, serialised for the mobile app.
+
+    Uses the same ``_room_board_data`` source as ``/rooms`` so the phone and the
+    front desk see identical statuses, guests and balances. Only active rooms
+    (and no automated-test rooms) are included.
+    """
+    data = _room_board_data(db)
+    board = []
+    for row in _filter_room_rows(data["room_rows"], "all"):
+        room: Room = row["room"]
+        stay: Stay | None = row["stay"]
+        guest: Guest | None = row["guest"]
+        photo = row.get("photo") or {}
+        board.append({
+            "id": room.id,
+            "number": room.number,
+            "type": room.type,
+            "floor": room.floor,
+            "status": row["status"],
+            "housekeeping_status": room.housekeeping_status,
+            "guest_name": (
+                (stay.guest_name if stay else "") or (guest.name if guest else "")
+            ),
+            "guest_phone": (stay.guest_phone if stay else "") or "",
+            "stay_id": stay.id if stay else None,
+            "check_in": local_datetime(stay.check_in) if stay and stay.check_in else "",
+            "check_out": (
+                local_datetime(stay.expected_checkout)
+                if stay and stay.expected_checkout else ""
+            ),
+            "nights": stay.nights if stay else 0,
+            "nightly_rate": float(room.nightly_rate or 0),
+            "balance": row["balance"],
+            "stay_duration": row["stay_duration"] or "",
+            "photo": photo.get("path", ""),
+        })
+    return {
+        "board": board,
+        "counts": data["room_counts"],
+        "percentages": data["room_percentages"],
+        "total": data["room_total"],
+        "business_date": data["business_date"],
+    }
+
+
 @app.get("/api/rooms")
 def api_rooms(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
-    """Occupied rooms for the mobile KOT app.
+    """Rooms for the mobile app.
 
-    ``csrf`` rides along because the client must post it back on
-    ``/mobile/kot/save``, and signing in rotates the token.
+    ``rooms`` keeps its original meaning — rooms with a checked-in guest, used
+    by the KOT composer. ``room_board`` mirrors the web Room Board so the phone
+    can show every room and its live status. ``csrf`` rides along because the
+    client must post it back on ``/mobile/kot/save``, and signing in rotates
+    the token.
     """
     _api_user(request, db)
-    return JSONResponse({"rooms": _occupied_rooms(db), "csrf": csrf(request)})
+    board = _api_room_board(db)
+    return JSONResponse({
+        "rooms": _occupied_rooms(db),
+        "room_board": board["board"],
+        "room_counts": board["counts"],
+        "room_total": board["total"],
+        "business_date": board["business_date"],
+        "csrf": csrf(request),
+    })
 
 
 @app.get("/api/menu")

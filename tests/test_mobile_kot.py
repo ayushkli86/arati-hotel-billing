@@ -1,7 +1,9 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Mobile KOT: room-linked kitchen tickets that also post to the room folio."""
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime
 from decimal import Decimal
@@ -79,6 +81,31 @@ def test_mobile_kot_page_lists_occupied_rooms_and_menu(app_db):
     assert "Chicken Momo" in response.text
 
 
+def test_mobile_kot_page_can_start_in_individual_mode(app_db):
+    client = TestClient(app)
+    login(client)
+    page = client.get("/mobile/kot?mode=walkin")
+    assert page.status_code == 200
+    assert "Individual / Walk-in" in page.text
+    assert "Individual guest" in page.text
+    assert 'initialMode: "walkin"' in page.text
+
+
+def test_mobile_kot_page_still_offers_menu_without_occupied_rooms(app_db):
+    stay = app_db.scalar(select(Stay))
+    stay.status = "checked_out"
+    app_db.commit()
+
+    client = TestClient(app)
+    login(client)
+    page = client.get("/mobile/kot")
+    assert page.status_code == 200
+    assert "Chicken Momo" in page.text
+    assert "Individual / Walk-in" in page.text
+    assert "No occupied rooms right now" in page.text
+    assert 'initialMode: "walkin"' in page.text
+
+
 def test_saving_room_kot_posts_items_to_folio(app_db):
     client = TestClient(app)
     login(client)
@@ -114,6 +141,61 @@ def test_saving_room_kot_posts_items_to_folio(app_db):
         ("Milk Tea", 210.0, "beverage"),
     ]
     assert all(charge.kot_id == kot.id for charge in charges)
+
+
+def test_kot_view_page_renders_the_saved_ticket(app_db):
+    client = TestClient(app)
+    login(client)
+    page = client.get("/mobile/kot")
+    token = csrf_from_page(page.text)
+    momo = app_db.scalar(
+        select(CatalogItem).where(CatalogItem.name == "Chicken Momo")
+    )
+    saved = client.post("/mobile/kot/save", json={
+        "csrf_token": token,
+        "room_id": app_db.scalar(select(Room)).id,
+        "items": [{"catalog_id": momo.id, "qty": 2, "particular": "x", "rate": 1}],
+    })
+    assert saved.status_code == 200, saved.text
+    kot_id = saved.json()["id"]
+
+    view = client.get(f"/kots/{kot_id}/view")
+    assert view.status_code == 200
+    assert "Kitchen Order Ticket" in view.text
+    assert "Chicken Momo" in view.text
+    assert "Total: Rs. 500.00" in view.text
+    assert view.text.count("<div") == view.text.count("</div>")
+
+
+def test_manual_kot_item_keeps_typed_name_rate_and_quantity(app_db):
+    client = TestClient(app)
+    login(client)
+    page = client.get("/mobile/kot")
+    token = csrf_from_page(page.text)
+
+    response = client.post("/mobile/kot/save", json={
+        "csrf_token": token,
+        "room_id": app_db.scalar(select(Room)).id,
+        "items": [{
+            "catalog_id": None,
+            "particular": "Chef special thali",
+            "qty": 2,
+            "rate": 425.5,
+            "category": "food",
+            "menu_group": "Manual",
+        }],
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["total"] == 851.0
+
+    kot = app_db.scalar(select(Kot))
+    assert kot is not None
+    assert len(json.loads(kot.items or "[]")) == 1
+    charge = app_db.scalar(select(RoomCharge))
+    assert (charge.description, float(charge.quantity), float(charge.unit_price),
+            float(charge.amount), charge.category) == (
+        "Chef special thali", 2.0, 425.5, 851.0, "food",
+    )
 
 
 def test_kot_status_flow_moves_forward_only(app_db):
@@ -253,6 +335,62 @@ def test_json_api_serves_rooms_menu_and_the_csrf_token(app_db):
     assert response.json()["ok"] is True
 
 
+def test_json_api_rooms_mirrors_the_web_room_board(app_db):
+    """The phone gets every active room and status, not just checked-in stays."""
+    app_db.add_all([
+        Room(number="102", type="Standard Room", status="available", nightly_rate=3500),
+        Room(number="103", type="Deluxe Room", status="dirty", housekeeping_status="dirty"),
+        Room(number="104", type="King Room", status="available",
+             housekeeping_status="maintenance"),
+    ])
+    app_db.commit()
+
+    client = TestClient(app)
+    login(client)
+    payload = client.get("/api/rooms").json()
+
+    # The KOT composer keeps using the occupied-room list only.
+    assert [(row["number"], row["guest_name"]) for row in payload["rooms"]] == [
+        ("101", "Room Guest"),
+    ]
+
+    board = {row["number"]: row for row in payload["room_board"]}
+    assert set(board) == {"101", "102", "103", "104"}
+    assert board["101"]["status"] == "occupied"
+    assert board["101"]["guest_name"] == "Room Guest"
+    assert board["101"]["stay_id"] is not None
+    assert board["101"]["nightly_rate"] == 4500.0
+    assert board["102"]["status"] == "available"
+    assert board["102"]["guest_name"] == ""
+    assert board["103"]["status"] == "dirty"
+    assert board["104"]["status"] == "maintenance"
+    assert payload["room_counts"] == {
+        "available": 1, "occupied": 1, "dirty": 1, "reserved": 0, "maintenance": 1,
+    }
+    assert payload["room_total"] == 4
+
+
+def test_json_api_menu_follows_the_catalog_sort_order(app_db):
+    """The phone menu uses the same category/item order as the /menu card."""
+    client = TestClient(app)
+    login(client)
+    momo = app_db.scalar(
+        select(CatalogItem).where(CatalogItem.name == "Chicken Momo")
+    )
+    tea = app_db.scalar(
+        select(CatalogItem).where(CatalogItem.name == "Milk Tea")
+    )
+    tea.sort_order = 1
+    momo.sort_order = 2
+    app_db.commit()
+
+    menu = client.get("/api/menu").json()["menu"]
+    assert [(row["group"], row["name"]) for row in menu] == [
+        ("Tea & Coffee", "Milk Tea"),
+        ("Momo", "Chicken Momo"),
+    ]
+
+
 def test_json_api_lists_and_cuts_an_open_kot_from_any_device(app_db):
     client = TestClient(app)
     login(client)
@@ -369,7 +507,7 @@ def test_delete_refuses_a_ticket_already_on_an_invoice(app_db):
         json={"csrf_token": token, "confirm": True},
     )
     assert response.status_code == 409
-    assert "invoice" in response.json()["detail"].lower()
+    assert "receipt" in response.json()["detail"].lower()
 
     response = client.post(
         f"/kots/{kot.id}/delete",

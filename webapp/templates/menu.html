@@ -2,90 +2,230 @@
 {% set active_page = 'menu' %}
 {% block title %}Menu{% endblock %}
 {% block header_title %}Menu{% endblock %}
+
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  .menu-board, .menu-board .page-title, .menu-board .eyebrow, .menu-board .page-subtitle { font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif; }
+</style>
+<script src="/static/js/menu.js"></script>
+{% endblock %}
+
 {% block content %}
-<div class="space-y-5">
+{# The card is defined once and reused by the public grouped grid and the
+   admin flat grid — never duplicated. `item` is the Alpine x-for variable. #}
+{% macro menuCard(isAdmin) %}
+<article class="menu-card" :class="{ 'is-unavailable': !item.available }">
+  <div class="menu-card-media">
+    <template x-if="item.image">
+      <img class="menu-card-img" :src="item.image" :alt="item.name" loading="lazy" width="600" height="300">
+    </template>
+    <template x-if="!item.image">
+      <div class="menu-card-fallback" role="img" :aria-label="item.name">
+        <i class="ph ph-fork-knife" aria-hidden="true"></i>
+      </div>
+    </template>
+    <span class="menu-badge" :class="item.available ? 'menu-badge-ok' : 'menu-badge-off'" x-text="item.available ? 'Available' : 'Unavailable'"></span>
+  </div>
+  <div class="menu-card-body">
+    <p class="menu-cat-label" x-text="item.category"></p>
+    <h3 class="menu-name" x-text="item.name"></h3>
+    {% if isAdmin %}<p class="menu-slug" x-text="'/' + item.slug"></p>{% endif %}
+    <p class="menu-desc" x-show="item.description" x-text="item.description"></p>
+    <p class="menu-price" x-text="'Rs. ' + formatPrice(item.price)"></p>
+  </div>
+  {% if isAdmin %}
+  <div class="menu-card-footer">
+    <span class="menu-order" x-text="'Category order ' + item.order"></span>
+    <div class="menu-actions">
+      <button type="button" class="menu-icon-btn" @click="move(item, 'up')" :disabled="item.order <= 1" aria-label="Move item up" title="Move up"><i class="ph ph-arrow-up" aria-hidden="true"></i></button>
+      <button type="button" class="menu-icon-btn" @click="move(item, 'down')" :disabled="item.order >= item.count" aria-label="Move item down" title="Move down"><i class="ph ph-arrow-down" aria-hidden="true"></i></button>
+      <button type="button" class="menu-icon-btn menu-icon-edit" @click="openEdit(item)" aria-label="Edit item" title="Edit"><i class="ph ph-pencil-simple" aria-hidden="true"></i></button>
+      <button type="button" class="menu-icon-btn menu-icon-del" @click="remove(item)" aria-label="Delete item" title="Delete"><i class="ph ph-trash" aria-hidden="true"></i></button>
+    </div>
+  </div>
+  {% endif %}
+</article>
+{% endmacro %}
+
+<div class="menu-board"
+     x-data='menuBoard({{ menu_items|tojson }}, {{ {"isAdmin": is_admin, "csrf": csrf_token, "defaultAvailability": ("all" if is_admin else "available")}|tojson }})'
+     x-cloak>
+
+  {# Print-only letterhead #}
+  <div class="menu-print-head">
+    <p class="menu-print-hotel">{{ hotel_settings.get('hotel_name', 'Arati Hotel') }}</p>
+    <p class="menu-print-sub">{{ hotel_settings.get('hotel_address1', 'Khandbari-01, Sankhuwasabha') }}{% if hotel_settings.get('hotel_phone') %} · {{ hotel_settings.get('hotel_phone') }}{% endif %}</p>
+    <p class="menu-print-tag">Menu · All prices in NPR</p>
+  </div>
+
   <div class="page-heading print:hidden">
     <div>
       <p class="eyebrow">Restaurant · Menu card</p>
-      <h1 class="page-title"><span class="room-icon-chip" style="display:inline-flex;justify-content:center;width:2.1rem;height:2.1rem;font-size:1.1rem;margin-right:.55rem;vertical-align:-.55em;background:rgba(212,192,138,.32);color:#8A6A14;"><i class="ph ph-book-open-text"></i></span>Menu</h1>
-      <p class="page-subtitle">{{ hotel_settings.get('hotel_name', 'Arati Hotel') }} · {{ hotel_settings.get('hotel_address1', 'Khandbari-01, Sankhuwasabha') }} · {{ menu_item_count }} items in {{ menu_groups|length }} categories</p>
+      <h1 class="page-title">{{ 'Menu items' if is_admin else 'Menu' }}</h1>
+      <p class="page-subtitle">{{ hotel_settings.get('hotel_name', 'Arati Hotel') }} · {{ menu_item_count }} items in {{ menu_categories|length }} categories</p>
     </div>
-    <div class="flex items-center gap-2">
-      <a href="/billing/create" class="btn-secondary"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-receipt"></i></span>Bill an item</a>
-      <button type="button" onclick="window.print()" class="btn-primary"><span class="nav-icon" style="width:.95rem;height:.95rem;font-size:.95rem;color:inherit;"><i class="ph ph-printer"></i></span>Print menu</button>
+    <div class="flex flex-wrap items-center gap-2">
+      {% if is_admin %}
+      <a href="/menu" class="btn-secondary"><i class="ph ph-eye" aria-hidden="true"></i>View public menu</a>
+      <button type="button" @click="openAdd()" class="btn-primary"><i class="ph ph-plus" aria-hidden="true"></i>Add item</button>
+      {% else %}
+        {% if current_user and current_user.role == 'admin' %}<a href="/admin/menu" class="btn-secondary"><i class="ph ph-squares-four" aria-hidden="true"></i>Manage menu</a>{% endif %}
+      <button type="button" @click="window.print()" class="btn-primary"><i class="ph ph-printer" aria-hidden="true"></i>Print menu</button>
+      {% endif %}
     </div>
   </div>
 
-  <div x-data='menuBrowser({{ menu_groups|tojson }})'>
-    <div class="mb-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm print:hidden">
-      <label class="search-field block"><span class="search-icon"><i class="ph ph-magnifying-glass"></i></span><span class="sr-only">Search the menu</span><input class="form-input" x-model="q" placeholder="Search dishes, drinks or a category..."></label>
-      <div class="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-500">
-        <span x-text="q ? total()+' matching items' : 'Showing all '+{{ menu_item_count }}+' items across '+{{ menu_groups|length }}+' categories'"></span>
-        <button type="button" x-show="q" @click="q=''" class="font-bold text-[color:var(--color-primary)] hover:underline">Clear search</button>
-      </div>
+  {# Toolbar: search + category + availability + count #}
+  <div class="menu-toolbar print:hidden">
+    <label class="search-field menu-search">
+      <span class="search-icon"><i class="ph ph-magnifying-glass" aria-hidden="true"></i></span>
+      <span class="sr-only">Search the menu</span>
+      <input class="form-input" type="search" x-model="q" placeholder="Search dishes, drinks or a category...">
+    </label>
+    <div class="menu-filters">
+      <label class="menu-select">
+        <span class="sr-only">Filter by category</span>
+        <select class="form-input" x-model="category">
+          <option value="all">All categories</option>
+          <template x-for="c in categories()" :key="c"><option :value="c" x-text="c"></option></template>
+        </select>
+      </label>
+      <label class="menu-select">
+        <span class="sr-only">Filter by availability</span>
+        <select class="form-input" x-model="availability">
+          <option value="all">All availability</option>
+          <option value="available">Available</option>
+          <option value="unavailable">Unavailable</option>
+        </select>
+      </label>
     </div>
+    <p class="menu-count" x-text="'Showing ' + matching() + ' of ' + total() + ' items'"></p>
+  </div>
 
-    <div class="mb-5 hidden border-b-2 border-[color:var(--color-primary)] pb-3 text-center print:block">
-      <p class="text-xl font-bold tracking-wide text-slate-900">{{ hotel_settings.get('hotel_name', 'Arati Hotel') }}</p>
-      <p class="text-xs text-slate-600">{{ hotel_settings.get('hotel_address1', 'Khandbari-01, Sankhuwasabha') }}{% if hotel_settings.get('hotel_address2') %} · {{ hotel_settings.get('hotel_address2') }}{% endif %}{% if hotel_settings.get('hotel_phone') %} · {{ hotel_settings.get('hotel_phone') }}{% endif %}</p>
-      <p class="mt-1 text-[10px] font-semibold uppercase tracking-[.2em] text-slate-500">Menu · All prices in NPR</p>
-    </div>
-
-    <div class="gap-4 lg:columns-2 xl:columns-3 [column-fill:balance]">
-      <template x-for="group in groupsFiltered()" :key="group.name">
-        <section class="mb-4 break-inside-avoid rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div class="mb-2 flex items-center justify-between gap-2 border-b border-[color:var(--color-primary)]/20 pb-2">
-            <h2 class="flex min-w-0 items-center gap-2 text-sm font-bold uppercase tracking-wide text-[color:var(--color-primary)]"><span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-primary)]/10 text-[10px]" x-text="group.no"></span><span class="truncate" x-text="group.name"></span></h2>
-            <span class="shrink-0 text-[10px] font-semibold text-slate-400" x-text="group.items.length+' items'"></span>
-          </div>
-          <template x-for="item in group.items" :key="group.name+'|'+item.name+'|'+item.rate">
-            <div class="py-1.5">
-              <div class="flex items-end gap-2">
-                <span class="text-[13px] font-semibold leading-snug text-slate-800" x-text="item.name"></span>
-                <span class="mb-1 min-w-3 flex-1 border-b border-dotted border-slate-300"></span>
-                <span class="shrink-0 text-[13px] font-bold tabular-nums text-slate-800" x-text="'Rs. '+item.price"></span>
-              </div>
-              <p x-show="item.note" class="mt-0.5 text-[11px] leading-snug text-slate-500" x-text="item.note"></p>
-            </div>
+  {# Public: cards grouped under category headings #}
+  {% if not is_admin %}
+  <div class="menu-groups" x-show="matching() > 0">
+    <template x-for="group in grouped()" :key="group.category">
+      <section class="menu-cat">
+        <header class="menu-cat-head">
+          <h2 x-text="group.category"></h2>
+          <span x-text="group.items.length + (group.items.length === 1 ? ' item' : ' items')"></span>
+        </header>
+        <div class="menu-grid">
+          <template x-for="item in group.items" :key="item.id">
+            {{ menuCard(is_admin) }}
           </template>
-        </section>
-      </template>
-    </div>
+        </div>
+      </section>
+    </template>
+  </div>
+  {% else %}
+  {# Admin: flat grid with reorder / edit / delete controls #}
+  <div class="menu-grid menu-grid--admin" x-show="matching() > 0">
+    <template x-for="item in filtered()" :key="item.id">
+      {{ menuCard(is_admin) }}
+    </template>
+  </div>
+  {% endif %}
 
-    <div x-show="!groupsFiltered().length" class="rounded-2xl border border-dashed border-slate-300 bg-white py-14 text-center print:hidden">
-      <p class="text-sm font-semibold text-slate-700">No menu items match “<span x-text="q"></span>”</p>
-      <p class="mt-1 text-xs text-slate-500">Try a different dish name or category.</p>
+  <div class="menu-empty" x-show="matching() === 0">
+    <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+    <p>No items match your filters.</p>
+  </div>
+
+  {# Edit / add modal (admin only) #}
+  {% if is_admin %}
+  <div class="menu-modal-overlay" x-show="modalOpen" x-cloak @click.self="close()">
+    <div class="menu-modal" role="dialog" aria-modal="true" aria-labelledby="menu-modal-title" x-ref="modalPanel" @keydown="onModalKeydown($event)">
+      <div class="menu-modal-head">
+        <h2 id="menu-modal-title" x-text="editingId ? 'Edit menu item' : 'Add menu item'"></h2>
+        <button type="button" class="menu-icon-btn" @click="close()" aria-label="Close dialog" title="Close"><i class="ph ph-x" aria-hidden="true"></i></button>
+      </div>
+      <form class="menu-modal-body" @submit.prevent="save()" novalidate>
+        <div class="menu-photo-field">
+          <span class="field-label">Photo</span>
+          <template x-if="form.image">
+            <div class="menu-photo-preview"><img :src="form.image" alt="Menu item photo preview"></div>
+          </template>
+          <template x-if="!form.image">
+            <button type="button" class="menu-dropzone" :class="{ 'is-over': dragOver }" @click="pickFile()"
+                    @dragover.prevent="dragOver = true" @dragleave.prevent="dragOver = false" @drop.prevent="onDrop($event)">
+              <i class="ph ph-image" aria-hidden="true"></i>
+              <span x-text="uploading ? 'Uploading…' : 'Click or drop a photo here'"></span>
+            </button>
+          </template>
+          <input type="file" x-ref="fileInput" accept="image/*" class="hidden" @change="onFileChosen($event)">
+          <div class="menu-photo-links">
+            <button type="button" class="menu-link" @click="useImageUrl = !useImageUrl">Use image URL</button>
+            <button type="button" class="menu-link menu-link-danger" x-show="form.image" @click="removeImage()">Remove</button>
+          </div>
+          <div x-show="useImageUrl">
+            <input type="text" class="form-input" x-model="form.image" placeholder="https://… or /static/…">
+          </div>
+        </div>
+
+        <div class="menu-field-grid">
+          <label class="menu-field">
+            <span class="field-label">Name *</span>
+            <input type="text" class="form-input" x-model="form.name" data-autofocus required>
+            <span class="menu-error" x-show="errors.name" x-text="errors.name"></span>
+          </label>
+          <label class="menu-field">
+            <span class="field-label">Category *</span>
+            <input type="text" class="form-input" x-model="form.category" list="menu-category-list" required>
+            <datalist id="menu-category-list">
+              <template x-for="c in categories()" :key="c"><option :value="c"></option></template>
+            </datalist>
+            <span class="menu-error" x-show="errors.category" x-text="errors.category"></span>
+          </label>
+          <label class="menu-field">
+            <span class="field-label">Price (Rs.) *</span>
+            <input type="number" min="0" step="1" class="form-input" x-model="form.price" required>
+            <span class="menu-error" x-show="errors.price" x-text="errors.price"></span>
+          </label>
+          <label class="menu-field">
+            <span class="field-label">Slug</span>
+            <input type="text" class="form-input" x-model="form.slug" @input="slugTouched = true" placeholder="auto-generated from name">
+          </label>
+        </div>
+
+        <label class="menu-field">
+          <span class="field-label">Description</span>
+          <textarea class="form-input" rows="2" x-model="form.description"></textarea>
+        </label>
+
+        <label class="menu-check">
+          <input type="checkbox" x-model="form.available">
+          <span>Available</span>
+        </label>
+
+        <div class="menu-modal-foot">
+          <button type="button" class="btn-secondary" @click="close()">Cancel</button>
+          <button type="submit" class="btn-primary" :disabled="saving || uploading" x-text="saving ? 'Saving…' : (editingId ? 'Save changes' : 'Add item')"></button>
+        </div>
+      </form>
     </div>
   </div>
+  {% endif %}
 </div>
 
 <style>
 @media print {
   @page { margin: 10mm; }
-  aside, header, .mobile-nav, .print\:hidden { display: none !important; }
+  aside, header, .mobile-nav, #quick-action-bar { display: none !important; }
   main { margin-left: 0 !important; }
   .page-enter { max-width: none !important; padding: 0 !important; }
   body { background: #fff !important; }
-  .lg\:columns-2, .xl\:columns-3 { column-count: 2 !important; column-gap: 14px !important; }
-  section { box-shadow: none !important; border-color: #d6d3d1 !important; break-inside: avoid; }
-  .page-enter > .space-y-5 { gap: 0 !important; }
+  .menu-board { background: #fff !important; }
+  .menu-print-head { display: block !important; }
+  .menu-card { break-inside: avoid; page-break-inside: avoid; box-shadow: none !important; border: 1px solid #e5e7eb !important; }
+  .menu-grid { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 10px !important; }
+  .menu-cat { break-inside: avoid; page-break-inside: avoid; }
+  .menu-card-footer { display: none !important; }
+  a[href]:after { content: none !important; }
 }
 </style>
-<script>
-function menuBrowser(groups){
-  return {
-    q: '',
-    groups,
-    groupsFiltered(){
-      const term = this.q.trim().toLowerCase();
-      return this.groups
-        .map(g => ({no:g.no, name:g.name, items:g.items.filter(i => !term || i.name.toLowerCase().includes(term) || (i.note||'').toLowerCase().includes(term) || g.name.toLowerCase().includes(term))}))
-        .filter(g => g.items.length);
-    },
-    total(){
-      return this.groupsFiltered().reduce((sum, g) => sum + g.items.length, 0);
-    }
-  };
-}
-</script>
 {% endblock %}

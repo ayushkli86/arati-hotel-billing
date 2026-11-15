@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
@@ -28,9 +29,9 @@ def collect_payment(
 ) -> Payment:
     invoice = db.get(Invoice, invoice_id)
     if not invoice:
-        raise ValueError("Invoice not found")
+        raise ValueError("Receipt not found")
     if not invoice.guest_id:
-        raise ValueError("Invoice has no linked guest")
+        raise ValueError("Receipt has no linked guest")
 
     amt = Decimal(str(amount or 0))
     if amt <= 0:

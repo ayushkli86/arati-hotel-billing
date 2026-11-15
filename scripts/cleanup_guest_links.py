@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 #!/usr/bin/env python3
 from __future__ import annotations
 

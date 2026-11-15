@@ -6,7 +6,7 @@
   <div class="room-card-head">
     <div class="flex items-center gap-3">
       <span class="room-icon-chip room-chip-{{ row.status }} room-ring-{{ tchip }}"><i class="ph ph-{{ chip_icon }}"></i></span>
-      <div><h2 class="room-number">{{ room.number }}</h2><p class="room-type"><span class="room-type-pill room-type-{{ tchip }}"><i class="ph ph-bed {{ ticon }}"></i>{{ room.type }}</span></p></div>
+      <div><h2 class="room-number">{{ room.number }}</h2><p class="room-type"><span class="room-type-pill room-type-{{ tchip }}"><i class="ph ph-bed {{ ticon }}"></i>{{ room.type }}{% if tchip in ('delux', 'superdelux') %}<span class="room-ac-indicator"><i class="ph ph-snowflake" aria-hidden="true"></i>AC</span>{% endif %}</span></p></div>
     </div>
     <span class="room-dot" aria-hidden="true"></span>
   </div>
@@ -34,6 +34,18 @@
     <p class="font-semibold text-slate-600">Unavailable for stays</p><p class="text-slate-500">Contact a manager for maintenance updates.</p>
   {% endif %}
   </div>
+  {% if row.photo %}
+  <div class="room-photo-block">
+    <button
+      type="button"
+      class="room-photo-trigger"
+      aria-label="View all photos of room {{ room.number }}"
+      @click='openRoomLightbox({{ row.photos|tojson|safe }}, 0)'
+    >
+      <img class="room-photo" src="{{ row.photo.path }}" alt="{{ row.photo.alt }}" loading="lazy">
+    </button>
+  </div>
+  {% endif %}
   <div class="room-actions">
   {% if row.status == 'occupied' %}
     <button hx-get="/rooms/{{ room.id }}/checkout" hx-target="#modal-root" hx-swap="innerHTML" class="btn-primary col-span-2">Checkout</button>
@@ -82,7 +94,7 @@
 {% else %}
   <section class="panel !p-0"><div class="table-scroll"><table class="data-table soft-table"><thead><tr><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-door"></i>Room</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-bed"></i>Type / Bed</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-pulse"></i>Status</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-user"></i>Guest</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-sign-in"></i>Check-in / Expected</span></th><th><span class="inline-flex items-center gap-1.5"><i class="ph ph-sign-out"></i>Check-out</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-clock"></i>Duration</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-currency-inr"></i>Balance / Rate</span></th><th class="text-right"><span class="inline-flex items-center justify-end gap-1.5"><i class="ph ph-gear"></i>Actions</span></th></tr></thead><tbody>
   {% for row in room_rows %}{% set room=row.room %}{% set guest=row.guest %}{% set _t = room.type|lower %}{% set tchip = 'superdelux' if 'super' in _t else('delux' if 'delux' in _t else 'standard') %}{% set ticon = 'ph-fill2' if tchip == 'superdelux' else('ph-bold2' if tchip == 'delux' else 'ph-thin') %}<tr @dblclick="openBilling($event, {{ room.id }})" title="Double-click to open billing for this room">
-<td><div class="flex items-center gap-2.5">{% set lchip = {'occupied':'bed','dirty':'broom','reserved':'calendar-check','available':'key','maintenance':'wrench'}.get(row.status, 'bed') %}<span class="room-icon-chip room-chip-{{ row.status }} room-ring-{{ tchip }}"><i class="ph ph-{{ lchip }}"></i></span><span class="font-bold">{{ room.number }}</span></div></td><td><div><span class="room-type-pill room-type-{{ tchip }}"><i class="ph ph-bed {{ ticon }}"></i>{{ room.type }}</span>{% if room.bed_type %}<div class="text-xs text-slate-500 flex items-center gap-1 mt-1"><i class="ph ph-bed"></i> {{ room.bed_type }}</div>{% endif %}</div></td><td><span class="room-status-badge room-status-{{ row.status }}">{{ 'Needs cleaning' if row.status=='dirty' else row.status|title }}</span></td><td>{{ guest.name if guest else '—' }}</td><td>{{ local_datetime(row.stay.check_in if row.stay else row.reservation.check_in if row.reservation else none,'%d %b · %H:%M') }}</td><td>{{ local_datetime((row.stay.expected_checkout or row.stay.check_out) if row.stay else row.reservation.check_out if row.reservation else none,'%d %b · %H:%M') }}</td><td class="text-right whitespace-nowrap text-sm font-mono {% if row.stay_duration %}text-emerald-700{% else %}text-slate-400{% endif %}">{{ row.stay_duration or '—' }}</td><td class="{% if row.status=='occupied' and row.balance %}soft-amber-text font-semibold{% endif %}">{{ money(row.balance if row.status=='occupied' else room.nightly_rate) }}</td><td class="text-right whitespace-nowrap">
+<td><div class="flex items-center gap-2.5">{% set lchip = {'occupied':'bed','dirty':'broom','reserved':'calendar-check','available':'key','maintenance':'wrench'}.get(row.status, 'bed') %}<span class="room-icon-chip room-chip-{{ row.status }} room-ring-{{ tchip }}"><i class="ph ph-{{ lchip }}"></i></span><span class="font-bold">{{ room.number }}</span></div></td><td><div><span class="room-type-pill room-type-{{ tchip }}"><i class="ph ph-bed {{ ticon }}"></i>{{ room.type }}{% if tchip in ('delux', 'superdelux') %}<span class="room-ac-indicator"><i class="ph ph-snowflake" aria-hidden="true"></i>AC</span>{% endif %}</span>{% if room.bed_type %}<div class="text-xs text-slate-500 flex items-center gap-1 mt-1"><i class="ph ph-bed"></i> {{ room.bed_type }}</div>{% endif %}</div></td><td><span class="room-status-badge room-status-{{ row.status }}">{{ 'Needs cleaning' if row.status=='dirty' else row.status|title }}</span></td><td>{{ guest.name if guest else '—' }}</td><td>{{ local_datetime(row.stay.check_in if row.stay else row.reservation.check_in if row.reservation else none,'%d %b · %H:%M') }}</td><td>{{ local_datetime((row.stay.expected_checkout or row.stay.check_out) if row.stay else row.reservation.check_out if row.reservation else none,'%d %b · %H:%M') }}</td><td class="text-right whitespace-nowrap text-sm font-mono {% if row.stay_duration %}text-emerald-700{% else %}text-slate-400{% endif %}">{{ row.stay_duration or '—' }}</td><td class="{% if row.status=='occupied' and row.balance %}soft-amber-text font-semibold{% endif %}">{{ money(row.balance if row.status=='occupied' else room.nightly_rate) }}</td><td class="text-right whitespace-nowrap">
     {% if row.status=='occupied' %}
       <button hx-get="/rooms/{{ room.id }}/checkout" hx-target="#modal-root" hx-swap="innerHTML" class="btn-primary !px-3 !py-1.5 !text-xs">Checkout</button>
     {% elif row.status=='dirty' %}

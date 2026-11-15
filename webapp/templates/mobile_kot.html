@@ -6,7 +6,8 @@
     menu: {{ menu_items|tojson }},
     selectedRoom: {{ (selected_room_id or 0)|tojson }},
     issuedBy: {{ (current_user.full_name or current_user.username)|tojson }},
-    csrf: {{ csrf_token|tojson }}
+    csrf: {{ csrf_token|tojson }},
+    initialMode: {{ initial_mode|tojson }}
   })'
   class="space-y-5 pb-8"
 >
@@ -16,7 +17,7 @@
       <div>
         <p class="eyebrow">Kitchen <span class="text-slate-500">/</span> Mobile KOT</p>
         <h1 class="page-title">Send a KOT</h1>
-        <p class="page-subtitle">Pick the room, tap the dishes, send it to the kitchen.</p>
+        <p class="page-subtitle">Pick a room or an individual guest, tap the dishes, send it to the kitchen.</p>
       </div>
     </div>
     <div class="mt-4 flex flex-wrap gap-2">
@@ -26,8 +27,24 @@
     </div>
   </div>
 
-  {% if rooms_data %}
   <section class="panel">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h2 class="panel-title"><i class="ph ph-users-three" style="font-size:1.05rem;margin-right:.4rem;vertical-align:-.15em;color:#8A6A14;"></i>Who is this KOT for?</h2>
+        <p class="panel-subtitle">Send to an occupied room, or to an individual guest at the counter.</p>
+      </div>
+      <div class="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+        <button type="button" @click="mode = 'room'" class="rounded-lg px-3 py-1.5 text-xs font-bold transition" :class="mode === 'room' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'">
+          <i class="ph ph-door"></i> Room guest
+        </button>
+        <button type="button" @click="mode = 'walkin'" class="rounded-lg px-3 py-1.5 text-xs font-bold transition" :class="mode === 'walkin' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'">
+          <i class="ph ph-user"></i> Individual / Walk-in
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" x-show="mode === 'room'" x-cloak>
     <div class="flex items-center justify-between gap-2">
       <div>
         <h2 class="panel-title"><i class="ph ph-door" style="font-size:1.05rem;margin-right:.4rem;vertical-align:-.15em;color:#8A6A14;"></i>Choose room</h2>
@@ -35,6 +52,7 @@
       </div>
       <span class="badge-teal" x-text="activeRoom ? 'Room '+activeRoom.number : 'Select a room'"></span>
     </div>
+    <p class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800" x-show="!rooms.length" x-cloak>No occupied rooms right now. Switch to <strong>Individual / Walk-in</strong> to send a counter KOT.</p>
     <div class="mt-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
       <template x-for="room in rooms" :key="room.id">
         <button
@@ -56,6 +74,23 @@
       Sending to <span class="text-slate-900" x-text="'Room '+activeRoom.number"></span>
       <span class="font-normal text-slate-500" x-text="'· '+activeRoom.guest_name"></span>
     </p>
+  </section>
+
+  <section class="panel" x-show="mode === 'walkin'" x-cloak>
+    <div>
+      <h2 class="panel-title"><i class="ph ph-user" style="font-size:1.05rem;margin-right:.4rem;vertical-align:-.15em;color:#8A6A14;"></i>Individual guest</h2>
+      <p class="panel-subtitle">No room needed. This KOT is not added to a room bill; collect payment at the counter.</p>
+    </div>
+    <div class="mt-3 grid gap-3 sm:grid-cols-2">
+      <label class="block">
+        <span class="field-label"><i class="ph ph-user"></i>Guest name (optional)</span>
+        <input x-model="guestName" maxlength="160" class="form-input" placeholder="Walk-in guest">
+      </label>
+      <label class="block">
+        <span class="field-label"><i class="ph ph-armchair"></i>Table / seat / reference (optional)</span>
+        <input x-model="tableNumber" maxlength="40" class="form-input" placeholder="Walk-in">
+      </label>
+    </div>
   </section>
 
   <section class="panel">
@@ -111,7 +146,7 @@
     <div class="flex items-center justify-between gap-2">
       <div>
         <h2 class="panel-title"><i class="ph ph-shopping-cart" style="font-size:1.05rem;margin-right:.4rem;vertical-align:-.15em;color:#8A6A14;"></i>This KOT</h2>
-        <p class="panel-subtitle" x-text="cart.length+' item'+(cart.length===1?'':'s')+' · Room '+(activeRoom?activeRoom.number:'—')"></p>
+        <p class="panel-subtitle" x-text="cart.length+' item'+(cart.length===1?'':'s')+(mode==='room' ? ' · Room '+(activeRoom?activeRoom.number:'—') : ' · '+(tableNumber.trim()||'Individual guest'))"></p>
       </div>
       <button type="button" @click="cart=[]" class="text-xs font-bold text-rose-600 hover:underline">Clear</button>
     </div>
@@ -145,20 +180,13 @@
         <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Total</p>
         <p class="text-xl font-extrabold text-slate-900" x-text="'Rs. '+money(total)"></p>
       </div>
-      <button type="button" class="btn-primary grow sm:grow-0" :disabled="!activeRoom || sending" @click="send()">
+      <button type="button" class="btn-primary grow sm:grow-0" :disabled="sending || (mode === 'room' ? !activeRoom : !cart.length)" @click="send()">
         <span x-show="!sending"><i class="ph ph-paper-plane-tilt"></i> Send KOT</span>
         <span x-show="sending" x-cloak>Sending…</span>
       </button>
     </div>
     <p class="mt-2 text-xs text-rose-600" x-show="error" x-cloak x-text="error"></p>
   </section>
-  {% else %}
-  <section class="panel p-8 text-center">
-    <p class="text-sm font-semibold text-slate-700">No occupied rooms right now</p>
-    <p class="mt-1 text-xs text-slate-500">Check a guest in from the room board first, then send their KOT here.</p>
-    <a href="/rooms" class="btn-primary mt-4 inline-flex"><i class="ph ph-bed"></i> Open Room Board</a>
-  </section>
-  {% endif %}
 
   <section class="panel">
     <div class="flex flex-wrap items-center justify-between gap-2">
@@ -227,6 +255,9 @@ function mobileKot(config) {
     rooms: config.rooms || [],
     menu: config.menu || [],
     selectedRoomId: Number(config.selectedRoom) || (config.rooms && config.rooms.length ? config.rooms[0].id : 0),
+    mode: config.initialMode === 'walkin' ? 'walkin' : 'room',
+    guestName: '',
+    tableNumber: '',
     csrf: config.csrf || '',
     issuedBy: config.issuedBy || '',
     q: '',
@@ -261,7 +292,10 @@ function mobileKot(config) {
     money(value) { return Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
     async send() {
       this.error = '';
-      if (!this.activeRoom) { this.error = 'Choose a room first.'; return; }
+      if (this.mode === 'room') {
+        if (!this.rooms.length) { this.error = 'No occupied rooms. Switch to Individual / Walk-in.'; return; }
+        if (!this.activeRoom) { this.error = 'Choose a room first.'; return; }
+      }
       if (!this.cart.length) { this.error = 'Add at least one menu item.'; return; }
       this.sending = true;
       try {
@@ -271,7 +305,10 @@ function mobileKot(config) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             csrf_token: this.csrf,
-            room_id: this.activeRoom.id,
+            mode: this.mode,
+            room_id: this.mode === 'room' && this.activeRoom ? this.activeRoom.id : null,
+            guest_name: this.mode === 'walkin' ? this.guestName.trim() : '',
+            table_number: this.mode === 'walkin' ? this.tableNumber.trim() : '',
             issued_by_name: this.issuedBy,
             notes: this.notes,
             items: this.cart.map(line => ({
@@ -288,8 +325,13 @@ function mobileKot(config) {
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) throw new Error(data.detail || ('Could not send KOT (' + response.status + ').'));
-        const message = data.kot_number + ' sent for Room ' + data.room_number + ' and added to the room bill.';
-        window.location.href = '/mobile/kot?room_id=' + this.activeRoom.id + '&toast=' + encodeURIComponent(message) + '&toast_type=success';
+        const target = this.mode === 'walkin'
+          ? (data.table_number || 'the individual guest')
+          : 'Room ' + data.room_number;
+        const message = data.kot_number + ' sent for ' + target
+          + (this.mode === 'walkin' ? ' (pay at counter).' : ' and added to the room bill.');
+        const query = this.mode === 'walkin' ? '?mode=walkin' : '?room_id=' + this.activeRoom.id;
+        window.location.href = '/mobile/kot' + query + '&toast=' + encodeURIComponent(message) + '&toast_type=success';
       } catch (error) {
         this.error = error.message || 'Could not send KOT.';
         if (window.showToast) window.showToast(this.error, 'error');

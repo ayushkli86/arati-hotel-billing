@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """SQLAlchemy database setup for the independent web application."""
 
 from __future__ import annotations

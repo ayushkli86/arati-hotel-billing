@@ -49,7 +49,7 @@
               {% if _has %}<span class="calendar-has-indicator"></span>{% endif %}
             </div>
             <div class="calendar-day-metrics">
-              {% if cell.invoices>0 %}<div class="calendar-metric"><span class="metric-dot metric-dot-gold"></span><span>Inv {{ cell.invoices }} - {{ money(cell.sales) }}</span></div>{% endif %}
+              {% if cell.invoices>0 %}<div class="calendar-metric"><span class="metric-dot metric-dot-gold"></span><span>Rcpt {{ cell.invoices }} - {{ money(cell.sales) }}</span></div>{% endif %}
               {% if cell.payment_count>0 %}<div class="calendar-metric"><span class="metric-dot metric-dot-green"></span><span>Pay {{ cell.payment_count }} - {{ money(cell.payments) }}</span></div>{% endif %}
               {% if cell.checkins>0 or cell.checkouts>0 %}<div class="calendar-metric"><span class="metric-dot metric-dot-dark"></span><span>{{ cell.checkins }} in - {{ cell.checkouts }} out</span></div>{% endif %}
               {% if cell.bookings>0 or cell.orders>0 or cell.guests>0 %}<div class="calendar-metric"><span class="metric-dot metric-dot-amber"></span><span>{{ cell.bookings }} bk - {{ cell.orders }} ord - {{ cell.guests }} g</span></div>{% endif %}
@@ -63,7 +63,7 @@
       {% endfor %}
     </div>
     <div class="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-100 px-5 py-3 text-[11px] font-semibold text-slate-500">
-      <span class="legend-dot-label"><span class="metric-dot metric-dot-gold"></span>Invoices billed</span>
+      <span class="legend-dot-label"><span class="metric-dot metric-dot-gold"></span>Receipts billed</span>
       <span class="legend-dot-label"><span class="metric-dot metric-dot-green"></span>Payments received</span>
       <span class="legend-dot-label"><span class="metric-dot metric-dot-dark"></span>Arrivals / departures</span>
       <span class="legend-dot-label"><span class="metric-dot metric-dot-amber"></span>Bookings - orders - new customers</span>
@@ -72,7 +72,7 @@
   </section>
 
   <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    <article class="metric-card-hero cursor-pointer" ondblclick="document.getElementById('modal-invoices').showModal()"><p class="section-label">Sales on {{ selected_iso }}</p><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ money(day_sales) }}</p><p class="mt-1 text-xs text-slate-500">{{ day_invoices|length }} invoice(s)</p></article>
+    <article class="metric-card-hero cursor-pointer" ondblclick="document.getElementById('modal-invoices').showModal()"><p class="section-label">Sales on {{ selected_iso }}</p><p class="mt-2 text-2xl font-extrabold text-slate-900">{{ money(day_sales) }}</p><p class="mt-1 text-xs text-slate-500">{{ day_invoices|length }} receipt(s)</p></article>
     <article class="metric-card cursor-pointer" ondblclick="document.getElementById('modal-payments').showModal()"><p class="section-label">Collected on {{ selected_iso }}</p><p class="mt-2 text-xl font-extrabold text-[color:var(--color-primary)]">{{ money(day_collected) }}</p><p class="mt-1 text-xs text-slate-500">{{ day_payments|length }} payment(s)</p></article>
     <article class="metric-card cursor-pointer" ondblclick="document.getElementById('modal-arrivals').showModal()"><p class="section-label">Arrivals - Departures</p><p class="mt-2 text-xl font-extrabold soft-amber-text">{{ day_checkins|length }} in - {{ day_checkouts|length }} out</p><p class="mt-1 text-xs text-slate-500">{{ day_charges_count }} extra charge(s)</p></article>
     <article class="metric-card cursor-pointer" ondblclick="document.getElementById('modal-bookings').showModal()"><p class="section-label">Bookings - Orders - Customers</p><p class="mt-2 text-xl font-extrabold text-slate-900">{{ day_reservations|length }} - {{ day_orders|length }} - {{ day_guests|length }}</p></article>
@@ -80,12 +80,12 @@
 
   <section class="grid gap-4 xl:grid-cols-2">
     <article class="panel !p-0">
-      <div class="flex items-center justify-between border-b border-slate-100 p-5"><h2 class="panel-title"><i class="ph ph-receipt" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Invoices billed this day</h2><span class="badge-slate">{{ day_invoices|length }}</span></div>
+      <div class="flex items-center justify-between border-b border-slate-100 p-5"><h2 class="panel-title"><i class="ph ph-receipt" style="font-size:1.05rem;margin-right:.45rem;vertical-align:-.18em;color:#8A6A14;"></i>Receipts billed this day</h2><span class="badge-slate">{{ day_invoices|length }}</span></div>
       <div class="table-scroll"><table class="data-table soft-table min-w-full">
-        <thead><tr><th>Invoice</th><th>Guest</th><th>Room</th><th>Method</th><th class="text-right">Total</th><th class="text-right">Balance</th></tr></thead>
+        <thead><tr><th>Receipt</th><th>Guest</th><th>Room</th><th>Method</th><th class="text-right">Total</th><th class="text-right">Balance</th></tr></thead>
         <tbody>
           {% for inv in day_invoices %}<tr><td class="font-semibold">{{ inv.invoice_number }}</td><td>{{ inv.guest_name }}</td><td>{{ inv.room_number or '-' }}</td><td>{{ inv.payment_method }}</td><td class="text-right tabular-nums font-semibold">{{ money(inv.total) }}</td><td class="text-right tabular-nums">{{ money(inv.balance) }}</td></tr>
-          {% else %}<tr><td colspan="6" class="py-8 text-center text-sm text-slate-500">No invoices billed on this date.</td></tr>{% endfor %}
+          {% else %}<tr><td colspan="6" class="py-8 text-center text-sm text-slate-500">No receipts billed on this date.</td></tr>{% endfor %}
         </tbody>
       </table></div>
     </article>
@@ -104,11 +104,11 @@
 
 <dialog id="modal-invoices" class="modal">
   <div class="modal-panel max-w-4xl">
-    <div class="flex items-center justify-between border-b border-slate-100 p-4"><h3 class="text-lg font-bold">Invoices billed on {{ selected_iso }}</h3><button onclick="document.getElementById('modal-invoices').close()" class="btn-ghost">Close</button></div>
+    <div class="flex items-center justify-between border-b border-slate-100 p-4"><h3 class="text-lg font-bold">Receipts billed on {{ selected_iso }}</h3><button onclick="document.getElementById('modal-invoices').close()" class="btn-ghost">Close</button></div>
     <div class="p-4 overflow-auto max-h-[70vh]">
-      <table class="data-table w-full"><thead><tr><th>Invoice</th><th>Guest</th><th>Room</th><th>Method</th><th class="text-right">Total</th><th class="text-right">Paid</th><th class="text-right">Balance</th></tr></thead><tbody>
+      <table class="data-table w-full"><thead><tr><th>Receipt</th><th>Guest</th><th>Room</th><th>Method</th><th class="text-right">Total</th><th class="text-right">Paid</th><th class="text-right">Balance</th></tr></thead><tbody>
       {% for inv in day_invoices %}<tr><td>{{ inv.invoice_number }}</td><td>{{ inv.guest_name }}</td><td>{{ inv.room_number or '-' }}</td><td>{{ inv.payment_method }}</td><td class="text-right">{{ money(inv.total) }}</td><td class="text-right">{{ money(inv.amount_paid) }}</td><td class="text-right">{{ money(inv.balance) }}</td></tr>
-      {% else %}<tr><td colspan="7" class="text-center py-6">No invoices</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="7" class="text-center py-6">No receipts</td></tr>{% endfor %}
       </tbody></table>
     </div>
   </div>
@@ -118,7 +118,7 @@
   <div class="modal-panel max-w-3xl">
     <div class="flex items-center justify-between border-b border-slate-100 p-4"><h3 class="text-lg font-bold">Payments received on {{ selected_iso }}</h3><button onclick="document.getElementById('modal-payments').close()" class="btn-ghost">Close</button></div>
     <div class="p-4 overflow-auto max-h-[70vh]">
-      <table class="data-table w-full"><thead><tr><th>Receipt</th><th>Invoice</th><th>Method</th><th>Type</th><th class="text-right">Amount</th><th>Date</th></tr></thead><tbody>
+      <table class="data-table w-full"><thead><tr><th>Payment no.</th><th>Receipt</th><th>Method</th><th>Type</th><th class="text-right">Amount</th><th>Date</th></tr></thead><tbody>
       {% for p in day_payments %}<tr><td>{{ p.receipt_number }}</td><td>{{ p.invoice_id }}</td><td>{{ p.method }}</td><td>{{ p.payment_type }}</td><td class="text-right">{{ money(p.amount) }}</td><td>{{ p.paid_at }}</td></tr>
       {% else %}<tr><td colspan="6" class="text-center py-6">No payments</td></tr>{% endfor %}
       </tbody></table>

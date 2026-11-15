@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Versioned daily-close reports and their in-process scheduler."""
 
 from __future__ import annotations

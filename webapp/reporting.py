@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Reporting and trend calculations for the Web App's SQLAlchemy data."""
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ REPORTS = {
     "monthly_sales": "Monthly Sales Report",
     "custom_range": "Custom Date Range Report",
     "payment_collection": "Payment Collection Report",
-    "outstanding_invoices": "Outstanding Invoice Report",
+    "outstanding_invoices": "Outstanding Receipt Report",
     "refunds_adjustments": "Refund and Adjustment Report",
     "employee_sales": "Employee / Cashier Sales Report",
     "room_occupancy": "Room Occupancy Report",
@@ -37,49 +38,49 @@ REPORTS = {
 
 REPORT_COLUMNS = {
     "daily_sales": [
-        ("date", "Business date"), ("invoices", "Invoices"),
+        ("date", "Business date"), ("invoices", "Receipts"),
         ("gross_sales", "Gross sales"), ("discount", "Discounts"),
         ("tax", "VAT"), ("service_charge", "Service charge"),
         ("net_sales", "Net sales"), ("collected", "Paid"),
         ("outstanding", "Outstanding"),
     ],
     "daily_full": [
-        ("invoice_number", "Invoice no."), ("date", "Date"), ("time", "Time"),
+        ("invoice_number", "Receipt no."), ("date", "Date"), ("time", "Time"),
         ("guest", "Guest"), ("phone", "Phone"), ("room", "Room"),
         ("cashier", "Cashier"), ("subtotal", "Subtotal"),
         ("discount", "Discount"), ("tax", "VAT"), ("total", "Total"),
         ("method", "Method"), ("paid", "Paid"), ("balance", "Balance"),
     ],
     "monthly_sales": [
-        ("month", "Month"), ("invoices", "Invoices"),
+        ("month", "Month"), ("invoices", "Receipts"),
         ("gross_sales", "Gross sales"), ("discount", "Discounts"),
         ("tax", "VAT"), ("net_sales", "Net sales"),
         ("collected", "Paid"), ("outstanding", "Outstanding"),
     ],
     "custom_range": [
-        ("invoice_number", "Invoice no."), ("date", "Date"), ("time", "Time"),
+        ("invoice_number", "Receipt no."), ("date", "Date"), ("time", "Time"),
         ("guest", "Guest"), ("room", "Room"), ("cashier", "Cashier"),
         ("subtotal", "Subtotal"), ("discount", "Discount"), ("tax", "VAT"),
         ("total", "Total"), ("method", "Method"), ("paid", "Paid"),
         ("balance", "Balance"),
     ],
     "payment_collection": [
-        ("date", "Business date"), ("time", "Time"), ("invoice_number", "Invoice no."),
+        ("date", "Business date"), ("time", "Time"), ("invoice_number", "Receipt no."),
         ("guest", "Guest"), ("room", "Room"), ("method", "Method"),
         ("amount", "Amount"), ("note", "Note"),
     ],
     "outstanding_invoices": [
-        ("invoice_number", "Invoice no."), ("date", "Issued"), ("guest", "Guest"),
+        ("invoice_number", "Receipt no."), ("date", "Issued"), ("guest", "Guest"),
         ("phone", "Phone"), ("room", "Room"), ("total", "Total"),
         ("paid", "Paid"), ("balance", "Balance"), ("age_days", "Age (days)"),
     ],
     "refunds_adjustments": [
-        ("date", "Business date"), ("invoice_number", "Invoice no."),
+        ("date", "Business date"), ("invoice_number", "Receipt no."),
         ("guest", "Guest"), ("room", "Room"), ("kind", "Type"),
         ("method", "Method"), ("amount", "Amount"), ("reason", "Reason"),
     ],
     "employee_sales": [
-        ("cashier", "Cashier"), ("invoices", "Invoices"),
+        ("cashier", "Cashier"), ("invoices", "Receipts"),
         ("gross_sales", "Gross sales"), ("collected", "Collected"),
         ("outstanding", "Outstanding"),
     ],
@@ -90,7 +91,7 @@ REPORT_COLUMNS = {
         ("rate", "Occupancy %"),
     ],
     "room_revenue": [
-        ("invoice_number", "Invoice no."), ("date", "Date"), ("guest", "Guest"),
+        ("invoice_number", "Receipt no."), ("date", "Date"), ("guest", "Guest"),
         ("room", "Room"), ("nights", "Nights"), ("cashier", "Cashier"),
         ("revenue", "Room revenue"),
     ],
@@ -100,14 +101,14 @@ REPORT_COLUMNS = {
 }
 
 FORMULAS = {
-    "gross_sales": "Gross sales = invoice totals for issued, non-void invoices dated in the period.",
+    "gross_sales": "Gross sales = receipt totals for issued, non-void receipts dated in the period.",
     "net_sales": "Net sales = gross sales − refunds and reversals posted in the period.",
     "collections": "Payments received = payment ledger rows dated when cash changed hands.",
-    "outstanding": "Outstanding = current balance of issued invoices dated on or before period end.",
+    "outstanding": "Outstanding = current balance of issued receipts dated on or before period end.",
     "occupancy": "Occupancy rate = occupied rooms ÷ active room inventory × 100.",
-    "room_revenue": "Room revenue = room-category line value after line and allocated invoice discounts.",
+    "room_revenue": "Room revenue = room-category line value after line and allocated receipt discounts.",
     "collection_ratio": "Collection ratio = payments received ÷ gross sales × 100.",
-    "discount_ratio": "Discount ratio = discounts ÷ invoice subtotals × 100.",
+    "discount_ratio": "Discount ratio = discounts ÷ receipt subtotals × 100.",
     "growth": "Period change = (current value − prior value) ÷ prior value × 100.",
 }
 
@@ -405,7 +406,7 @@ def build_report(
         } for label in labels]
         if key == "daily_sales":
             totals["invoices"] = len(invoices)
-        formulas.append("Voided and draft invoices are excluded.")
+        formulas.append("Voided and draft receipts are excluded.")
     elif key == "daily_full":
         rows = invoice_rows
         payments = _payments(db, start, end, filters)
@@ -428,7 +429,7 @@ def build_report(
         })
         formulas = [
             FORMULAS["gross_sales"], FORMULAS["collections"],
-            FORMULAS["outstanding"], "Voided and draft invoices are excluded.",
+            FORMULAS["outstanding"], "Voided and draft receipts are excluded.",
         ]
     elif key == "custom_range":
         refunds = _refund_rows(db, start, end, filters)
@@ -562,15 +563,15 @@ def build_report(
         rows = [
             {"metric": label, "value": value, "note": note}
             for label, value, note in (
-                ("Gross sales", gross, "Invoiced in the period"),
-                ("Discounts", totals["discount"], "Invoice and line discounts"),
+                ("Gross sales", gross, "Receipts in the period"),
+                ("Discounts", totals["discount"], "Receipt and line discounts"),
                 ("VAT", totals["tax"], "VAT charged"),
                 ("Service charge", totals["service_charge"], "Hotel service charge"),
                 ("Payments received", collected, "Payments by business date"),
                 ("Cash collections", cash_collected, "Cash method only"),
                 ("Refunds", refunded, "Money returned"),
                 ("Adjustments", adjustment, "Authorised balance corrections"),
-                ("Outstanding receivables", totals["outstanding"], "Current invoice balances"),
+                ("Outstanding receivables", totals["outstanding"], "Current receipt balances"),
                 ("Opening cash", opening, "Configured opening balance plus prior net cash"),
                 ("Closing cash", totals["closing_cash"], "Opening + cash collected − cash refunds"),
                 ("Room revenue", room_total, "Room line revenue after discounts"),
@@ -779,7 +780,7 @@ def analysis_data(
         "gross_sales": ("Gross sales", "amount"),
         "net_sales": ("Net sales", "amount"),
         "transactions": ("Transactions", "count"),
-        "average_invoice": ("Average invoice value", "amount"),
+        "average_invoice": ("Average receipt value", "amount"),
         "collected": ("Payments received", "amount"),
         "collection_ratio": ("Collection ratio", "percent"),
         "discount_ratio": ("Discount ratio", "percent"),

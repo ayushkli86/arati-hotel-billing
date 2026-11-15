@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 DEFAULT_SETTINGS = [
     ("hotel_name", "Arati Hotel"),
     ("hotel_address1", "Khandbari-01, Sankhuwasabha"),

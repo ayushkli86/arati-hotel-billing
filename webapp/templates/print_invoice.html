@@ -102,15 +102,15 @@ body{font:12px/1.5 "Noto Sans Devanagari",Arial,sans-serif;color:#141414;backgro
 </div>
 {% if not is_preview and not is_test_print and not receipt_mode %}
 <p class="saved-message" style="max-width:820px;margin:0 auto 16px;padding:12px 16px;background:#f7f1de;color:#5f4c10;border:1px solid #d8c48e;border-radius:8px;font-size:13px">
-  <strong>Invoice saved.</strong> {{ invoice.invoice_number }} is recorded as {{ invoice.status }}. Use Download PDF to save a copy, or Print to open your printer dialog.
+  <strong>Receipt saved.</strong> {{ invoice.invoice_number }} is recorded as {{ invoice.status }}. Use Download PDF to save a copy, or Print to open your printer dialog.
 </p>
 <p id="share-status" role="status" aria-live="polite" style="max-width:820px;margin:0 auto 12px;color:#5f5843;font-size:12px"></p>
 <script>
 async function shareInvoice(button, channel) {
   const {pdfUrl, invoiceNumber, guestName, recipient, items, total, paid, balance} = button.dataset;
   const email = channel === 'email';
-  const subject = `Arati Hotel invoice ${invoiceNumber}`;
-  const message = `Hello ${guestName},\n\nPlease find invoice ${invoiceNumber} attached.\nItems: ${items}\nTotal: NPR ${Number(total).toFixed(2)}\nPaid: NPR ${Number(paid).toFixed(2)}\nBalance due: NPR ${Number(balance).toFixed(2)}\n\nThank you for staying with Arati Hotel.`;
+  const subject = `Arati Hotel receipt ${invoiceNumber}`;
+  const message = `Hello ${guestName},\n\nPlease find receipt ${invoiceNumber} attached.\nItems: ${items}\nTotal: NPR ${Number(total).toFixed(2)}\nPaid: NPR ${Number(paid).toFixed(2)}\nBalance due: NPR ${Number(balance).toFixed(2)}\n\nThank you for staying with Arati Hotel.`;
   const status = document.getElementById('share-status');
   const phoneDigits = recipient.replace(/\D/g, '');
   const whatsappNumber = phoneDigits.startsWith('977')
@@ -141,7 +141,7 @@ async function shareInvoice(button, channel) {
 
   button.disabled = true;
   button.classList.add('busy');
-  status.textContent = 'Preparing invoice PDF…';
+  status.textContent = 'Preparing receipt PDF…';
   try {
     const response = await fetch(pdfUrl, {credentials: 'same-origin'});
     if (!response.ok) {
@@ -149,20 +149,20 @@ async function shareInvoice(button, channel) {
     }
     const blob = await response.blob();
     if (blob.type !== 'application/pdf') {
-      throw new Error('The invoice PDF could not be generated.');
+      throw new Error('The receipt PDF could not be generated.');
     }
     const file = new File([blob], `${invoiceNumber}.pdf`, {type: 'application/pdf'});
     if (!navigator.canShare({files: [file]})) {
       throw new Error('This device cannot share the generated PDF as an attachment.');
     }
     await navigator.share({files: [file], title: subject, text: message});
-    status.textContent = 'Invoice shared. Complete sending in the selected app.';
+    status.textContent = 'Receipt shared. Complete sending in the selected app.';
   } catch (error) {
     if (error.name === 'AbortError') {
       status.textContent = 'Sharing cancelled.';
     } else {
-      console.error('Unable to share invoice PDF:', error);
-      status.textContent = `Could not share the invoice PDF: ${error.message}`;
+      console.error('Unable to share receipt PDF:', error);
+      status.textContent = `Could not share the receipt PDF: ${error.message}`;
     }
   } finally {
     button.disabled = false;
@@ -173,7 +173,7 @@ async function shareInvoice(button, channel) {
 {% endif %}
 {% if request.query_params.get('fallback') %}
 <div style="max-width:820px;margin:10px auto;padding:12px 16px;background:#f7f1de;color:#1b3a2a;border:1px solid #d8c48e;border-radius:8px;font-size:12px">
-  <strong>Print View:</strong> Use the Print button above (or Ctrl+P) and choose "Save as PDF" to save this invoice.
+  <strong>Print View:</strong> Use the Print button above (or Ctrl+P) and choose "Save as PDF" to save this receipt.
 </div>
 {% endif %}
 {% for copy_index in range(printer_config.copies|int) %}
@@ -188,7 +188,7 @@ async function shareInvoice(button, channel) {
     <p class="fi-title">{{ form_title }}</p>
     <p class="fi-name">{{ print_hotel_name }}</p>
     <p class="fi-addr">{{ hotel_address1 }}{% if hotel_address2 %}, {{ hotel_address2 }}{% endif %}</p>
-    <p class="fi-line"><strong>Invoice. No.</strong> {{ invoice.invoice_number }}</p>
+    <p class="fi-line"><strong>Receipt. No.</strong> {{ invoice.invoice_number }}</p>
     <p class="fi-line"><strong>VAT Registration No.:</strong>{% if vat_digits %}<span class="vat-boxes">{% for digit in vat_digits %}<span class="vat-box">{{ digit }}</span>{% endfor %}</span>{% else %}<span class="vat-boxes">{% for digit in range(9) %}<span class="vat-box"></span>{% endfor %}</span>{% endif %}</p>
     <p class="fi-line"><strong>Transaction Date:</strong> {{ bs_date_slashes(invoice.issue_date) }}</p>
     <p class="fi-line"><strong>Issuing Date:</strong> {% if invoice.issue_date %}{{ local_datetime(invoice.issue_date, date_format) }}{% endif %}</p>

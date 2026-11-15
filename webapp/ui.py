@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Small UI-facing helpers shared by the web routes.
 
 Keeping the toast vocabulary in one place means a redirect, an HTMX trigger,

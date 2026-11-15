@@ -1,3 +1,4 @@
+# Copyright 2026 AI Memory System. All rights reserved.
 """Dashboard analytics adapted to the Web App's SQLAlchemy data model."""
 
 from __future__ import annotations
@@ -286,15 +287,15 @@ def _data_quality(db: Session, start: str, end: str) -> dict:
 
     add(
         "invoice_without_lines", "high", missing_lines,
-        "Review the invoice and its original line items; restore only through an authorized correction.",
+        "Review the receipt and its original line items; restore only through an authorized correction.",
     )
     add(
         "invoice_total_or_amount_invalid", "high", bad_math,
-        "Reconcile the invoice totals against its line items and tax snapshot.",
+        "Reconcile the receipt totals against its line items and tax snapshot.",
     )
     add(
         "payment_ledger_does_not_reconcile", "high", bad_ledger,
-        "Compare invoice paid/balance fields with payment, refund, and adjustment ledger rows.",
+        "Compare receipt paid/balance fields with payment, refund, and adjustment ledger rows.",
     )
     add(
         "large_discount_review", "review", large_discounts,
@@ -335,11 +336,11 @@ def _data_quality(db: Session, start: str, end: str) -> dict:
     )))
     add(
         "orphan_or_mismatched_payments", "high", orphan_payments,
-        "Link the payment to the correct invoice using an audited repair.",
+        "Link the payment to the correct receipt using an audited repair.",
     )
     add(
         "orphan_or_mismatched_refunds", "high", orphan_refunds,
-        "Link the refund to the correct invoice using an audited repair.",
+        "Link the refund to the correct receipt using an audited repair.",
     )
     add(
         "nonpositive_payment_or_refund", "high", nonpositive,
@@ -410,7 +411,7 @@ def _insights(result: dict, data_quality: dict) -> list[dict]:
             "explanation": explanation,
             "severity": severity,
             "source_records": [],
-            "recommended_action": "Review the sales trend and invoice detail if follow-up is needed.",
+            "recommended_action": "Review the sales trend and receipt detail if follow-up is needed.",
         })
 
     for finding in data_quality["findings"]:

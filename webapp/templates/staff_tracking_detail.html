@@ -39,7 +39,7 @@
   <article class="metric-card-hero">
     <p class="section-label">Sales handled</p>
     <p class="mt-2 text-2xl font-extrabold text-slate-900">{{ money(bucket.sales) }}</p>
-    <p class="mt-1 text-xs text-slate-500">{{ bucket.invoice_rows|length }} non-draft invoice{{ '' if bucket.invoice_rows|length == 1 else 's' }}</p>
+    <p class="mt-1 text-xs text-slate-500">{{ bucket.invoice_rows|length }} non-draft receipt{{ '' if bucket.invoice_rows|length == 1 else 's' }}</p>
   </article>
   <article class="metric-card">
     <p class="section-label">Customers served</p>
@@ -74,7 +74,7 @@
   <article class="metric-card">
     <p class="section-label">Correction value</p>
     <p class="mt-2 text-xl font-extrabold text-red-700">{{ money(bucket.error_amount) }}</p>
-    <p class="mt-1 text-xs text-slate-500">Voided invoices + refunds</p>
+    <p class="mt-1 text-xs text-slate-500">Voided receipts + refunds</p>
   </article>
 </div>
 
@@ -121,7 +121,7 @@
   </div>
   <div class="table-scroll">
     <table class="data-table soft-table min-w-[780px]">
-      <thead><tr><th>Check-in</th><th>Room</th><th>Guest</th><th>Status</th><th>Invoice</th></tr></thead>
+      <thead><tr><th>Check-in</th><th>Room</th><th>Guest</th><th>Status</th><th>Receipt</th></tr></thead>
       <tbody>
         {% for stay in bucket.stay_rows %}
         <tr>
@@ -142,13 +142,13 @@
 <section class="panel mb-5">
   <div class="panel-heading">
     <div>
-      <h2 class="panel-title">Invoices handled</h2>
-      <p class="panel-subtitle">Non-draft invoices prepared by this staff member.</p>
+      <h2 class="panel-title">Receipts handled</h2>
+      <p class="panel-subtitle">Non-draft receipts prepared by this staff member.</p>
     </div>
   </div>
   <div class="table-scroll">
     <table class="data-table soft-table min-w-[860px]">
-      <thead><tr><th>Time</th><th>Invoice</th><th>Guest</th><th class="text-right">Total</th><th class="text-right">Discount</th><th>Status</th></tr></thead>
+      <thead><tr><th>Time</th><th>Receipt</th><th>Guest</th><th class="text-right">Total</th><th class="text-right">Discount</th><th>Status</th></tr></thead>
       <tbody>
         {% for invoice in bucket.invoice_rows %}
         <tr>
@@ -160,7 +160,7 @@
           <td><span class="rounded-full px-2 py-0.5 text-[10px] font-semibold {% if invoice.status == 'paid' %}bg-emerald-50 text-emerald-700{% elif invoice.status == 'void' %}bg-red-50 text-red-700{% else %}bg-amber-50 text-amber-700{% endif %}">{{ invoice.status|title }}</span></td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="py-6 text-center text-sm text-slate-500">No invoices in this period.</td></tr>
+        <tr><td colspan="6" class="py-6 text-center text-sm text-slate-500">No receipts in this period.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -171,7 +171,7 @@
   <div class="panel-heading">
     <div>
       <h2 class="panel-title">Errors and corrections</h2>
-      <p class="panel-subtitle">Voided invoices, deleted drafts, refunds, and credit adjustments attributed to this staff member.</p>
+      <p class="panel-subtitle">Voided receipts, deleted drafts, refunds, and credit adjustments attributed to this staff member.</p>
     </div>
   </div>
   <div class="table-scroll">
