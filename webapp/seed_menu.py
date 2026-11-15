@@ -118,6 +118,7 @@ MENU: list[tuple[str, str, int, str]] = [
     ("Chowmein / Noodles", "Chicken Chowmein/Noodles", 220, "pcs"),
     ("Chowmein / Noodles", "Egg Chowmein/Noodles", 200, "pcs"),
     ("Chowmein / Noodles", "Veg Chowmein/Noodles", 180, "pcs"),
+    ("Chowmein / Noodles", "Buff Sukuti Chowmin", 250, "pcs"),
     # 14. Nepali Thukpa
     ("Nepali Thukpa", "Mix Thukpa", 250, "pcs"),
     ("Nepali Thukpa", "Chicken Thukpa", 220, "pcs"),
