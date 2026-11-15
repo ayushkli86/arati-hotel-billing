@@ -94,6 +94,7 @@ MENU: list[tuple[str, str, int, str]] = [
     ("Non-Veg Snacks", "Boiled Egg", 100, "pcs"),
     ("Non-Veg Snacks", "Plain Omelet", 200, "pcs"),
     ("Non-Veg Snacks", "Masala Omelet", 250, "pcs"),
+    ("Non-Veg Snacks", "Sausage Chilly", 350, "pcs"),
     # 9. Local Chicken
     ("Local Chicken", "Local Chicken Bhutuwa", 650, "pcs"),
     ("Local Chicken", "Local Chicken Curry", 650, "pcs"),
