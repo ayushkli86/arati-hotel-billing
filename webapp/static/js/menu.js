@@ -102,6 +102,9 @@
           }
         });
         this.filtered().forEach(function (i) { buckets[i.category].push(i); });
+        Object.keys(buckets).forEach(function (c) {
+            buckets[c].sort(function (a, b) { return (a.sort_order || 0) - (b.sort_order || 0); });
+        });
         return order
           .filter(function (c) { return buckets[c].length; })
           .map(function (c) { return { category: c, items: buckets[c] }; });
