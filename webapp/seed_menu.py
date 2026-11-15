@@ -27,7 +27,7 @@ MENU: list[tuple[str, str, int, str]] = [
     ("Sandwich", "Non-veg sandwich", 470, "pcs"),
     # 3. Breakfast Set
     ("Breakfast Set", "Simple Breakfast", 300, "pcs"),
-    ("Breakfast Set", "Organic Breakfast", 450, "pcs"),
+    ("Breakfast Set", "Organic Breakfast new", 450, "pcs"),
     ("Breakfast Set", "Indian Breakfast", 350, "pcs"),
     # 4. Tea & Coffee
     ("Tea & Coffee", "Mint tea", 100, "pcs"),
