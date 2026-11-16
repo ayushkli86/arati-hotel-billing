@@ -17,4 +17,5 @@ if ! "$VENV/bin/python" -c "import fastapi, sqlalchemy, jinja2, httpx, weasyprin
 fi
 
 "$VENV/bin/python" -m webapp.seed
+"$VENV/bin/python" -m webapp.seed_menu
 exec "$VENV/bin/python" -m uvicorn webapp.main:app --host "${ARATI_WEB_HOST:-127.0.0.1}" --port "${ARATI_WEB_PORT:-8000}"

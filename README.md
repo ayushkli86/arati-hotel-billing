@@ -68,15 +68,47 @@ paper. The on-screen form, the stored bill and the PDF all use the same calculat
 
 ## FastAPI web front office
 
-A separate FastAPI application is available in [`webapp/`](webapp/README.md). Its Billing page is the browser-based three-column Create Invoice screen. Launch it with:
+A separate FastAPI application is available in [`webapp/`](webapp/README.md). Its Billing page is the browser-based three-column Create Invoice screen.
+
+**Linux/macOS (source):**
 
 ```bash
 ./run_web.sh
 ```
 
-Then open <http://127.0.0.1:8000/billing/create> and sign in with `admin` / `admin123` for the seeded demo. `./run.sh` still launches the Tk desktop application; it does not serve the FastAPI page. The web app uses its own SQLAlchemy database, separate from the desktop till. Read `webapp/README.md` before using it outside a local demo environment.
+`run_web.sh` creates `.venv-web`, installs `webapp/requirements.txt`, runs the base seed (`python -m webapp.seed`), and starts Uvicorn. To apply the latest full restaurant menu after seeding, run from the repo root with the same environment:
+
+```bash
+.venv-web/bin/python -m webapp.seed_menu
+```
+
+Then open <http://127.0.0.1:8000/billing/create> (or the room board at <http://127.0.0.1:8000/rooms>). In development/demo mode the seeded accounts are `admin` / `admin123` and `frontdesk` / `staff123`. `./run.sh` still launches the Tk desktop application; it does not serve the FastAPI page.
+
+The web app uses its own SQLAlchemy database, separate from the desktop till (`webapp/data/arati_web.db` by default, or `ARATI_WEB_DATABASE_URL`). Read `webapp/README.md` before using it outside a local demo environment.
 
 ## Run on Windows
+
+### Web front office (recommended for the current webapp)
+
+1. Install **Python 3.11+** and check **“Add Python to PATH”** during setup.
+2. Extract/open the repository folder and double-click **`run_web.bat`** (internet required on first run to install dependencies).
+3. `run_web.bat` creates a local environment and data under `%LOCALAPPDATA%\AratiHotel\WebBilling` (`.venv`, web database, generated files), installs `webapp/requirements.txt`, runs `python -m webapp.seed`, and launches the web app in your browser.
+4. Open/sign in at the URL shown by the launcher (room board). Demo accounts (development): `admin` / `admin123`, `frontdesk` / `staff123`.
+
+**Apply the latest restaurant menu seed (new repo structure):**
+
+```bat
+cd /d C:\path\to\arati-hotel-billing
+"%LOCALAPPDATA%\AratiHotel\WebBilling\.venv\Scripts\python.exe" -m webapp.seed_menu
+```
+
+Run this from the repository root so `webapp` is importable. If you use a custom database, set `ARATI_WEB_DATABASE_URL` to the same value used by the app before running seeds.
+
+**Fresh/clean start (web app only):** stop the app, then remove or back up `%LOCALAPPDATA%\AratiHotel\WebBilling` (or just its database/data files) and run `run_web.bat` again to recreate and reseed. Do not delete the separate desktop application data.
+
+**Production notes:** set `ARATI_ENV=production`, `ARATI_WEB_SECRET`, and provide `ARATI_INITIAL_ADMIN_USER` / `ARATI_INITIAL_ADMIN_PASSWORD` (>=12 chars) for first-time admin creation; demo data is not created unless `ARATI_SEED_DEMO=1`. Use HTTPS (`ARATI_WEB_HTTPS=1` behind a reverse proxy).
+
+### Desktop (Tk) application
 
 Build the standalone Windows application on a Windows development computer with Python 3.11, Tcl/Tk, PowerShell and the WeasyPrint GTK runtime:
 
@@ -84,18 +116,9 @@ Build the standalone Windows application on a Windows development computer with 
 .\scripts\build_windows_exe.ps1
 ```
 
-The client receives a ZIP containing `AratiHotel.exe` and its runtime; Python is not required on the client computer. Run and smoke-check that build on Windows before delivery.
+Run and smoke-check that build on Windows before delivery. For a source install, double-click `run.bat` (desktop till). First sign-in for the desktop app: **admin / arat123** (you will be prompted to set a new password).
 
-For a source install, extract the Windows source archive and double-click `run.bat`. It installs packages on first launch and requires internet access. On Linux, run `./run.sh`.
-
-To point the Start Menu shortcut at the browser-based front office, run
-`.\scripts\create_web_shortcut.ps1` from the extracted source folder. It updates the **Arati Hotel
-Billing** shortcut to run `run_web.bat`; launching it starts the web server and opens the Room Board
-in your browser. Running `run.bat` directly still starts the desktop billing application.
-
-First sign-in: **admin / arat123**. The app requires a new 12-character administrator password before opening the till.
-
-On Windows, the database and generated files live under `%LOCALAPPDATA%\AratiHotel\Billing`. On Linux, they live under `~/.local/share/arati-hotel-billing`. An existing `arati.db` beside the application stays in place during an upgrade.
+On Windows, desktop database and generated files live under `%LOCALAPPDATA%\AratiHotel\Billing`. On Linux, they live under `~/.local/share/arati-hotel-billing`. An existing `arati.db` beside the application stays in place during an upgrade.
 
 ## Tax model
 

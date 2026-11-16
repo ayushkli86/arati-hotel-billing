@@ -19,6 +19,8 @@ if errorlevel 1 (
 
 "%APP_HOME%\.venv\Scripts\python.exe" -m webapp.seed
 if errorlevel 1 goto :failed
+"%APP_HOME%\.venv\Scripts\python.exe" -m webapp.seed_menu
+if errorlevel 1 goto :failed
 "%APP_HOME%\.venv\Scripts\python.exe" -m webapp.launcher
 if errorlevel 1 goto :failed
 exit /b 0

@@ -11,17 +11,32 @@ python -m venv .venv-web
 source .venv-web/bin/activate
 pip install -r webapp/requirements.txt
 python -m webapp.seed
+python -m webapp.seed_menu   # apply the latest full restaurant menu
 uvicorn webapp.main:app --reload
 ```
 
-Open <http://127.0.0.1:8000/billing/create> for Create Ireceipt (or <http://127.0.0.1:8000> for the dashboard). From the repository root, `./run_web.sh` performs these setup steps and starts the server. Demo accounts:
+Open <http://127.0.0.1:8000/billing/create> for Create Ireceipt (or <http://127.0.0.1:8000> for the dashboard). From the repository root, `./run_web.sh` performs the base setup/start (venv, deps, `webapp.seed`, Uvicorn); run `python -m webapp.seed_menu` afterward when you need the current full menu in the same database. Demo accounts (development):
 
 - Admin: `admin` / `admin123`
 - Staff: `frontdesk` / `staff123`
 
-On Windows, double-click `run_web.bat` to set up and open the web front office. To point the Start Menu's **Arati Hotel Billing** shortcut at the web app from a source install, run `.\scripts\create_web_shortcut.ps1` in PowerShell. The shortcut opens the Room Board; running `run.bat` directly still launches the desktop till.
+### Windows
 
-Change these demo passwords before using a non-demo installation. Seed data is idempotent and is written to `webapp/data/arati_web.db` by default.
+1. Install Python 3.11+ with **Add Python to PATH** enabled.
+2. Double-click `run_web.bat` from the repository root (first run requires internet to install dependencies).
+3. The script stores the virtual environment, database, and generated files under `%LOCALAPPDATA%\AratiHotel\WebBilling`, runs the base seed, and opens the app.
+
+To apply the latest restaurant menu seed against that environment/database, run from the repository root:
+
+```bat
+"%LOCALAPPDATA%\AratiHotel\WebBilling\.venv\Scripts\python.exe" -m webapp.seed_menu
+```
+
+For a clean/fresh web database, stop the app and remove/back up `%LOCALAPPDATA%\AratiHotel\WebBilling` (or its DB/data) before running `run_web.bat` again. This only affects the web app’s local data.
+
+In production (`ARATI_ENV=production`), `webapp.seed` does not create demo accounts/data unless `ARATI_SEED_DEMO=1`; set `ARATI_INITIAL_ADMIN_USER` and `ARATI_INITIAL_ADMIN_PASSWORD` (>=12 chars) to create the first admin (password change required on first login).
+
+Change demo passwords before using a non-demo installation. Seed scripts are idempotent and use `webapp/data/arati_web.db` by default (or `ARATI_WEB_DATABASE_URL` if set).
 
 ## Configuration
 
