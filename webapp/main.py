@@ -6258,6 +6258,7 @@ def _load_menu_photo_map() -> dict[str, str]:
 
 
 _MENU_PHOTOS_BY_SLUG = _load_menu_photo_map()
+_MENU_PHOTO_BACKFILL_KEY = "menu_photo_assets_backfill_v2"
 
 
 def _menu_item_photo(category: str, name: str, slug: str = "") -> str:
@@ -6268,7 +6269,9 @@ def _menu_item_photo(category: str, name: str, slug: str = "") -> str:
 
 
 def _attach_menu_photos(db: Session) -> int:
-    """Backfill photos for cards that have none, never replacing custom images."""
+    """Backfill photos once without replacing custom or removed images."""
+    if db.get(HotelSetting, _MENU_PHOTO_BACKFILL_KEY) is not None:
+        return 0
     updated = 0
     for item in db.scalars(select(MenuItem)).all():
         if item.image:
@@ -6277,6 +6280,7 @@ def _attach_menu_photos(db: Session) -> int:
         if photo:
             item.image = photo
             updated += 1
+    db.add(HotelSetting(key=_MENU_PHOTO_BACKFILL_KEY, value="done"))
     return updated
 
 
