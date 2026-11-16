@@ -6220,6 +6220,7 @@ MENU_ITEM_PHOTOS: dict[tuple[str, str], str] = {
     ("Continental", "Chicken sizzler"): "chicken-sizzler.jpg",
     ("Continental", "Veg. Sizzler"): "veg-sizzler.jpg",
     ("Fried Rice", "Chicken Biryani"): "chicken-biryani.jpg",
+    ("Fried Rice", "Egg Fried Rice"): "egg-fried-rice.webp",
     ("Fried Rice", "Mutton Biryani"): "mutton-biryani.jpg",
     ("Italian (Pizza / Pasta)", "Chicken pizza"): "chicken-pizza.jpg",
     ("Khaja Set", "Chicken Khaja set"): "chicken-khaja-set.jpg",

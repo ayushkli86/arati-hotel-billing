@@ -20,7 +20,7 @@
 <article class="menu-card" :class="{ 'is-unavailable': !item.available }">
   <div class="menu-card-media">
     <template x-if="item.image">
-      <img class="menu-card-img" :src="item.image" :alt="item.name" loading="lazy" width="600" height="300">
+      <img class="menu-card-img" :src="item.image" :alt="item.name" loading="eager" decoding="async" width="600" height="300">
     </template>
     <template x-if="!item.image">
       <div class="menu-card-fallback" role="img" :aria-label="item.name">
@@ -31,10 +31,12 @@
   </div>
   <div class="menu-card-body">
     <p class="menu-cat-label" x-text="item.category"></p>
-    <h3 class="menu-name" x-text="item.name"></h3>
+    <div class="menu-title-row">
+      <h3 class="menu-name" x-text="item.name"></h3>
+      <p class="menu-price" x-text="'Rs. ' + formatPrice(item.price)"></p>
+    </div>
     {% if isAdmin %}<p class="menu-slug" x-text="'/' + item.slug"></p>{% endif %}
     <p class="menu-desc" x-show="item.description" x-text="item.description"></p>
-    <p class="menu-price" x-text="'Rs. ' + formatPrice(item.price)"></p>
   </div>
   {% if isAdmin %}
   <div class="menu-card-footer">
@@ -214,18 +216,37 @@
 
 <style>
 @media print {
-  @page { margin: 10mm; }
-  aside, header, .mobile-nav, #quick-action-bar { display: none !important; }
+  @page { size: A4; margin: 8mm; }
+  aside, header, .mobile-nav, #quick-action-bar, .menu-toolbar { display: none !important; }
   main { margin-left: 0 !important; }
   .page-enter { max-width: none !important; padding: 0 !important; }
-  body { background: #fff !important; }
+  body { background: #fff !important; color: #111827 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 13px; }
   .menu-board { background: #fff !important; }
-  .menu-print-head { display: block !important; }
-  .menu-card { break-inside: avoid; page-break-inside: avoid; box-shadow: none !important; border: 1px solid #e5e7eb !important; }
-  .menu-grid { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 10px !important; }
-  .menu-card-img { width: auto !important; height: auto !important; max-width: 100% !important; max-height: 180px !important; object-fit: cover !important; }
-  .menu-cat { break-inside: avoid; page-break-inside: avoid; }
-  .menu-card-footer { display: none !important; }
+  .menu-print-head { display: block !important; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid #111827; text-align: center; }
+  .menu-print-hotel { font-size: 26px; font-weight: 800; letter-spacing: .02em; margin: 0; }
+  .menu-print-sub, .menu-print-tag { margin: 3px 0 0; }
+  .menu-print-sub { font-size: 13px; color: #374151; }
+  .menu-print-tag { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #6b7280; }
+  .menu-groups { display: block !important; }
+  .menu-cat { break-inside: auto; page-break-inside: auto; margin-bottom: 16px; }
+  .menu-cat-head { display: flex !important; align-items: baseline; justify-content: space-between; margin: 0 0 8px; padding: 0 0 4px; border-bottom: 1.5px solid #9ca3af; break-after: avoid; page-break-after: avoid; }
+  .menu-cat-head h2 { font-size: 15px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #111827; margin: 0; }
+  .menu-cat-head span { display: none !important; }
+  .menu-grid { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px 12px !important; }
+  .menu-card { display: grid !important; grid-template-columns: 110px minmax(0, 1fr); align-items: start; gap: 10px; break-inside: avoid; page-break-inside: avoid; box-shadow: none !important; border: 1px solid #d1d5db !important; border-radius: 10px !important; overflow: hidden; padding: 8px; background: #fff !important; }
+  .menu-card:hover { transform: none !important; box-shadow: none !important; }
+  .menu-card-media { position: relative; width: 110px !important; height: 110px !important; aspect-ratio: auto !important; border-radius: 8px; overflow: hidden; background: #f3f4f6 !important; flex: none; }
+  .menu-card-img, .menu-card-fallback { display: block !important; width: 110px !important; height: 110px !important; max-height: none !important; object-fit: cover !important; }
+  .menu-card-fallback i { font-size: 2rem; }
+  .menu-badge { display: none !important; }
+  .menu-card-body { padding: 0 !important; gap: 4px !important; min-width: 0; }
+  .menu-cat-label { display: none !important; }
+  .menu-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .menu-name { font-size: 15px !important; font-weight: 700; line-height: 1.25 !important; margin: 0; color: #111827; }
+  .menu-desc { font-size: 12px !important; line-height: 1.35 !important; color: #4b5563 !important; margin: 2px 0 0; display: block !important; -webkit-line-clamp: unset !important; -webkit-box-orient: unset !important; overflow: visible !important; }
+  .menu-price { font-size: 14px !important; font-weight: 700; color: #111827 !important; margin: 0 !important; white-space: nowrap; flex: none; }
+  .menu-card.is-unavailable { opacity: .55; }
+  .menu-card-footer, .menu-slug { display: none !important; }
   a[href]:after { content: none !important; }
 }
 </style>
