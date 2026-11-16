@@ -6396,12 +6396,21 @@ def _resequence_category(db: Session, category: str) -> None:
 
 
 def _seed_menu_cards() -> None:
-    """Populate the menu board once from the canonical seeded menu list."""
+    """Populate or sync the menu board from the canonical seeded menu list.
+
+    Existing installs may already have menu cards; refresh them from the current
+    source of truth (names/categories/prices/order/notes/photos) so a new clone
+    or reseed matches the repository state without deleting custom-added items.
+    """
     Base.metadata.create_all(bind=engine)
     with SessionLocal.begin() as db:
-        if db.scalar(select(func.count(MenuItem.id))) not in (0, None):
-            _attach_menu_photos(db)
-            return
+        existing_items = db.scalars(select(MenuItem)).all()
+        by_slug = {item.slug: item for item in existing_items}
+        by_name = {}
+        for item in existing_items:
+            by_name.setdefault((item.category, item.name), item)
+            by_name.setdefault(("", item.name), item)
+
         per_category: dict[str, int] = {}
         seen_slugs: set[str] = set()
         for group, name, rate, _unit in MENU_ITEMS:
@@ -6414,16 +6423,25 @@ def _seed_menu_cards() -> None:
                 candidate = f"{slug}-{suffix}"
                 suffix += 1
             seen_slugs.add(candidate)
-            db.add(MenuItem(
-                name=name,
-                slug=candidate,
-                category=group,
-                description=MENU_NOTES.get((group, name), ""),
-                price=Decimal(str(rate)),
-                image=_menu_item_photo(group, name),
-                available=True,
-                sort_order=order,
-            ))
+
+            item = by_slug.get(slug) or by_slug.get(candidate) or by_name.get((group, name)) or by_name.get(("", name))
+            if item is None:
+                item = MenuItem(slug=candidate)
+                db.add(item)
+            item.name = name
+            item.slug = candidate
+            item.category = group
+            item.description = MENU_NOTES.get((group, name), "")
+            item.price = Decimal(str(rate))
+            photo = _menu_item_photo(group, name)
+            if photo:
+                item.image = photo
+            elif not item.image:
+                item.image = ""
+            item.available = True
+            item.sort_order = order
+
+        _attach_menu_photos(db)
 
 
 @app.get("/api/menu-items", dependencies=[Depends(require_admin)])

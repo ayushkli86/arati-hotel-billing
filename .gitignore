@@ -66,3 +66,9 @@ WINDOWS_SETUP.md
 RELEASE.md
 # Build artifacts
 /dist/
+
+# Local env files
+.env
+.env.*
+!.env.example
+!.env.kot-sync.example
