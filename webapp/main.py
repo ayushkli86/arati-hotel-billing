@@ -6238,27 +6238,45 @@ MENU_ITEM_PHOTOS: dict[tuple[str, str], str] = {
     ("Veg Momo", "Veg Momo Plater"): "veg-momo-platter.jpg",
     ("Veg Snacks", "French fried"): "french-fries.jpg",
 }
-_MENU_PHOTO_BACKFILL_KEY = "menu_photo_assets_backfill_v1"
+_MENU_PHOTO_MAP_PATH = ROOT / "menu_photos.json"
 
 
-def _menu_item_photo(category: str, name: str) -> str:
-    filename = MENU_ITEM_PHOTOS.get((category, name))
+def _load_menu_photo_map() -> dict[str, str]:
+    """Slug → image filename map generated from the hotel's photo set.
+
+    Guards against a fresh clone/fresh database seeding menu cards without the
+    pictures the production install has collected.
+    """
+    try:
+        data = json.loads(_MENU_PHOTO_MAP_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    raw = data.get("by_slug") if isinstance(data, dict) else None
+    if not isinstance(raw, dict):
+        return {}
+    return {str(slug): str(filename) for slug, filename in raw.items() if filename}
+
+
+_MENU_PHOTOS_BY_SLUG = _load_menu_photo_map()
+
+
+def _menu_item_photo(category: str, name: str, slug: str = "") -> str:
+    filename = _MENU_PHOTOS_BY_SLUG.get(slug) if slug else None
+    if not filename:
+        filename = MENU_ITEM_PHOTOS.get((category, name))
     return f"/static/menu-photos/{filename}" if filename else ""
 
 
 def _attach_menu_photos(db: Session) -> int:
-    """Backfill mapped photos once without replacing existing/custom images."""
-    if db.get(HotelSetting, _MENU_PHOTO_BACKFILL_KEY) is not None:
-        return 0
+    """Backfill photos for cards that have none, never replacing custom images."""
     updated = 0
     for item in db.scalars(select(MenuItem)).all():
         if item.image:
             continue
-        photo = _menu_item_photo(item.category, item.name)
+        photo = _menu_item_photo(item.category, item.name, item.slug or "")
         if photo:
             item.image = photo
             updated += 1
-    db.add(HotelSetting(key=_MENU_PHOTO_BACKFILL_KEY, value="done"))
     return updated
 
 
@@ -6406,13 +6424,26 @@ def _seed_menu_cards() -> None:
     with SessionLocal.begin() as db:
         existing_items = db.scalars(select(MenuItem)).all()
         by_slug = {item.slug: item for item in existing_items}
-        by_name = {}
+        by_name: dict[tuple[str, str], list[MenuItem]] = {}
         for item in existing_items:
-            by_name.setdefault((item.category, item.name), item)
-            by_name.setdefault(("", item.name), item)
+            by_name.setdefault((item.category, item.name), []).append(item)
+            by_name.setdefault(("", item.name), []).append(item)
 
         per_category: dict[str, int] = {}
         seen_slugs: set[str] = set()
+        used_items: set[int] = set()
+
+        def _available(candidate_item: MenuItem | None) -> MenuItem | None:
+            if candidate_item is None or id(candidate_item) in used_items:
+                return None
+            return candidate_item
+
+        def _first_available(items: list[MenuItem]) -> MenuItem | None:
+            for candidate_item in items:
+                if id(candidate_item) not in used_items:
+                    return candidate_item
+            return None
+
         for group, name, rate, _unit in MENU_ITEMS:
             order = per_category.get(group, 0) + 1
             per_category[group] = order
@@ -6424,20 +6455,20 @@ def _seed_menu_cards() -> None:
                 suffix += 1
             seen_slugs.add(candidate)
 
-            item = by_slug.get(slug) or by_slug.get(candidate) or by_name.get((group, name)) or by_name.get(("", name))
+            item = _available(by_slug.get(candidate)) or _available(by_slug.get(slug))
+            if item is None:
+                item = (_first_available(by_name.get((group, name), []))
+                        or _first_available(by_name.get(("", name), [])))
             if item is None:
                 item = MenuItem(slug=candidate)
                 db.add(item)
+            used_items.add(id(item))
             item.name = name
-            item.slug = candidate
             item.category = group
             item.description = MENU_NOTES.get((group, name), "")
             item.price = Decimal(str(rate))
-            photo = _menu_item_photo(group, name)
-            if photo:
-                item.image = photo
-            elif not item.image:
-                item.image = ""
+            if not item.image:
+                item.image = _menu_item_photo(group, name, candidate)
             item.available = True
             item.sort_order = order
 
